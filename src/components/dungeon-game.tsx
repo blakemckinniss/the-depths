@@ -1019,6 +1019,173 @@ export function DungeonGame() {
     return newHealth <= 0
   }, [gameState.player, gameState.currentHazard, gameState.runStats.damageTaken, addLog, updateRunStats])
 
+  // === SUSTAINED ABILITIES ===
+  const handleToggleSustained = useCallback(
+    (ability: SustainedAbility) => {
+      const player = gameState.player
+
+      if (ability.isActive) {
+        // Deactivate
+        const result = deactivateSustained(ability)
+        const updatedAbilities = player.sustainedAbilities.map((a) =>
+          a.id === ability.id ? result.ability : a
+        )
+        // Remove the constant effect
+        const updatedEffects = player.activeEffects.filter(
+          (e) => e.id !== ability.sustained.constantEffect.id
+        )
+
+        setGameState((prev) => ({
+          ...prev,
+          player: {
+            ...prev.player,
+            sustainedAbilities: updatedAbilities,
+            activeEffects: updatedEffects,
+            resources: {
+              ...prev.player.resources,
+              current: prev.player.resources.current - result.resourceCost,
+            },
+          },
+        }))
+
+        addLog(
+          <span className="text-stone-400">{result.narration}</span>,
+          "combat"
+        )
+      } else {
+        // Activate
+        const result = activateSustained(
+          ability,
+          player.resources.current,
+          player.resources.max,
+          player.stats.health,
+          player.stats.maxHealth,
+          player.sustainedAbilities
+        )
+
+        if (!result.success) {
+          addLog(
+            <span className="text-red-400">{result.error}</span>,
+            "system"
+          )
+          return
+        }
+
+        const updatedAbilities = player.sustainedAbilities.map((a) =>
+          a.id === ability.id ? result.ability : a
+        )
+        const updatedEffects = result.effectApplied
+          ? [...player.activeEffects, result.effectApplied]
+          : player.activeEffects
+
+        setGameState((prev) => ({
+          ...prev,
+          player: {
+            ...prev.player,
+            sustainedAbilities: updatedAbilities,
+            activeEffects: updatedEffects,
+            resources: {
+              ...prev.player.resources,
+              current: prev.player.resources.current - result.resourceCost,
+            },
+          },
+        }))
+
+        addLog(
+          <span className="text-amber-400">{result.narration}</span>,
+          "combat"
+        )
+      }
+    },
+    [gameState.player, addLog]
+  )
+
+  // Process sustained abilities at turn start (called from processTurnEffects)
+  const processSustainedAbilities = useCallback(
+    (player: Player, enemy: Enemy | null): { player: Player; enemyDamage: number } => {
+      let updatedPlayer = { ...player }
+      let totalEnemyDamage = 0
+      const updatedSustained: SustainedAbility[] = []
+
+      for (const ability of player.sustainedAbilities) {
+        if (!ability.isActive) {
+          updatedSustained.push(ability)
+          continue
+        }
+
+        const result = processSustainedTurn(
+          ability,
+          updatedPlayer.resources.current,
+          updatedPlayer.stats.health
+        )
+
+        if (result.autoDeactivated) {
+          // Remove the constant effect
+          updatedPlayer = {
+            ...updatedPlayer,
+            activeEffects: updatedPlayer.activeEffects.filter(
+              (e) => e.id !== ability.sustained.constantEffect.id
+            ),
+          }
+          addLog(
+            <span className="text-stone-500">{result.deactivationReason}</span>,
+            "effect"
+          )
+        }
+
+        if (result.tickEffect) {
+          // Apply tick effects
+          if (result.tickEffect.resourceDrain) {
+            updatedPlayer = {
+              ...updatedPlayer,
+              resources: {
+                ...updatedPlayer.resources,
+                current: updatedPlayer.resources.current - result.tickEffect.resourceDrain,
+              },
+            }
+          }
+          if (result.tickEffect.healthDrain) {
+            updatedPlayer = {
+              ...updatedPlayer,
+              stats: {
+                ...updatedPlayer.stats,
+                health: updatedPlayer.stats.health - result.tickEffect.healthDrain,
+              },
+            }
+          }
+          if (result.tickEffect.healing) {
+            updatedPlayer = {
+              ...updatedPlayer,
+              stats: {
+                ...updatedPlayer.stats,
+                health: Math.min(
+                  updatedPlayer.stats.maxHealth,
+                  updatedPlayer.stats.health + result.tickEffect.healing
+                ),
+              },
+            }
+          }
+          if (result.tickEffect.damage && enemy) {
+            totalEnemyDamage += result.tickEffect.damage
+          }
+
+          addLog(
+            <span className="text-stone-400 text-sm">{result.tickEffect.narration}</span>,
+            "effect"
+          )
+        }
+
+        updatedSustained.push(result.ability)
+      }
+
+      return {
+        player: { ...updatedPlayer, sustainedAbilities: updatedSustained },
+        enemyDamage: totalEnemyDamage,
+      }
+    },
+    [addLog]
+  )
+
   // ... existing code for handleUseAbility ...
   const handleUseAbility = useCallback(
     async (ability: Ability) => {
@@ -3322,6 +3489,7 @@ export function DungeonGame() {
                   player={gameState.player}
                   currentEnemy={gameState.currentEnemy}
                   onUseAbility={handleUseAbility}
+                  onToggleSustained={handleToggleSustained}
                   disabled={isProcessing}
                 />
               </div>
