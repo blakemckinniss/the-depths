@@ -106,7 +106,14 @@ import {
   getBondTier,
   getCompanionColor,
 } from "@/lib/companion-system"
-import type { Companion, Enemy } from "@/lib/game-types"
+import type { Companion, Enemy, SustainedAbility } from "@/lib/game-types"
+import {
+  activateSustained,
+  deactivateSustained,
+  processSustainedTurn,
+  getEffectiveResources,
+  getSustainedAbilitiesForClass,
+} from "@/lib/sustained-ability-system"
 
 // ... existing code (response interfaces) ...
 interface RoomResponse {

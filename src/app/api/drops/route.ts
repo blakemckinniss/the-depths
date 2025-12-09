@@ -28,8 +28,8 @@ const MonsterLoreSchema = z.object({
     name: z.string().describe("Unique item name themed to this monster"),
     type: z.enum(["weapon", "armor", "trinket", "consumable", "material"]),
     rarity: z.enum(["common", "uncommon", "rare", "legendary"]),
-    description: z.string().describe("Brief item description"),
-    effect: z.string().nullish().describe("Special effect if any"),
+    description: z.string().describe("Brief item description focusing on appearance and damage type, NOT on-hit effects"),
+    damageType: z.enum(["physical", "fire", "ice", "lightning", "shadow", "holy", "poison", "arcane"]).nullish().describe("Weapon damage type - only for weapons"),
   }).nullish().describe("Only for rare/elite monsters"),
 })
 
@@ -40,9 +40,9 @@ const TreasureContentsSchema = z.object({
     name: z.string(),
     type: z.enum(["weapon", "armor", "trinket", "consumable", "material", "gold", "key"]),
     rarity: z.enum(["common", "uncommon", "rare", "legendary"]).nullish(),
-    description: z.string(),
+    description: z.string().describe("Appearance description - do NOT claim on-hit effects"),
     quantity: z.number().nullish(),
-    effect: z.string().nullish(),
+    damageType: z.enum(["physical", "fire", "ice", "lightning", "shadow", "holy", "poison", "arcane"]).nullish().describe("Weapon damage type - only for weapons"),
   })),
   trapped: z.boolean().describe("Is the container trapped?"),
   trapDescription: z.string().nullish().describe("Description of trap if trapped"),
@@ -54,20 +54,20 @@ const BossRewardSchema = z.object({
   trophy: z.object({
     name: z.string().describe("Trophy item from the boss"),
     description: z.string(),
-    effect: z.string().describe("What the trophy does"),
+    effect: z.string().describe("Flavor text about the trophy (cosmetic only)"),
   }),
   equipment: z.object({
     name: z.string(),
     type: z.enum(["weapon", "armor"]),
     subtype: z.string(),
     rarity: z.enum(["rare", "legendary"]),
-    description: z.string(),
+    description: z.string().describe("Description focusing on appearance and damage type, NOT on-hit effects"),
     stats: z.object({
       attack: z.number().nullish(),
       defense: z.number().nullish(),
       health: z.number().nullish(),
     }),
-    specialAbility: z.string().nullish(),
+    damageType: z.enum(["physical", "fire", "ice", "lightning", "shadow", "holy", "poison", "arcane"]).nullish().describe("Weapon damage type - affects effectiveness vs enemy weaknesses"),
   }),
   lore: z.string().describe("Brief lore about the boss's defeat"),
 })
@@ -78,19 +78,19 @@ const DungeonThemedLootSchema = z.object({
     name: z.string(),
     type: z.enum(["weapon", "armor", "trinket", "consumable", "material"]),
     rarity: z.enum(["common", "uncommon", "rare", "legendary"]),
-    description: z.string(),
+    description: z.string().describe("Appearance description - do NOT claim on-hit effects"),
     themeConnection: z.string().describe("How it relates to the dungeon theme"),
     stats: z.object({
       attack: z.number().nullish(),
       defense: z.number().nullish(),
       health: z.number().nullish(),
     }).nullish(),
-    effect: z.string().nullish(),
+    damageType: z.enum(["physical", "fire", "ice", "lightning", "shadow", "holy", "poison", "arcane"]).nullish().describe("Weapon damage type - only for weapons"),
   })),
   setBonus: z.object({
     name: z.string(),
     pieces: z.array(z.string()),
-    bonus: z.string(),
+    bonus: z.string().describe("Stat bonuses only - no proc effects"),
   }).nullish().describe("If items form a set"),
 })
 
@@ -203,7 +203,14 @@ RULES:
 - Generate 3-5 items
 - Set bonuses are optional but should be thematic
 - Higher floors = better rarity distribution
-- Items should feel like they belong in this specific dungeon`
+- Items should feel like they belong in this specific dungeon
+
+IMPORTANT - TRUTHFUL ITEM EFFECTS:
+Only describe effects that actually exist in the game:
+✓ Damage types (fire/ice/shadow/holy/arcane/lightning/poison) - affects damage vs enemy weaknesses
+✓ Stat bonuses (attack, defense, health, crit chance, crit damage)
+✗ DO NOT claim on-hit effects like "burns enemies" or "X damage on critical"
+✗ DO NOT claim proc effects or passive triggers - these are NOT implemented`
 
 // =============================================================================
 // HANDLERS

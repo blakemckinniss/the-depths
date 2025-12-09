@@ -554,6 +554,7 @@ export const createInitialPlayer = (): Player => ({
     lastAbilities: [],
     activeCombo: undefined,
   },
+  sustainedAbilities: [],
 })
 
 export const createInitialRunStats = (): RunSummary => ({

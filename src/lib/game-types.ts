@@ -505,7 +505,12 @@ export interface Player extends GameEntity {
   abilityCooldowns: Record<string, number> // abilityId -> turns remaining
   stance: CombatStance
   combo: ComboTracker
+  sustainedAbilities: SustainedAbility[] // Toggle abilities that reserve resources while active
 }
+
+// Re-export for convenience (actual type is in sustained-ability-system.ts)
+import type { SustainedAbility } from "./sustained-ability-system"
+export type { SustainedAbility }
 
 export interface PlayerResources {
   current: number

@@ -10,6 +10,7 @@ import type {
 
 export type { PlayerClass }
 import { STATUS_EFFECTS } from "./entity-system"
+import { getSustainedAbilitiesForClass } from "./sustained-ability-system"
 
 // ============================================================================
 // CLASS DEFINITIONS
@@ -962,6 +963,7 @@ export function initializePlayerClass(player: Player, classId: PlayerClass): Pla
   if (!classDef) return player
 
   const startingAbilities = classDef.startingAbilities.map((id) => BASE_ABILITIES[id]).filter(Boolean)
+  const sustainedAbilities = getSustainedAbilitiesForClass(classId, 1) // Get level 1 sustained abilities
 
   return {
     ...player,
@@ -977,6 +979,7 @@ export function initializePlayerClass(player: Player, classId: PlayerClass): Pla
       dodgeChance: player.stats.dodgeChance + (classDef.passives.dodgeBonus || 0),
     },
     abilities: startingAbilities,
+    sustainedAbilities,
     resources: {
       type: classDef.resourceType,
       current: classDef.baseResource,

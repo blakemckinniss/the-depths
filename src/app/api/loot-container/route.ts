@@ -54,9 +54,9 @@ const OpeningResultSchema = z.object({
     name: z.string(),
     type: z.enum(["weapon", "armor", "trinket", "consumable", "material", "gold", "gem", "artifact", "cursed"]),
     rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]),
-    description: z.string(),
+    description: z.string().describe("Appearance description - do NOT claim on-hit effects or procs"),
     value: z.number(),
-    effect: z.string().nullish(),
+    damageType: z.enum(["physical", "fire", "ice", "lightning", "shadow", "holy", "poison", "arcane"]).nullish().describe("Weapon damage type - only for weapons"),
     isJackpot: z.boolean().nullish().describe("True for exceptional finds"),
   })),
   jackpotMoment: z.string().nullish().describe("Special text if legendary/jackpot"),
@@ -134,6 +134,13 @@ LOOT DISTRIBUTION BY CONTAINER RARITY:
 - rare: 2-4 items, guaranteed at least one rare
 - epic: 3-5 items, guaranteed rare, chance of epic
 - legendary: 4-6 items, guaranteed epic, high legendary chance
+
+IMPORTANT - TRUTHFUL ITEM EFFECTS:
+Only describe effects that actually exist in the game:
+✓ Damage types (fire/ice/shadow/holy/arcane/lightning/poison) - affects damage vs enemy weaknesses
+✓ Stat bonuses (attack, defense, health, crit chance, crit damage)
+✗ DO NOT claim on-hit effects like "burns enemies" or "X damage on critical"
+✗ DO NOT claim proc effects or passive triggers - these are NOT implemented
 
 Make the reveal FEEL rewarding.`
 

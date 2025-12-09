@@ -6,7 +6,7 @@ import { z } from "zod"
 
 export const itemSchema = z.object({
   name: z.string().describe("Evocative fantasy item name, 2-4 words"),
-  description: z.string().describe("Brief visceral description, 1 sentence"),
+  description: z.string().describe("Brief visceral description focusing on appearance - do NOT claim on-hit effects or procs"),
   lore: z.string().describe("Dark fantasy backstory hint, 1 sentence"),
   useText: z.string().nullish().describe("What happens when used, 1 sentence"),
 })
@@ -105,7 +105,7 @@ export const roomEventEnemySchema = z.object({
 
 export const roomEventLootSchema = z.object({
   itemName: z.string(),
-  itemDescription: z.string(),
+  itemDescription: z.string().describe("Appearance description - do NOT claim on-hit effects or procs"),
   itemLore: z.string(),
   discoveryNarration: z.string(),
 })
@@ -170,7 +170,7 @@ export const victorySchema = z.object({
   lootReveal: z.object({
     discovery: z.string(),
     itemName: z.string(),
-    itemDescription: z.string(),
+    itemDescription: z.string().describe("Appearance description - do NOT claim on-hit effects or procs"),
     itemLore: z.string(),
   }).nullish(),
   experienceNarration: z.string().describe("How player grows"),
@@ -259,7 +259,7 @@ export const enhancedLootSchema = z.object({
   name: z.string().describe("Evocative item name"),
   lore: z.string().describe("Item history"),
   discoveryNarration: z.string().describe("How player finds it"),
-  useHint: z.string().nullish().describe("Special property hint"),
+  useHint: z.string().nullish().describe("Hint about damage type or stat bonus - NOT on-hit effects"),
 })
 
 export const dungeonCardSchema = z.object({
@@ -289,7 +289,7 @@ export const environmentalInteractionSchema = z.object({
       name: z.string(),
       type: z.enum(["weapon", "armor", "potion", "misc", "key", "quest"]),
       rarity: z.enum(["common", "uncommon", "rare", "legendary"]),
-      description: z.string(),
+      description: z.string().describe("Appearance description - do NOT claim on-hit effects"),
       lore: z.string(),
     }).nullish(),
     gold: z.number().nullish(),
@@ -362,7 +362,7 @@ export const unknownItemUseSchema = z.object({
     name: z.string(),
     type: z.enum(["potion", "weapon", "armor", "misc"]),
     rarity: z.enum(["common", "uncommon", "rare", "legendary"]),
-    description: z.string(),
+    description: z.string().describe("Appearance description - do NOT claim on-hit effects"),
     lore: z.string(),
     useText: z.string().nullish(),
     canReuse: z.boolean().nullish(),

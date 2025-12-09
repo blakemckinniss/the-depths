@@ -12,13 +12,14 @@ import { NextResponse } from "next/server"
 const IdentifiedItemSchema = z.object({
   trueName: z.string().describe("The revealed true name of the item"),
   type: z.enum(["weapon", "armor", "potion", "misc", "trinket", "material"]),
-  description: z.string().describe("What the item actually is"),
+  description: z.string().describe("Appearance and nature - do NOT claim on-hit effects"),
   lore: z.string().describe("Brief history or origin of this item"),
-  effects: z.array(z.object({
-    type: z.string(),
-    value: z.number().nullish(),
-    description: z.string(),
-  })).nullish().describe("Special effects if any"),
+  damageType: z.enum(["physical", "fire", "ice", "lightning", "shadow", "holy", "poison", "arcane"]).nullish().describe("Weapon damage type - only for weapons"),
+  stats: z.object({
+    attack: z.number().nullish(),
+    defense: z.number().nullish(),
+    health: z.number().nullish(),
+  }).nullish().describe("Stat bonuses if applicable"),
   revealText: z.string().describe("Dramatic text for the moment of revelation"),
   warnings: z.array(z.string()).nullish().describe("Any dangers or curses"),
 })
@@ -52,7 +53,14 @@ RULES:
 - Include dramatic reveal text for the discovery moment
 - Warnings for cursed or dangerous items
 - Keep descriptions atmospheric and brief
-- Effects should be mechanically meaningful`
+- Effects should be mechanically meaningful
+
+IMPORTANT - TRUTHFUL ITEM EFFECTS:
+Only describe effects that actually exist in the game:
+✓ Damage types (fire/ice/shadow/holy/arcane/lightning/poison) - affects damage vs enemy weaknesses
+✓ Stat bonuses (attack, defense, health, crit chance, crit damage)
+✗ DO NOT claim on-hit effects like "burns enemies" or "X damage on critical"
+✗ DO NOT claim proc effects or passive triggers - these are NOT implemented`
 
 export async function POST(request: Request) {
   try {
