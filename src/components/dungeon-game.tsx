@@ -107,6 +107,11 @@ import { useSaveSystem, type SaveData } from "@/lib/save-system";
 import { useGame } from "@/contexts/game-context";
 import { useLog } from "@/contexts/log-context";
 import { useUI } from "@/contexts/ui-context";
+import { useGameFlow } from "@/hooks/use-game-flow";
+import { useTavern } from "@/hooks/use-tavern";
+import { useNavigation } from "@/hooks/use-navigation";
+import { useEncounters } from "@/hooks/use-encounters";
+import { useCombat } from "@/hooks/use-combat";
 import { useDungeonMaster } from "@/lib/use-dungeon-master";
 import {
   enhanceEnemyWithLore,
@@ -251,6 +256,16 @@ export function DungeonGame() {
   const { generate: generateNarrative, isGenerating: isAiGenerating } =
     useDungeonMaster();
 
+  // =========================================================================
+  // DOMAIN HOOKS - Game logic organized by domain
+  // =========================================================================
+  const gameFlow = useGameFlow({
+    state: gameState,
+    dispatch,
+    logger: log,
+    clearLogs,
+  });
+
   // Check for saves only on client side to avoid hydration mismatch
   useEffect(() => {
     setHasExistingSaves(hasSaves());
@@ -275,6 +290,38 @@ export function DungeonGame() {
     },
     [dispatch],
   );
+
+  // Additional domain hooks (after updateRunStats is defined)
+  const tavern = useTavern({
+    state: gameState,
+    dispatch,
+    logger: log,
+    updateRunStats,
+  });
+
+  const navigation = useNavigation({
+    state: gameState,
+    dispatch,
+    logger: log,
+    setIsProcessing,
+  });
+
+  const encounters = useEncounters({
+    state: gameState,
+    dispatch,
+    logger: log,
+    updateRunStats,
+    setIsProcessing,
+  });
+
+  const combat = useCombat({
+    state: gameState,
+    dispatch,
+    logger: log,
+    isProcessing,
+    setIsProcessing,
+    updateRunStats,
+  });
 
   // =========================================================================
   // COMPATIBILITY SHIM: setGameState wrapper for incremental migration
@@ -327,39 +374,33 @@ export function DungeonGame() {
   // === SAVE/LOAD HANDLERS ===
   const handleLoadSave = useCallback(
     (data: SaveData) => {
-      dispatch({ type: "LOAD_STATE", payload: data.gameState as unknown as GameState });
+      // Use gameFlow for state loading
+      gameFlow.loadSavedGame(data.gameState as unknown as GameState);
       setWorldState(deserializeWorldState(data.worldState));
       setChaosEvents(data.chaosEvents || []);
-      // Note: Log restoration needs special handling - logs have ReactNode content
-      // For now we clear and add a system message
-      clearLogs();
-      addLog(
-        <span className="text-stone-400">Game loaded from save.</span>,
-        "system",
-      );
       closeClassSelect();
       setShowMenuFalse();
     },
-    [deserializeWorldState, dispatch, clearLogs, addLog, closeClassSelect, setShowMenuFalse],
+    [deserializeWorldState, gameFlow, closeClassSelect, setShowMenuFalse],
   );
 
   const handleNewGame = useCallback(() => {
-    dispatch({ type: "RESET_GAME", payload: initialState });
+    // Use gameFlow hook for new game
+    gameFlow.startNewGame();
     setWorldState(createWorldStateManager().getState());
     setChaosEvents([]);
-    clearLogs();
     closeClassSelect();
     setShowMenuFalse();
-  }, [dispatch, clearLogs, closeClassSelect, setShowMenuFalse]);
+  }, [gameFlow, closeClassSelect, setShowMenuFalse]);
 
   const handleReturnToTitle = useCallback(() => {
-    dispatch({ type: "RESET_GAME", payload: initialState });
+    // Use gameFlow hook for return to title
+    gameFlow.returnToTitle();
     setWorldState(createWorldStateManager().getState());
     setChaosEvents([]);
-    clearLogs();
     closeClassSelect();
     setShowMenuFalse();
-  }, [dispatch, clearLogs, closeClassSelect, setShowMenuFalse]);
+  }, [gameFlow, closeClassSelect, setShowMenuFalse]);
 
   useEffect(() => {
     if (gameState.gameStarted && !gameState.gameOver) {
@@ -472,16 +513,7 @@ export function DungeonGame() {
         // Process rewards
         if (result.rewards) {
           if (result.rewards.gold && result.rewards.gold > 0) {
-            setGameState((prev) => ({
-              ...prev,
-              player: {
-                ...prev.player,
-                stats: {
-                  ...prev.player.stats,
-                  gold: prev.player.stats.gold + result.rewards!.gold!,
-                },
-              },
-            }));
+            dispatch({ type: "MODIFY_PLAYER_GOLD", payload: result.rewards.gold });
             addLog(
               <span>
                 Found{" "}
@@ -492,19 +524,7 @@ export function DungeonGame() {
           }
 
           if (result.rewards.healing && result.rewards.healing > 0) {
-            setGameState((prev) => ({
-              ...prev,
-              player: {
-                ...prev.player,
-                stats: {
-                  ...prev.player.stats,
-                  health: Math.min(
-                    prev.player.stats.maxHealth,
-                    prev.player.stats.health + result.rewards!.healing!,
-                  ),
-                },
-              },
-            }));
+            dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: result.rewards.healing });
             addLog(
               <span>
                 Restored{" "}
@@ -518,19 +538,7 @@ export function DungeonGame() {
           }
 
           if (result.rewards.damage && result.rewards.damage > 0) {
-            setGameState((prev) => ({
-              ...prev,
-              player: {
-                ...prev.player,
-                stats: {
-                  ...prev.player.stats,
-                  health: Math.max(
-                    0,
-                    prev.player.stats.health - result.rewards!.damage!,
-                  ),
-                },
-              },
-            }));
+            dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: -result.rewards.damage });
             addLog(
               <span>
                 Took{" "}
@@ -554,13 +562,7 @@ export function DungeonGame() {
               description: result.rewards.item.description,
               lore: result.rewards.item.lore,
             };
-            setGameState((prev) => ({
-              ...prev,
-              player: {
-                ...prev.player,
-                inventory: [...prev.player.inventory, newItem],
-              },
-            }));
+            dispatch({ type: "ADD_ITEM", payload: newItem });
             addLog(
               <span>
                 Acquired{" "}
@@ -571,41 +573,26 @@ export function DungeonGame() {
           }
 
           if (result.rewards.experience && result.rewards.experience > 0) {
-            setGameState((prev) => ({
-              ...prev,
-              player: {
-                ...prev.player,
-                stats: {
-                  ...prev.player.stats,
-                  experience:
-                    prev.player.stats.experience + result.rewards!.experience!,
-                },
-              },
-            }));
+            dispatch({ type: "ADD_EXPERIENCE", payload: result.rewards.experience });
           }
         }
 
         // Process consequences
         if (result.consequences?.entityConsumed) {
-          setGameState((prev) => ({
-            ...prev,
-            roomEnvironmentalEntities: prev.roomEnvironmentalEntities.map(
-              (e) => (e.id === entityId ? { ...e, consumed: true } : e),
-            ),
-          }));
+          dispatch({
+            type: "UPDATE_ROOM_ENTITY",
+            payload: { id: entityId, changes: { consumed: true } },
+          });
         }
 
         // Consume item if required
         if (interaction.consumesItem && itemUsed) {
-          setGameState((prev) => ({
-            ...prev,
-            player: {
-              ...prev.player,
-              inventory: prev.player.inventory.filter(
-                (i) => i.name !== itemUsed,
-              ),
-            },
-          }));
+          const itemToConsume = gameState.player.inventory.find(
+            (i) => i.name === itemUsed,
+          );
+          if (itemToConsume) {
+            dispatch({ type: "REMOVE_ITEM", payload: itemToConsume.id });
+          }
           addLog(
             <span className="text-stone-500 text-sm">Used {itemUsed}.</span>,
             "system",
@@ -644,13 +631,10 @@ export function DungeonGame() {
           };
           newEnvEntity.possibleInteractions =
             getInteractionsForEntity(newEnvEntity);
-          setGameState((prev) => ({
-            ...prev,
-            roomEnvironmentalEntities: [
-              ...prev.roomEnvironmentalEntities,
-              newEnvEntity,
-            ],
-          }));
+          dispatch({
+            type: "SET_ROOM_ENTITIES",
+            payload: [...gameState.roomEnvironmentalEntities, newEnvEntity],
+          });
           addLog(
             <span>
               A <EntityText type="item">{newEnvEntity.name}</EntityText> is
@@ -672,7 +656,7 @@ export function DungeonGame() {
       if (isProcessing) return;
       setIsProcessing(true);
 
-      setGameState((prev) => ({ ...prev, pathOptions: null }));
+      dispatch({ type: "SET_PATH_OPTIONS", payload: null });
 
       const rewardMult = getPathRewardMultiplier(path);
       const newRoom = gameState.currentRoom + 1;
@@ -710,12 +694,8 @@ export function DungeonGame() {
         const isBoss = enemy.expReward > 100 || enemy.maxHealth > 150;
         if (isElite || isBoss) {
           enhanceEnemyWithLore(enemy, gameState.floor).then((enhanced) => {
-            setGameState((prev) => {
-              if (prev.currentEnemy?.id === enemy.id) {
-                return { ...prev, currentEnemy: enhanced };
-              }
-              return prev;
-            });
+            // Check if still fighting this enemy before updating
+            dispatch({ type: "UPDATE_ENEMY", payload: enhanced });
           });
         }
 
@@ -725,14 +705,9 @@ export function DungeonGame() {
 
         log.enemyEncounter(enemy);
 
-        setGameState((prev) => ({
-          ...prev,
-          currentRoom: newRoom,
-          currentHazard: newHazard,
-          inCombat: true,
-          currentEnemy: buffedEnemy,
-          combatRound: 1,
-        }));
+        dispatch({ type: "SET_ROOM", payload: newRoom });
+        dispatch({ type: "SET_HAZARD", payload: newHazard });
+        dispatch({ type: "START_COMBAT", payload: buffedEnemy });
       } else if (path.roomType === "treasure") {
         // Generate AI loot container for gacha experience
         const isRare = path.danger === "dangerous" || gameState.floor > 3;
@@ -761,11 +736,8 @@ export function DungeonGame() {
           // Set active container - UI will render the reveal component
           setActiveLootContainer(container);
 
-          setGameState((prev) => ({
-            ...prev,
-            currentRoom: newRoom,
-            currentHazard: newHazard,
-          }));
+          dispatch({ type: "SET_ROOM", payload: newRoom });
+          dispatch({ type: "SET_HAZARD", payload: newHazard });
         } else {
           // Fallback to static generation if AI fails
           const loot =
@@ -784,56 +756,40 @@ export function DungeonGame() {
             "loot",
           );
 
-          setGameState((prev) => ({
-            ...prev,
-            currentRoom: newRoom,
-            currentHazard: newHazard,
-            player: {
-              ...prev.player,
-              inventory: [...prev.player.inventory, loot],
-              stats: {
-                ...prev.player.stats,
-                gold: prev.player.stats.gold + goldFound,
-              },
+          dispatch({ type: "SET_ROOM", payload: newRoom });
+          dispatch({ type: "SET_HAZARD", payload: newHazard });
+          dispatch({ type: "ADD_ITEM", payload: loot });
+          dispatch({ type: "MODIFY_PLAYER_GOLD", payload: goldFound });
+          dispatch({
+            type: "UPDATE_RUN_STATS",
+            payload: {
+              goldEarned: gameState.runStats.goldEarned + goldFound,
+              itemsFound: [...gameState.runStats.itemsFound, loot],
             },
-            runStats: {
-              ...prev.runStats,
-              goldEarned: prev.runStats.goldEarned + goldFound,
-              itemsFound: [...prev.runStats.itemsFound, loot],
-            },
-          }));
+          });
         }
       } else if (path.roomType === "trap") {
         const trap = generateTrap(gameState.floor);
         log.trapEncounter(trap);
-        setGameState((prev) => ({
-          ...prev,
-          currentRoom: newRoom,
-          currentHazard: newHazard,
-          phase: "trap_encounter",
-          activeTrap: trap,
-        }));
+        dispatch({ type: "SET_ROOM", payload: newRoom });
+        dispatch({ type: "SET_HAZARD", payload: newHazard });
+        dispatch({ type: "SET_PHASE", payload: "trap_encounter" });
+        dispatch({ type: "SET_ACTIVE_TRAP", payload: trap });
       } else if (path.roomType === "shrine") {
         const shrine = generateShrine(gameState.floor);
         log.shrineEncounter(shrine);
-        setGameState((prev) => ({
-          ...prev,
-          currentRoom: newRoom,
-          currentHazard: newHazard,
-          phase: "shrine_choice",
-          activeShrine: shrine,
-        }));
+        dispatch({ type: "SET_ROOM", payload: newRoom });
+        dispatch({ type: "SET_HAZARD", payload: newHazard });
+        dispatch({ type: "SET_PHASE", payload: "shrine_choice" });
+        dispatch({ type: "SET_ACTIVE_SHRINE", payload: shrine });
       } else if (path.roomType === "npc") {
         const npc = generateNPC(gameState.floor);
         setNpcDialogue(npc.dialogue?.[0] || "...");
         log.npcEncounter(npc);
-        setGameState((prev) => ({
-          ...prev,
-          currentRoom: newRoom,
-          currentHazard: newHazard,
-          phase: "npc_interaction",
-          activeNPC: npc,
-        }));
+        dispatch({ type: "SET_ROOM", payload: newRoom });
+        dispatch({ type: "SET_HAZARD", payload: newHazard });
+        dispatch({ type: "SET_PHASE", payload: "npc_interaction" });
+        dispatch({ type: "SET_ACTIVE_NPC", payload: npc });
 
         // Fire-and-forget AI dialogue enhancement
         generateNPCDialogue(
@@ -874,11 +830,8 @@ export function DungeonGame() {
           </span>,
           "narrative",
         );
-        setGameState((prev) => ({
-          ...prev,
-          currentRoom: newRoom,
-          currentHazard: newHazard,
-        }));
+        dispatch({ type: "SET_ROOM", payload: newRoom });
+        dispatch({ type: "SET_HAZARD", payload: newHazard });
       }
 
       setIsProcessing(false);
@@ -889,15 +842,10 @@ export function DungeonGame() {
   const handleSelectClass = useCallback(
     (classId: PlayerClass) => {
       const classDef = CLASSES[classId];
-      setGameState((prev) => {
-        const newPlayer = initializePlayerClass(prev.player, classId);
-        return {
-          ...prev,
-          player: newPlayer,
-          phase: "tavern", // Go to tavern first
-        };
-      });
+      // Use hook for state updates
+      gameFlow.selectClass(classId);
       closeClassSelect();
+      // Custom JSX logging (richer than hook's plain text)
       addLog(
         <span>
           You have chosen the path of the{" "}
@@ -913,37 +861,33 @@ export function DungeonGame() {
         "system",
       );
     },
-    [addLog, closeClassSelect],
+    [addLog, closeClassSelect, gameFlow],
   );
 
   // ... existing code (enterDungeonSelect, selectDungeon, calculateDamage) ...
 
   const enterDungeonSelect = useCallback(() => {
     const dungeons = generateDungeonSelection();
-    setGameState((prev) => ({
-      ...prev,
-      phase: "dungeon_select",
-      availableDungeons: dungeons,
-      gameStarted: true,
-    }));
-  }, []);
+    dispatch({ type: "SET_PHASE", payload: "dungeon_select" });
+    dispatch({ type: "SET_GAME_STARTED", payload: true });
+    // availableDungeons not in reducer yet - use shim
+    setGameState((prev) => ({ ...prev, availableDungeons: dungeons }));
+  }, [dispatch, setGameState]);
 
   const selectDungeon = useCallback(
     async (dungeon: DungeonCard, keyToUse: DungeonKey) => {
       setIsProcessing(true);
 
-      const updatedKeys = keyToUse.consumedOnUse
-        ? gameState.player.keys.filter((k) => k.id !== keyToUse.id)
-        : gameState.player.keys;
+      // Remove key if consumed
+      if (keyToUse.consumedOnUse) {
+        dispatch({ type: "REMOVE_KEY", payload: keyToUse.id });
+      }
 
-      setGameState((prev) => ({
-        ...prev,
-        player: { ...prev.player, keys: updatedKeys },
-        phase: "dungeon",
-        currentDungeon: dungeon,
-        currentRoom: 0,
-        currentHazard: null,
-      }));
+      // Set dungeon state
+      dispatch({ type: "SET_DUNGEON", payload: dungeon });
+      dispatch({ type: "SET_PHASE", payload: "dungeon" });
+      dispatch({ type: "SET_ROOM", payload: 0 });
+      dispatch({ type: "SET_HAZARD", payload: null });
 
       clearLogs(); // Clear logs for new dungeon
 
@@ -1013,7 +957,7 @@ export function DungeonGame() {
 
       setIsProcessing(false);
     },
-    [gameState.player.keys, addLog],
+    [dispatch, clearLogs, addLog],
   );
 
   const calculateDamage = useCallback(
@@ -1173,12 +1117,9 @@ export function DungeonGame() {
       log.narration(`The ${gameState.currentHazard.name} fades away.`);
     }
 
-    setGameState((prev) => ({
-      ...prev,
-      player: updatedPlayer,
-      currentHazard: updatedHazard,
-      turnCount: prev.turnCount + 1,
-    }));
+    dispatch({ type: "UPDATE_PLAYER", payload: updatedPlayer });
+    dispatch({ type: "SET_HAZARD", payload: updatedHazard });
+    dispatch({ type: "INCREMENT_TURN" });
 
     return newHealth <= 0;
   }, [
@@ -1187,6 +1128,7 @@ export function DungeonGame() {
     gameState.runStats.damageTaken,
     addLog,
     updateRunStats,
+    dispatch,
   ]);
 
   // === SUSTAINED ABILITIES ===
@@ -1205,18 +1147,16 @@ export function DungeonGame() {
           (e) => e.id !== ability.sustained.constantEffect.id,
         );
 
-        setGameState((prev) => ({
-          ...prev,
-          player: {
-            ...prev.player,
-            sustainedAbilities: updatedAbilities,
-            activeEffects: updatedEffects,
-            resources: {
-              ...prev.player.resources,
-              current: prev.player.resources.current - result.resourceCost,
-            },
+        const deactivatedPlayer = {
+          ...player,
+          sustainedAbilities: updatedAbilities,
+          activeEffects: updatedEffects,
+          resources: {
+            ...player.resources,
+            current: player.resources.current - result.resourceCost,
           },
-        }));
+        };
+        dispatch({ type: "UPDATE_PLAYER", payload: deactivatedPlayer });
 
         addLog(
           <span className="text-stone-400">{result.narration}</span>,
@@ -1248,18 +1188,16 @@ export function DungeonGame() {
           ? [...player.activeEffects, result.effectApplied]
           : player.activeEffects;
 
-        setGameState((prev) => ({
-          ...prev,
-          player: {
-            ...prev.player,
-            sustainedAbilities: updatedAbilities,
-            activeEffects: updatedEffects,
-            resources: {
-              ...prev.player.resources,
-              current: prev.player.resources.current - result.resourceCost,
-            },
+        const activatedPlayer = {
+          ...player,
+          sustainedAbilities: updatedAbilities,
+          activeEffects: updatedEffects,
+          resources: {
+            ...player.resources,
+            current: player.resources.current - result.resourceCost,
           },
-        }));
+        };
+        dispatch({ type: "UPDATE_PLAYER", payload: activatedPlayer });
 
         addLog(
           <span className="text-amber-400">{result.narration}</span>,
@@ -1267,7 +1205,7 @@ export function DungeonGame() {
         );
       }
     },
-    [gameState.player, addLog],
+    [gameState.player, addLog, dispatch],
   );
 
   // Process sustained abilities at turn start (called from processTurnEffects)
@@ -1541,35 +1479,27 @@ export function DungeonGame() {
             goldEarned: gameState.runStats.goldEarned + goldGain,
           });
 
-          setGameState((prev) => ({
-            ...prev,
-            player: {
-              ...updatedPlayer,
-              stats: {
-                ...updatedPlayer.stats,
-                gold: updatedPlayer.stats.gold + goldGain,
-                experience: updatedPlayer.stats.experience + expGain,
-              },
+          const victoriousPlayer = {
+            ...updatedPlayer,
+            stats: {
+              ...updatedPlayer.stats,
+              gold: updatedPlayer.stats.gold + goldGain,
+              experience: updatedPlayer.stats.experience + expGain,
             },
-            currentEnemy: null,
-            inCombat: false,
-            combatRound: 1,
-          }));
+          };
+          dispatch({ type: "UPDATE_PLAYER", payload: victoriousPlayer });
+          dispatch({ type: "END_COMBAT" });
 
           log.enemySlain(enemy, goldGain, expGain);
 
           if (enemy.loot) {
-            setGameState((prev) => ({
-              ...prev,
-              player: {
-                ...prev.player,
-                inventory: [...prev.player.inventory, enemy.loot!],
+            dispatch({ type: "ADD_ITEM", payload: enemy.loot });
+            dispatch({
+              type: "UPDATE_RUN_STATS",
+              payload: {
+                itemsFound: [...gameState.runStats.itemsFound, enemy.loot],
               },
-              runStats: {
-                ...prev.runStats,
-                itemsFound: [...prev.runStats.itemsFound, enemy.loot!],
-              },
-            }));
+            });
             log.itemFound(enemy.loot);
           }
 
@@ -1583,42 +1513,35 @@ export function DungeonGame() {
           health: newEnemyHealth,
         });
 
-        setGameState((prev) => ({
-          ...prev,
-          player: updatedPlayer,
-          currentEnemy: tickedEnemy,
-        }));
+        dispatch({ type: "UPDATE_PLAYER", payload: updatedPlayer });
+        dispatch({ type: "UPDATE_ENEMY", payload: tickedEnemy });
 
         await enemyAttack(tickedEnemy, updatedPlayer);
       } else if (ability.targetType === "self") {
-        setGameState((prev) => ({
-          ...prev,
-          player: updatedPlayer,
-        }));
+        dispatch({ type: "UPDATE_PLAYER", payload: updatedPlayer });
         await enemyAttack(enemy, updatedPlayer);
       }
 
       setIsProcessing(false);
     },
-    [gameState, isProcessing, addLog, checkLevelUp, updateRunStats],
+    [gameState, isProcessing, addLog, checkLevelUp, updateRunStats, dispatch],
   );
 
   const triggerDeath = useCallback(
     (causeOfDeath: string, killedBy?: string) => {
-      setGameState((prev) => ({
-        ...prev,
-        player: { ...prev.player, stats: { ...prev.player.stats, health: 0 } },
-        gameOver: true,
-        phase: "game_over",
-        runStats: {
-          ...prev.runStats,
+      dispatch({ type: "SET_PLAYER_HEALTH", payload: 0 });
+      dispatch({ type: "SET_GAME_OVER", payload: true });
+      dispatch({ type: "SET_PHASE", payload: "game_over" });
+      dispatch({
+        type: "UPDATE_RUN_STATS",
+        payload: {
           causeOfDeath,
           killedBy,
-          floorsCleared: (prev.floor - 1) * 5 + prev.currentRoom,
+          floorsCleared: (gameState.floor - 1) * 5 + gameState.currentRoom,
         },
-      }));
+      });
     },
-    [],
+    [dispatch, gameState.floor, gameState.currentRoom],
   );
 
   const enemyAttack = useCallback(
@@ -1638,10 +1561,7 @@ export function DungeonGame() {
           </span>,
           "combat",
         );
-        setGameState((prev) => ({
-          ...prev,
-          combatRound: prev.combatRound + 1,
-        }));
+        dispatch({ type: "INCREMENT_COMBAT_ROUND" });
         return;
       }
 
@@ -1765,21 +1685,17 @@ export function DungeonGame() {
               calculateEffectiveStats(updatedPlayer).goldMultiplier,
           );
           log.enemySlain(enemy, goldGain, expGain);
-          setGameState((prev) => ({
-            ...prev,
-            player: {
-              ...updatedPlayer,
-              stats: {
-                ...updatedPlayer.stats,
-                health: actualNewHealth,
-                gold: updatedPlayer.stats.gold + goldGain,
-                experience: updatedPlayer.stats.experience + expGain,
-              },
+          const victoriousPlayer = {
+            ...updatedPlayer,
+            stats: {
+              ...updatedPlayer.stats,
+              health: actualNewHealth,
+              gold: updatedPlayer.stats.gold + goldGain,
+              experience: updatedPlayer.stats.experience + expGain,
             },
-            currentEnemy: null,
-            inCombat: false,
-            combatRound: 1,
-          }));
+          };
+          dispatch({ type: "UPDATE_PLAYER", payload: victoriousPlayer });
+          dispatch({ type: "END_COMBAT" });
           return;
         }
       }
@@ -1801,21 +1717,19 @@ export function DungeonGame() {
           "system",
         );
       } else {
-        setGameState((prev) => ({
-          ...prev,
-          player: {
-            ...updatedPlayer,
-            stats: { ...updatedPlayer.stats, health: actualNewHealth },
-            activeEffects: selectedAbility?.effect
-              ? [...updatedPlayer.activeEffects, selectedAbility.effect]
-              : updatedPlayer.activeEffects,
-          },
-          currentEnemy: updatedEnemy,
-          combatRound: prev.combatRound + 1,
-        }));
+        const damagedPlayer = {
+          ...updatedPlayer,
+          stats: { ...updatedPlayer.stats, health: actualNewHealth },
+          activeEffects: selectedAbility?.effect
+            ? [...updatedPlayer.activeEffects, selectedAbility.effect]
+            : updatedPlayer.activeEffects,
+        };
+        dispatch({ type: "UPDATE_PLAYER", payload: damagedPlayer });
+        dispatch({ type: "UPDATE_ENEMY", payload: updatedEnemy });
+        dispatch({ type: "INCREMENT_COMBAT_ROUND" });
       }
     },
-    [addLog, updateRunStats, gameState.runStats.damageTaken, triggerDeath],
+    [addLog, updateRunStats, gameState.runStats.damageTaken, triggerDeath, dispatch],
   );
 
   // Process companion turns - returns updated enemy (or null if killed) and updated party
@@ -2407,14 +2321,10 @@ export function DungeonGame() {
                   "narrative",
                 );
               }
-              // Add to inventory via state update
-              setGameState((prev) => ({
-                ...prev,
-                player: {
-                  ...prev.player,
-                  inventory: [...prev.player.inventory, ...reward.items],
-                },
-              }));
+              // Add to inventory via dispatch
+              for (const item of reward.items) {
+                dispatch({ type: "ADD_ITEM", payload: item });
+              }
             }
           })
           .catch(() => {
@@ -2434,13 +2344,8 @@ export function DungeonGame() {
 
       checkLevelUp();
 
-      setGameState((prev) => ({
-        ...prev,
-        player: updatedPlayer,
-        inCombat: false,
-        currentEnemy: null,
-        combatRound: 1,
-      }));
+      dispatch({ type: "UPDATE_PLAYER", payload: updatedPlayer });
+      dispatch({ type: "END_COMBAT" });
     } else {
       const tickedEnemy = tickEnemyAbilities({
         ...gameState.currentEnemy,
@@ -2534,20 +2439,12 @@ export function DungeonGame() {
 
         checkLevelUp();
 
-        setGameState((prev) => ({
-          ...prev,
-          player: updatedPlayer,
-          inCombat: false,
-          currentEnemy: null,
-          combatRound: 1,
-        }));
+        dispatch({ type: "UPDATE_PLAYER", payload: updatedPlayer });
+        dispatch({ type: "END_COMBAT" });
       } else {
         // Enemy still alive - now enemy attacks
-        setGameState((prev) => ({
-          ...prev,
-          player: updatedPlayer,
-          currentEnemy: companionResult.enemy,
-        }));
+        dispatch({ type: "UPDATE_PLAYER", payload: updatedPlayer });
+        dispatch({ type: "UPDATE_ENEMY", payload: companionResult.enemy });
 
         await enemyAttack(companionResult.enemy, updatedPlayer);
       }
@@ -2633,16 +2530,12 @@ export function DungeonGame() {
       }
 
       // End combat
-      setGameState((prev) => ({
-        ...prev,
-        player: {
-          ...prev.player,
-          party: updatedParty,
-        },
-        inCombat: false,
-        currentEnemy: null,
-        combatRound: 1,
-      }));
+      const tamedPlayer = {
+        ...gameState.player,
+        party: updatedParty,
+      };
+      dispatch({ type: "UPDATE_PLAYER", payload: tamedPlayer });
+      dispatch({ type: "END_COMBAT" });
     } else {
       // Taming failed - enemy attacks
       addLog(
@@ -2700,13 +2593,10 @@ export function DungeonGame() {
       addLog(<span>{roomResponse.roomDescription}</span>, "narrative");
     }
 
-    setGameState((prev) => ({
-      ...prev,
-      pathOptions: paths,
-    }));
+    dispatch({ type: "SET_PATH_OPTIONS", payload: paths });
 
     setIsProcessing(false);
-  }, [gameState, isProcessing, addLog, processTurnEffects, triggerDeath]);
+  }, [gameState, isProcessing, addLog, processTurnEffects, triggerDeath, dispatch]);
 
   // === ENCOUNTER HANDLERS ===
   const handleTrapAction = useCallback(
@@ -2729,18 +2619,9 @@ export function DungeonGame() {
             </span>,
             "narrative",
           );
-          setGameState((prev) => ({
-            ...prev,
-            player: {
-              ...prev.player,
-              stats: {
-                ...prev.player.stats,
-                experience: prev.player.stats.experience + 5,
-              },
-            },
-            phase: "dungeon",
-            activeTrap: null,
-          }));
+          dispatch({ type: "ADD_EXPERIENCE", payload: 5 });
+          dispatch({ type: "SET_PHASE", payload: "dungeon" });
+          dispatch({ type: "SET_ACTIVE_TRAP", payload: null });
         } else {
           const damage = trap.damage || 10;
           const newHealth = gameState.player.stats.health - damage;
@@ -2779,16 +2660,12 @@ export function DungeonGame() {
               "system",
             );
           } else {
-            setGameState((prev) => ({
-              ...prev,
-              player: {
-                ...prev.player,
-                stats: { ...prev.player.stats, health: newHealth },
-                activeEffects: updatedEffects,
-              },
-              phase: "dungeon",
-              activeTrap: null,
-            }));
+            dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
+            if (trap.effect) {
+              dispatch({ type: "ADD_EFFECT", payload: trap.effect });
+            }
+            dispatch({ type: "SET_PHASE", payload: "dungeon" });
+            dispatch({ type: "SET_ACTIVE_TRAP", payload: null });
           }
         }
       } else if (action === "trigger") {
@@ -2811,15 +2688,9 @@ export function DungeonGame() {
         if (newHealth <= 0) {
           triggerDeath("Killed by trap", trap.name);
         } else {
-          setGameState((prev) => ({
-            ...prev,
-            player: {
-              ...prev.player,
-              stats: { ...prev.player.stats, health: newHealth },
-            },
-            phase: "dungeon",
-            activeTrap: null,
-          }));
+          dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
+          dispatch({ type: "SET_PHASE", payload: "dungeon" });
+          dispatch({ type: "SET_ACTIVE_TRAP", payload: null });
         }
       } else {
         const avoided = Math.random() < 0.5;
@@ -2832,11 +2703,8 @@ export function DungeonGame() {
             </span>,
             "narrative",
           );
-          setGameState((prev) => ({
-            ...prev,
-            phase: "dungeon",
-            activeTrap: null,
-          }));
+          dispatch({ type: "SET_PHASE", payload: "dungeon" });
+          dispatch({ type: "SET_ACTIVE_TRAP", payload: null });
         } else {
           const damage = Math.floor((trap.damage || 10) * 0.7);
           const newHealth = gameState.player.stats.health - damage;
@@ -2857,22 +2725,16 @@ export function DungeonGame() {
           if (newHealth <= 0) {
             triggerDeath("Killed by trap", trap.name);
           } else {
-            setGameState((prev) => ({
-              ...prev,
-              player: {
-                ...prev.player,
-                stats: { ...prev.player.stats, health: newHealth },
-              },
-              phase: "dungeon",
-              activeTrap: null,
-            }));
+            dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
+            dispatch({ type: "SET_PHASE", payload: "dungeon" });
+            dispatch({ type: "SET_ACTIVE_TRAP", payload: null });
           }
         }
       }
 
       setIsProcessing(false);
     },
-    [gameState, isProcessing, addLog, updateRunStats, triggerDeath],
+    [gameState, isProcessing, addLog, updateRunStats, triggerDeath, dispatch],
   );
 
   const handleShrineAction = useCallback(
@@ -2890,11 +2752,8 @@ export function DungeonGame() {
           </span>,
           "narrative",
         );
-        setGameState((prev) => ({
-          ...prev,
-          phase: "dungeon",
-          activeShrine: null,
-        }));
+        dispatch({ type: "SET_PHASE", payload: "dungeon" });
+        dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
         setIsProcessing(false);
         return;
       }
@@ -2912,15 +2771,9 @@ export function DungeonGame() {
             </span>,
             "effect",
           );
-          setGameState((prev) => ({
-            ...prev,
-            player: {
-              ...prev.player,
-              activeEffects: [...prev.player.activeEffects, effect],
-            },
-            phase: "dungeon",
-            activeShrine: null,
-          }));
+          dispatch({ type: "ADD_EFFECT", payload: effect });
+          dispatch({ type: "SET_PHASE", payload: "dungeon" });
+          dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
         } else if (roll < 0.7) {
           const curse = STATUS_EFFECTS.cursed();
           addLog(
@@ -2930,15 +2783,9 @@ export function DungeonGame() {
             </span>,
             "effect",
           );
-          setGameState((prev) => ({
-            ...prev,
-            player: {
-              ...prev.player,
-              activeEffects: [...prev.player.activeEffects, curse],
-            },
-            phase: "dungeon",
-            activeShrine: null,
-          }));
+          dispatch({ type: "ADD_EFFECT", payload: curse });
+          dispatch({ type: "SET_PHASE", payload: "dungeon" });
+          dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
         } else {
           const damage = Math.floor(gameState.player.stats.maxHealth * 0.3);
           updateRunStats({
@@ -2955,15 +2802,9 @@ export function DungeonGame() {
           if (newHealth <= 0) {
             triggerDeath("Destroyed by shrine", shrine.name);
           } else {
-            setGameState((prev) => ({
-              ...prev,
-              player: {
-                ...prev.player,
-                stats: { ...prev.player.stats, health: newHealth },
-              },
-              phase: "dungeon",
-              activeShrine: null,
-            }));
+            dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
+            dispatch({ type: "SET_PHASE", payload: "dungeon" });
+            dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
           }
         }
         setIsProcessing(false);
@@ -2986,11 +2827,8 @@ export function DungeonGame() {
           </span>,
           "system",
         );
-        setGameState((prev) => ({
-          ...prev,
-          phase: "dungeon",
-          activeShrine: null,
-        }));
+        dispatch({ type: "SET_PHASE", payload: "dungeon" });
+        dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
         setIsProcessing(false);
         return;
       }
@@ -3054,22 +2892,22 @@ export function DungeonGame() {
         );
       }
 
-      setGameState((prev) => ({
-        ...prev,
-        player: {
-          ...prev.player,
-          stats: { ...prev.player.stats, gold: newGold, health: newHealth },
-          activeEffects: effect
-            ? [...prev.player.activeEffects, effect]
-            : prev.player.activeEffects,
-        },
-        phase: "dungeon",
-        activeShrine: null,
-      }));
+      // Apply costs and rewards
+      if (newGold !== gameState.player.stats.gold) {
+        dispatch({ type: "SET_PLAYER_GOLD", payload: newGold });
+      }
+      if (newHealth !== gameState.player.stats.health) {
+        dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
+      }
+      if (effect) {
+        dispatch({ type: "ADD_EFFECT", payload: effect });
+      }
+      dispatch({ type: "SET_PHASE", payload: "dungeon" });
+      dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
 
       setIsProcessing(false);
     },
-    [gameState, isProcessing, addLog, updateRunStats, triggerDeath],
+    [gameState, isProcessing, addLog, updateRunStats, triggerDeath, dispatch],
   );
 
   const handleNPCChoice = useCallback(
@@ -3087,11 +2925,8 @@ export function DungeonGame() {
           </span>,
           "narrative",
         );
-        setGameState((prev) => ({
-          ...prev,
-          phase: "dungeon",
-          activeNPC: null,
-        }));
+        dispatch({ type: "SET_PHASE", payload: "dungeon" });
+        dispatch({ type: "SET_ACTIVE_NPC", payload: null });
         setIsProcessing(false);
         return;
       }
@@ -3117,18 +2952,9 @@ export function DungeonGame() {
             </span>,
             "loot",
           );
-          setGameState((prev) => ({
-            ...prev,
-            player: {
-              ...prev.player,
-              stats: {
-                ...prev.player.stats,
-                gold: prev.player.stats.gold - cost,
-              },
-              inventory: [...prev.player.inventory, item],
-            },
-            activeNPC: { ...npc, inventory: npc.inventory?.slice(1) },
-          }));
+          dispatch({ type: "MODIFY_PLAYER_GOLD", payload: -cost });
+          dispatch({ type: "ADD_ITEM", payload: item });
+          dispatch({ type: "SET_ACTIVE_NPC", payload: { ...npc, inventory: npc.inventory?.slice(1) } });
         } else {
           addLog(
             <span className="text-muted-foreground">
@@ -3165,18 +2991,9 @@ export function DungeonGame() {
           </span>,
           "loot",
         );
-        setGameState((prev) => ({
-          ...prev,
-          player: {
-            ...prev.player,
-            stats: {
-              ...prev.player.stats,
-              gold: prev.player.stats.gold + goldReward,
-            },
-          },
-          phase: "dungeon",
-          activeNPC: null,
-        }));
+        dispatch({ type: "MODIFY_PLAYER_GOLD", payload: goldReward });
+        dispatch({ type: "SET_PHASE", payload: "dungeon" });
+        dispatch({ type: "SET_ACTIVE_NPC", payload: null });
         setIsProcessing(false);
         return;
       }
@@ -3230,21 +3047,16 @@ export function DungeonGame() {
           </span>,
           "combat",
         );
-        setGameState((prev) => ({
-          ...prev,
-          phase: "dungeon",
-          activeNPC: null,
-          inCombat: true,
-          currentEnemy: enemy,
-          combatRound: 1,
-        }));
+        dispatch({ type: "SET_PHASE", payload: "dungeon" });
+        dispatch({ type: "SET_ACTIVE_NPC", payload: null });
+        dispatch({ type: "START_COMBAT", payload: enemy });
         setIsProcessing(false);
         return;
       }
 
       setIsProcessing(false);
     },
-    [gameState, isProcessing, addLog, updateRunStats],
+    [gameState, isProcessing, addLog, updateRunStats, dispatch],
   );
 
   // Handler for loot container reveal completion
@@ -3282,40 +3094,27 @@ export function DungeonGame() {
         );
         // Apply curse damage
         const curseDamage = Math.floor(10 + gameState.floor * 3);
-        setGameState((prev) => ({
-          ...prev,
-          player: {
-            ...prev.player,
-            stats: {
-              ...prev.player.stats,
-              health: Math.max(1, prev.player.stats.health - curseDamage),
-            },
-          },
-        }));
+        const newHealth = Math.max(1, gameState.player.stats.health - curseDamage);
+        dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
       }
 
       // Add items to inventory
-      setGameState((prev) => ({
-        ...prev,
-        player: {
-          ...prev.player,
-          inventory: [...prev.player.inventory, ...items],
-          stats: {
-            ...prev.player.stats,
-            gold: prev.player.stats.gold + goldFound,
-          },
+      for (const item of items) {
+        dispatch({ type: "ADD_ITEM", payload: item });
+      }
+      dispatch({ type: "MODIFY_PLAYER_GOLD", payload: goldFound });
+      dispatch({
+        type: "UPDATE_RUN_STATS",
+        payload: {
+          goldEarned: gameState.runStats.goldEarned + goldFound,
+          itemsFound: [...gameState.runStats.itemsFound, ...items],
         },
-        runStats: {
-          ...prev.runStats,
-          goldEarned: prev.runStats.goldEarned + goldFound,
-          itemsFound: [...prev.runStats.itemsFound, ...items],
-        },
-      }));
+      });
 
       // Clear the active container
       setActiveLootContainer(null);
     },
-    [gameState.floor, addLog],
+    [gameState.floor, gameState.player.stats.health, gameState.runStats, addLog, dispatch],
   );
 
   // Handler for canceling loot container (leave without opening)
@@ -3440,25 +3239,15 @@ export function DungeonGame() {
       });
 
       setTimeout(() => {
-        setGameState((prev) => ({
-          ...prev,
-          player: {
-            ...prev.player,
-            stats: {
-              ...prev.player.stats,
-              gold: prev.player.stats.gold + bonusGold,
-            },
-            keys: rewardKey
-              ? [...prev.player.keys, rewardKey]
-              : prev.player.keys,
-            inventory: [...prev.player.inventory, ...floorRewards],
-          },
-          phase: "tavern", // Return to tavern
-          currentDungeon: null,
-          currentRoom: 0,
-          floor: 1,
-          currentHazard: null,
-        }));
+        dispatch({ type: "MODIFY_PLAYER_GOLD", payload: bonusGold });
+        if (rewardKey) {
+          dispatch({ type: "ADD_KEY", payload: rewardKey });
+        }
+        for (const item of floorRewards) {
+          dispatch({ type: "ADD_ITEM", payload: item });
+        }
+        dispatch({ type: "SET_PHASE", payload: "tavern" });
+        dispatch({ type: "CLEAR_DUNGEON" });
         clearLogs();
         addLog(
           <span className="text-muted-foreground">
@@ -3492,16 +3281,13 @@ export function DungeonGame() {
         );
       }
 
-      setGameState((prev) => ({
-        ...prev,
-        floor: newFloor,
-        currentRoom: 0,
-        currentHazard: null,
-      }));
+      dispatch({ type: "SET_FLOOR", payload: newFloor });
+      dispatch({ type: "SET_ROOM", payload: 0 });
+      dispatch({ type: "SET_HAZARD", payload: null });
     }
 
     setIsProcessing(false);
-  }, [gameState, isProcessing, addLog, updateRunStats]);
+  }, [gameState, isProcessing, addLog, updateRunStats, dispatch]);
 
   const attemptFlee = useCallback(async () => {
     if (!gameState.currentEnemy || !gameState.inCombat || isProcessing) return;
@@ -3543,12 +3329,7 @@ export function DungeonGame() {
           "combat",
         );
       }
-      setGameState((prev) => ({
-        ...prev,
-        inCombat: false,
-        currentEnemy: null,
-        combatRound: 1,
-      }));
+      dispatch({ type: "END_COMBAT" });
     } else {
       const effectiveStats = calculateEffectiveStats(gameState.player);
       const damage = calculateDamage(gameState.currentEnemy, {
@@ -3587,14 +3368,8 @@ export function DungeonGame() {
           "system",
         );
       } else {
-        setGameState((prev) => ({
-          ...prev,
-          player: {
-            ...prev.player,
-            stats: { ...prev.player.stats, health: newHealth },
-          },
-          combatRound: prev.combatRound + 1,
-        }));
+        dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
+        dispatch({ type: "INCREMENT_COMBAT_ROUND" });
       }
     }
     setIsProcessing(false);
@@ -3605,6 +3380,7 @@ export function DungeonGame() {
     addLog,
     updateRunStats,
     triggerDeath,
+    dispatch,
   ]);
 
   const consumePotion = useCallback(
@@ -3625,19 +3401,10 @@ export function DungeonGame() {
         "system",
       );
 
-      setGameState((prev) => ({
-        ...prev,
-        player: {
-          ...prev.player,
-          stats: {
-            ...prev.player.stats,
-            health: prev.player.stats.health + healAmount,
-          },
-          inventory: prev.player.inventory.filter((i) => i.id !== potion.id),
-        },
-      }));
+      dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: healAmount });
+      dispatch({ type: "REMOVE_ITEM", payload: potion.id });
     },
-    [gameState.player.stats.maxHealth, gameState.player.stats.health, addLog],
+    [gameState.player.stats.maxHealth, gameState.player.stats.health, addLog, dispatch],
   );
 
   const equipItem = useCallback(
@@ -3666,24 +3433,9 @@ export function DungeonGame() {
         "system",
       );
 
-      setGameState((prev) => ({
-        ...prev,
-        player: {
-          ...prev.player,
-          equipment: {
-            ...prev.player.equipment,
-            [slot]: { ...item, equipped: true },
-          },
-          inventory: [
-            ...prev.player.inventory.filter((i) => i.id !== item.id),
-            ...(currentEquipped
-              ? [{ ...currentEquipped, equipped: false }]
-              : []),
-          ],
-        },
-      }));
+      dispatch({ type: "EQUIP_ITEM", payload: { item, slot } });
     },
-    [gameState.player.equipment, addLog],
+    [gameState.player.equipment, addLog, dispatch],
   );
 
   const _dropItem = useCallback(
@@ -3694,27 +3446,17 @@ export function DungeonGame() {
         </span>,
         "system",
       );
-      setGameState((prev) => ({
-        ...prev,
-        player: {
-          ...prev.player,
-          inventory: prev.player.inventory.filter((i) => i.id !== item.id),
-        },
-      }));
+      dispatch({ type: "REMOVE_ITEM", payload: item.id });
     },
-    [addLog],
+    [addLog, dispatch],
   );
 
   const restartGame = useCallback(() => {
-    clearLogs();
-    setGameState({
-      ...initialState,
-      player: createInitialPlayer(),
-      runStats: createInitialRunStats(),
-    });
+    // Use gameFlow hook for restart logic
+    gameFlow.restartGame();
     openClassSelect();
     setShowMenuFalse();
-  }, [clearLogs, openClassSelect, setShowMenuFalse]);
+  }, [gameFlow, openClassSelect, setShowMenuFalse]);
 
   const _returnToTavern = useCallback(() => {
     clearLogs();
@@ -3729,10 +3471,11 @@ export function DungeonGame() {
           ? CLASSES[prev.player.class].startingAbilities
               .map((id) => {
                 // Rebuild starting abilities
-                const _allAbilities = Object.values(CLASSES).flatMap((c) =>
-                  c.abilityUnlocks
-                    .map((u) => u.abilityId)
-                    .concat(c.startingAbilities),
+                const _allAbilities = Object.entries(CLASSES).flatMap(
+                  ([, c]) =>
+                    c.abilityUnlocks
+                      .map((u) => u.abilityId)
+                      .concat(c.startingAbilities),
                 );
                 return (
                   prev.player.abilities.find((a) => a.id === id) ||
@@ -3763,16 +3506,11 @@ export function DungeonGame() {
       "system",
     );
     setShowMenuFalse();
-  }, [addLog, clearLogs, setShowMenuFalse]);
+  }, [addLog, clearLogs, setShowMenuFalse, setGameState]);
 
   const startGame = useCallback(() => {
-    setGameState({
-      ...initialState,
-      player: createInitialPlayer(),
-      gameStarted: true,
-      runStats: createInitialRunStats(),
-    });
-    clearLogs();
+    // Use gameFlow hook for new game logic
+    gameFlow.startNewGame();
     openClassSelect();
     addLog(
       <span>
@@ -3781,26 +3519,25 @@ export function DungeonGame() {
       </span>,
       "narrative",
     );
-  }, [addLog, clearLogs, openClassSelect]);
+  }, [addLog, gameFlow, openClassSelect]);
 
   const handleRestoreHealth = useCallback(
     (cost: number, amount: number) => {
       if (gameState.player.stats.gold < cost) return;
+
+      // Deduct gold
+      dispatch({ type: "MODIFY_PLAYER_GOLD", payload: -cost });
+
+      // Heal (capped at max)
+      const newHealth = Math.min(
+        gameState.player.stats.maxHealth,
+        gameState.player.stats.health + amount,
+      );
+      dispatch({ type: "UPDATE_PLAYER_STATS", payload: { health: newHealth } });
+
+      // Track gold spent
       updateRunStats({ goldSpent: gameState.runStats.goldSpent + cost });
-      setGameState((prev) => ({
-        ...prev,
-        player: {
-          ...prev.player,
-          stats: {
-            ...prev.player.stats,
-            gold: prev.player.stats.gold - cost,
-            health: Math.min(
-              prev.player.stats.maxHealth,
-              prev.player.stats.health + amount,
-            ),
-          },
-        },
-      }));
+
       addLog(
         <span>
           Sister Meridia&apos;s healing light washes over you.{" "}
@@ -3809,25 +3546,16 @@ export function DungeonGame() {
         "system",
       );
     },
-    [gameState.player.stats.gold, addLog, updateRunStats],
+    [gameState.player.stats, gameState.runStats.goldSpent, dispatch, addLog, updateRunStats],
   );
 
   const handleBuyKey = useCallback(
     (keyRarity: "common" | "uncommon" | "rare") => {
-      const prices = { common: 25, uncommon: 75, rare: 200 };
-      const cost = prices[keyRarity];
-      if (gameState.player.stats.gold < cost) return;
+      // Use tavern hook for the purchase logic
+      const key = tavern.buyKey(keyRarity);
+      if (!key) return; // Couldn't afford
 
-      const key = createDungeonKey(keyRarity);
-      updateRunStats({ goldSpent: gameState.runStats.goldSpent + cost });
-      setGameState((prev) => ({
-        ...prev,
-        player: {
-          ...prev.player,
-          stats: { ...prev.player.stats, gold: prev.player.stats.gold - cost },
-          keys: [...prev.player.keys, key],
-        },
-      }));
+      // Custom JSX logging (richer than hook's plain text)
       addLog(
         <span>
           You purchase a{" "}
@@ -3839,7 +3567,7 @@ export function DungeonGame() {
         "system",
       );
     },
-    [gameState.player.stats.gold, addLog, updateRunStats],
+    [tavern, addLog],
   );
 
   const currentChoices = useMemo(() => {
