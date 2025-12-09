@@ -11,7 +11,9 @@ import type {
   Room,
   DungeonModifier,
   Player,
+  Item,
 } from "./game-types"
+import { checkEquippedSets, calculateSetBonuses } from "./item-sets-system"
 
 // Unique ID generator
 export function generateEntityId(prefix = "entity"): string {
@@ -233,12 +235,22 @@ export function calculateEffectiveStats(player: Player): {
   maxHealth: number
   goldMultiplier: number
   expMultiplier: number
+  critChance: number
+  critDamage: number
+  dodgeChance: number
+  healthRegen: number
+  setSpecials: string[]
 } {
   let attack = player.stats.attack + (player.equipment.weapon?.stats?.attack ?? 0)
   let defense = player.stats.defense + (player.equipment.armor?.stats?.defense ?? 0)
   let maxHealth = player.stats.maxHealth
   let goldMultiplier = 1
   let expMultiplier = 1
+  let critChance = player.stats.critChance ?? 0.05
+  let critDamage = 0.5 // Base crit multiplier (1.5x damage)
+  let dodgeChance = player.stats.dodgeChance ?? 0
+  let healthRegen = 0
+  const setSpecials: string[] = []
 
   // Apply status effects
   for (const effect of player.activeEffects) {
@@ -249,14 +261,43 @@ export function calculateEffectiveStats(player: Player): {
     expMultiplier *= effect.modifiers.expMultiplier ?? 1
   }
 
+  // Apply set bonuses from equipped items
+  const equippedItems: Item[] = []
+  if (player.equipment.weapon) equippedItems.push(player.equipment.weapon)
+  if (player.equipment.armor) equippedItems.push(player.equipment.armor)
+
+  const equippedSets = checkEquippedSets(equippedItems)
+  if (equippedSets.length > 0) {
+    const setBonuses = calculateSetBonuses(equippedSets)
+    attack += setBonuses.attack
+    defense += setBonuses.defense
+    maxHealth += setBonuses.maxHealth
+    critChance += setBonuses.critChance
+    critDamage += setBonuses.critDamage
+    dodgeChance += setBonuses.dodgeChance
+    healthRegen += setBonuses.healthRegen
+    setSpecials.push(...setBonuses.specials)
+  }
+
   // Apply companion bonuses if alive
-  const activeCompanion = player.party.active[0]
+  const activeCompanion = player.party?.active?.[0]
   if (activeCompanion?.alive) {
     if (activeCompanion.role === "fighter") attack += 3
     if (activeCompanion.role === "mage") attack += 2
   }
 
-  return { attack, defense, maxHealth, goldMultiplier, expMultiplier }
+  return {
+    attack,
+    defense,
+    maxHealth,
+    goldMultiplier,
+    expMultiplier,
+    critChance,
+    critDamage,
+    dodgeChance,
+    healthRegen,
+    setSpecials,
+  }
 }
 
 // Room event determination with entity weights

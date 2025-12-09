@@ -21,6 +21,11 @@ import {
 } from "./item-generator"
 import { generateConsumable, type ConsumableSubtype } from "./consumable-system"
 import { isEgoItem } from "./ego-item-system"
+import {
+  generateSetItem,
+  checkEquippedSets,
+  type SetItem,
+} from "./item-sets-system"
 
 // =============================================================================
 // TYPES
@@ -342,6 +347,28 @@ export function generateSmartLoot(context: LootContext): LootResult {
   // Generate the item
   let item: Item
   let reason: string
+
+  // Chance to generate a set piece (higher on rare+ drops, boss/vault sources)
+  const setChanceBase = 0.05 // 5% base
+  const setChanceRarityBonus = rarity === "legendary" ? 0.15 : rarity === "rare" ? 0.1 : 0
+  const setChanceSourceBonus = source === "boss" ? 0.2 : source === "vault" ? 0.15 : 0
+  const setChance = setChanceBase + setChanceRarityBonus + setChanceSourceBonus
+
+  if ((itemType === "weapon" || itemType === "armor") && Math.random() < setChance) {
+    const setItem = generateSetItem({
+      slot: itemType,
+      floor,
+      forClass: player.class ?? undefined,
+    })
+
+    if (setItem) {
+      return {
+        item: setItem,
+        reason: `Set piece: ${setItem.setName}`,
+        isUpgrade: checkIfUpgrade(setItem, player),
+      }
+    }
+  }
 
   if (itemType === "weapon") {
     const preferredSubtype = classProfile ? pickRandom(classProfile.preferredWeapons) : undefined

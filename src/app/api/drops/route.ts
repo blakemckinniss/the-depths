@@ -142,7 +142,14 @@ RULES:
 - Special drops only for elite/boss monsters
 - Match item theme to monster nature
 - Dark fantasy tone - no humor or modern references
-- Weakness hints should be cryptic, not obvious`
+- Weakness hints should be cryptic, not obvious
+
+IMPORTANT - TRUTHFUL ITEM EFFECTS:
+Only describe effects that actually exist in the game:
+✓ Damage types (fire/ice/shadow/holy/arcane/lightning/poison) - affects damage vs enemy weaknesses
+✓ Stat bonuses (attack, defense, health, crit chance, crit damage)
+✗ DO NOT claim on-hit effects like "burns enemies" or "X damage on critical"
+✗ DO NOT claim proc effects or passive triggers - these are NOT implemented`
 
 const TREASURE_SYSTEM = `You are a dungeon treasure generator for a dark fantasy game.
 Determine what treasures are found in containers.
@@ -153,7 +160,14 @@ RULES:
 - Mix item types for variety
 - Trapped containers should have better rewards
 - Inscriptions/lore should hint at dungeon history
-- Gold amounts: common=10-50, rare=50-200, legendary=200-500`
+- Gold amounts: common=10-50, rare=50-200, legendary=200-500
+
+IMPORTANT - TRUTHFUL ITEM EFFECTS:
+Only describe effects that actually exist in the game:
+✓ Damage types (fire/ice/shadow/holy/arcane/lightning/poison) - affects damage vs enemy weaknesses
+✓ Stat bonuses (attack, defense, health, crit chance, crit damage)
+✗ DO NOT claim on-hit effects like "burns enemies" or "X damage on critical"
+✗ DO NOT claim proc effects or passive triggers - these are NOT implemented`
 
 const BOSS_REWARD_SYSTEM = `You are a boss reward generator for a dark fantasy dungeon crawler.
 Create unique, memorable boss loot.
@@ -162,9 +176,23 @@ RULES:
 - Trophy items should be unique to this boss
 - Equipment should feel powerful and themed
 - Stats scale with boss difficulty
-- Legendary items need special abilities
 - Lore should reference the battle
-- Names should be evocative and memorable`
+- Names should be evocative and memorable
+
+IMPORTANT - TRUTHFUL DESCRIPTIONS:
+Weapon mechanics that ARE implemented (describe these):
+- Damage type effectiveness (fire/ice/shadow/holy/arcane/lightning/poison vs enemy weaknesses)
+- Attack, defense, health bonuses
+- Critical hit chance and damage bonuses
+
+Weapon mechanics that are NOT implemented (DO NOT claim these):
+- "X damage on critical hit" effects
+- "Burns/freezes/poisons on hit" effects
+- Proc effects or on-hit triggers
+- Passive abilities that trigger during combat
+
+Example GOOD description: "A blade wreathed in shadow, dealing shadow damage effective against holy creatures"
+Example BAD description: "Burns enemies for 3 fire damage on critical hits" (this mechanic doesn't exist)`
 
 const DUNGEON_THEME_SYSTEM = `You are a themed loot generator for a dark fantasy dungeon crawler.
 Create items that match the dungeon's theme and atmosphere.
