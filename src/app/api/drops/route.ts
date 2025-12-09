@@ -29,8 +29,8 @@ const MonsterLoreSchema = z.object({
     type: z.enum(["weapon", "armor", "trinket", "consumable", "material"]),
     rarity: z.enum(["common", "uncommon", "rare", "legendary"]),
     description: z.string().describe("Brief item description"),
-    effect: z.string().optional().describe("Special effect if any"),
-  }).optional().describe("Only for rare/elite monsters"),
+    effect: z.string().nullish().describe("Special effect if any"),
+  }).nullish().describe("Only for rare/elite monsters"),
 })
 
 // Treasure Contents - What's inside a chest
@@ -39,14 +39,14 @@ const TreasureContentsSchema = z.object({
   contents: z.array(z.object({
     name: z.string(),
     type: z.enum(["weapon", "armor", "trinket", "consumable", "material", "gold", "key"]),
-    rarity: z.enum(["common", "uncommon", "rare", "legendary"]).optional(),
+    rarity: z.enum(["common", "uncommon", "rare", "legendary"]).nullish(),
     description: z.string(),
-    quantity: z.number().optional(),
-    effect: z.string().optional(),
+    quantity: z.number().nullish(),
+    effect: z.string().nullish(),
   })),
   trapped: z.boolean().describe("Is the container trapped?"),
-  trapDescription: z.string().optional().describe("Description of trap if trapped"),
-  lore: z.string().optional().describe("Any inscription or clue found"),
+  trapDescription: z.string().nullish().describe("Description of trap if trapped"),
+  lore: z.string().nullish().describe("Any inscription or clue found"),
 })
 
 // Boss Reward - Special boss loot
@@ -63,11 +63,11 @@ const BossRewardSchema = z.object({
     rarity: z.enum(["rare", "legendary"]),
     description: z.string(),
     stats: z.object({
-      attack: z.number().optional(),
-      defense: z.number().optional(),
-      health: z.number().optional(),
+      attack: z.number().nullish(),
+      defense: z.number().nullish(),
+      health: z.number().nullish(),
     }),
-    specialAbility: z.string().optional(),
+    specialAbility: z.string().nullish(),
   }),
   lore: z.string().describe("Brief lore about the boss's defeat"),
 })
@@ -81,17 +81,17 @@ const DungeonThemedLootSchema = z.object({
     description: z.string(),
     themeConnection: z.string().describe("How it relates to the dungeon theme"),
     stats: z.object({
-      attack: z.number().optional(),
-      defense: z.number().optional(),
-      health: z.number().optional(),
-    }).optional(),
-    effect: z.string().optional(),
+      attack: z.number().nullish(),
+      defense: z.number().nullish(),
+      health: z.number().nullish(),
+    }).nullish(),
+    effect: z.string().nullish(),
   })),
   setBonus: z.object({
     name: z.string(),
     pieces: z.array(z.string()),
     bonus: z.string(),
-  }).optional().describe("If items form a set"),
+  }).nullish().describe("If items form a set"),
 })
 
 // Request body schema
