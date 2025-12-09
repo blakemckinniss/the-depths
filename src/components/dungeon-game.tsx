@@ -86,7 +86,7 @@ import {
   ShrineText,
   NPCText,
 } from "./entity-text";
-import { createGameLogger } from "@/lib/game-log-system";
+// createGameLogger is provided via LogContext - see useLog() hook
 import { GameLog } from "./game-log";
 import { ChoiceButtons } from "./choice-buttons";
 import { CombatDisplay } from "./combat-display";
@@ -104,6 +104,9 @@ import { Tavern } from "./tavern";
 import { InteractiveNarrative } from "./interactive-narrative";
 import { LootContainerReveal } from "./loot-container-reveal";
 import { useSaveSystem, type SaveData } from "@/lib/save-system";
+import { useGame } from "@/contexts/game-context";
+import { useLog } from "@/contexts/log-context";
+import { useUI } from "@/contexts/ui-context";
 import { useDungeonMaster } from "@/lib/use-dungeon-master";
 import {
   enhanceEnemyWithLore,
@@ -210,22 +213,38 @@ const initialState: GameState = {
 };
 
 export function DungeonGame() {
-  const [gameState, setGameState] = useState<GameState>(initialState);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [aiNarration, setAiNarration] = useState<Record<string, string>>({});
-  const [showClassSelect, setShowClassSelect] = useState(false);
-  const [npcDialogue, setNpcDialogue] = useState<string>("...");
-  const [currentNarrative, setCurrentNarrative] =
-    useState<ParsedNarrative | null>(null);
-  const [showMenu, setShowMenu] = useState(false);
+  // =========================================================================
+  // CONTEXT HOOKS - Primary state management via contexts
+  // =========================================================================
+  const { state: gameState, dispatch } = useGame();
+  const { logs, addRawLog: addLog, clearLogs, logger: log } = useLog();
+  const {
+    showMenu,
+    showDevPanel,
+    showClassSelect,
+    activeLootContainer,
+    npcDialogue,
+    currentNarrative,
+    isProcessing,
+    toggleMenu,
+    toggleDevPanel,
+    openMenu: setShowMenuTrue,
+    closeMenu: setShowMenuFalse,
+    openClassSelect,
+    closeClassSelect,
+    setActiveLootContainer,
+    setNpcDialogue,
+    setCurrentNarrative,
+    setIsProcessing,
+  } = useUI();
+
+  // =========================================================================
+  // LOCAL STATE - Only for things not in contexts
+  // =========================================================================
   const [worldState, setWorldState] = useState<WorldState>(() =>
     createWorldStateManager().getState(),
   );
   const [chaosEvents, setChaosEvents] = useState<ChaosEvent[]>([]);
-  const [showDevPanel, setShowDevPanel] = useState(false); // Add state for dev panel
-  const [activeLootContainer, setActiveLootContainer] =
-    useState<LootContainer | null>(null);
   const [hasExistingSaves, setHasExistingSaves] = useState(false); // Client-side only to avoid hydration mismatch
 
   const { autoSave, hasSaves, load, deserializeWorldState } = useSaveSystem();
@@ -237,50 +256,45 @@ export function DungeonGame() {
     setHasExistingSaves(hasSaves());
   }, [hasSaves]);
 
-  const addLog = useCallback(
-    (content: React.ReactNode, type: LogEntry["type"] = "narrative") => {
-      setLogs((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          content,
-          type,
-          timestamp: Date.now(),
-        },
-      ]);
-    },
-    [],
-  );
-
-  // Structured logger - use this for new log calls
-  const log = useMemo(
-    () =>
-      createGameLogger((entry) => {
-        setLogs((prev) => [...prev, entry]);
-      }),
-    [],
-  );
-
+  // Helper to add environmental entities (uses dispatch)
   const _addInteractiveLog = useCallback(
     (narrative: ParsedNarrative, entities: EnvironmentalEntity[]) => {
       setCurrentNarrative(narrative);
-      setGameState((prev) => ({
-        ...prev,
-        roomEnvironmentalEntities: [
-          ...prev.roomEnvironmentalEntities,
-          ...entities,
-        ],
-      }));
+      dispatch({
+        type: "SET_ROOM_ENTITIES",
+        payload: [...gameState.roomEnvironmentalEntities, ...entities],
+      });
     },
-    [],
+    [setCurrentNarrative, dispatch, gameState.roomEnvironmentalEntities],
   );
 
-  const updateRunStats = useCallback((updates: Partial<RunSummary>) => {
-    setGameState((prev) => ({
-      ...prev,
-      runStats: { ...prev.runStats, ...updates },
-    }));
-  }, []);
+  // Helper to update run stats (uses dispatch)
+  const updateRunStats = useCallback(
+    (updates: Partial<RunSummary>) => {
+      dispatch({ type: "UPDATE_RUN_STATS", payload: updates });
+    },
+    [dispatch],
+  );
+
+  // =========================================================================
+  // COMPATIBILITY SHIM: setGameState wrapper for incremental migration
+  // This allows existing handlers to work while we migrate to pure dispatch
+  // TODO: Remove once all handlers are migrated to use dispatch directly
+  // =========================================================================
+  const setGameState = useCallback(
+    (updater: GameState | ((prev: GameState) => GameState)) => {
+      if (typeof updater === "function") {
+        // For functional updates, we need to compute the new state
+        // and dispatch LOAD_STATE with the full new state
+        // This is not ideal but maintains compatibility
+        const newState = updater(gameState);
+        dispatch({ type: "LOAD_STATE", payload: newState });
+      } else {
+        dispatch({ type: "LOAD_STATE", payload: updater });
+      }
+    },
+    [dispatch, gameState],
+  );
 
   const turnCountRef = React.useRef(gameState.turnCount);
   turnCountRef.current = gameState.turnCount;
@@ -298,71 +312,67 @@ export function DungeonGame() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && gameState.gameStarted && !gameState.gameOver) {
-        setShowMenu((prev) => !prev);
+        toggleMenu();
       }
       // Toggle dev panel with backtick key
       if (e.key === "`") {
         e.preventDefault();
-        setShowDevPanel((prev) => !prev);
+        toggleDevPanel();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [gameState.gameStarted, gameState.gameOver]);
+  }, [gameState.gameStarted, gameState.gameOver, toggleMenu, toggleDevPanel]);
 
   // === SAVE/LOAD HANDLERS ===
   const handleLoadSave = useCallback(
     (data: SaveData) => {
-      setGameState(data.gameState as unknown as GameState);
+      dispatch({ type: "LOAD_STATE", payload: data.gameState as unknown as GameState });
       setWorldState(deserializeWorldState(data.worldState));
       setChaosEvents(data.chaosEvents || []);
-      setLogs(
-        data.logs.map((entry) => ({
-          id: entry.id,
-          type: entry.type as LogEntry["type"],
-          timestamp: entry.timestamp,
-          content: <span className="text-stone-400">{entry.textContent}</span>,
-        })),
+      // Note: Log restoration needs special handling - logs have ReactNode content
+      // For now we clear and add a system message
+      clearLogs();
+      addLog(
+        <span className="text-stone-400">Game loaded from save.</span>,
+        "system",
       );
-      setShowClassSelect(false);
-      setShowMenu(false); // Close menu after loading
+      closeClassSelect();
+      setShowMenuFalse();
     },
-    [deserializeWorldState],
+    [deserializeWorldState, dispatch, clearLogs, addLog, closeClassSelect, setShowMenuFalse],
   );
 
   const handleNewGame = useCallback(() => {
-    setGameState(initialState);
+    dispatch({ type: "RESET_GAME", payload: initialState });
     setWorldState(createWorldStateManager().getState());
     setChaosEvents([]);
-    setLogs([]);
-    setShowClassSelect(false);
-    setShowMenu(false); // Close menu after starting new game
-  }, []);
+    clearLogs();
+    closeClassSelect();
+    setShowMenuFalse();
+  }, [dispatch, clearLogs, closeClassSelect, setShowMenuFalse]);
 
   const handleReturnToTitle = useCallback(() => {
-    setGameState(initialState);
-    setWorldState(createWorldStateManager().getState()); // Reset world state too
+    dispatch({ type: "RESET_GAME", payload: initialState });
+    setWorldState(createWorldStateManager().getState());
     setChaosEvents([]);
-    setLogs([]);
-    setShowClassSelect(false);
-    setShowMenu(false); // Close menu after returning to title
-  }, []);
+    clearLogs();
+    closeClassSelect();
+    setShowMenuFalse();
+  }, [dispatch, clearLogs, closeClassSelect, setShowMenuFalse]);
 
   useEffect(() => {
     if (gameState.gameStarted && !gameState.gameOver) {
-      setGameState((prev) => ({
-        ...prev,
-        runStats: { ...prev.runStats, survivalTime: prev.turnCount },
-      }));
+      dispatch({
+        type: "UPDATE_RUN_STATS",
+        payload: { survivalTime: gameState.turnCount },
+      });
     }
-  }, [gameState.turnCount, gameState.gameStarted, gameState.gameOver]);
+  }, [gameState.turnCount, gameState.gameStarted, gameState.gameOver, dispatch]);
 
   const handleChangeStance = useCallback(
     (stance: CombatStance) => {
-      setGameState((prev) => ({
-        ...prev,
-        player: { ...prev.player, stance },
-      }));
+      dispatch({ type: "SET_STANCE", payload: stance });
       const stanceNames = {
         balanced: "Balanced",
         aggressive: "Aggressive",
@@ -370,7 +380,7 @@ export function DungeonGame() {
       };
       log.stanceChange(stanceNames[stance]);
     },
-    [log],
+    [log, dispatch],
   );
 
   const handleEnvironmentalInteraction = useCallback(
@@ -887,7 +897,7 @@ export function DungeonGame() {
           phase: "tavern", // Go to tavern first
         };
       });
-      setShowClassSelect(false);
+      closeClassSelect();
       addLog(
         <span>
           You have chosen the path of the{" "}
@@ -903,7 +913,7 @@ export function DungeonGame() {
         "system",
       );
     },
-    [addLog],
+    [addLog, closeClassSelect],
   );
 
   // ... existing code (enterDungeonSelect, selectDungeon, calculateDamage) ...
@@ -935,7 +945,7 @@ export function DungeonGame() {
         currentHazard: null,
       }));
 
-      setLogs([]); // Clear logs for new dungeon
+      clearLogs(); // Clear logs for new dungeon
 
       if (dungeon.isMystery) {
         addLog(
@@ -3449,7 +3459,7 @@ export function DungeonGame() {
           floor: 1,
           currentHazard: null,
         }));
-        setLogs([]);
+        clearLogs();
         addLog(
           <span className="text-muted-foreground">
             You return to the tavern, victorious. The fire crackles warmly as
@@ -3696,19 +3706,18 @@ export function DungeonGame() {
   );
 
   const restartGame = useCallback(() => {
-    setLogs([]);
+    clearLogs();
     setGameState({
       ...initialState,
       player: createInitialPlayer(),
       runStats: createInitialRunStats(),
     });
-    setAiNarration({});
-    setShowClassSelect(true);
-    setShowMenu(false); // Close menu after restart
-  }, []);
+    openClassSelect();
+    setShowMenuFalse();
+  }, [clearLogs, openClassSelect, setShowMenuFalse]);
 
   const _returnToTavern = useCallback(() => {
-    setLogs([]);
+    clearLogs();
     setGameState((prev) => ({
       ...prev,
       player: {
@@ -3753,8 +3762,8 @@ export function DungeonGame() {
       </span>,
       "system",
     );
-    setShowMenu(false); // Close menu after returning to tavern
-  }, [addLog]);
+    setShowMenuFalse();
+  }, [addLog, clearLogs, setShowMenuFalse]);
 
   const startGame = useCallback(() => {
     setGameState({
@@ -3763,9 +3772,8 @@ export function DungeonGame() {
       gameStarted: true,
       runStats: createInitialRunStats(),
     });
-    setLogs([]);
-    setAiNarration({});
-    setShowClassSelect(true);
+    clearLogs();
+    openClassSelect();
     addLog(
       <span>
         You stand at the entrance to the dungeon depths. Choose your path
@@ -3773,7 +3781,7 @@ export function DungeonGame() {
       </span>,
       "narrative",
     );
-  }, [addLog]);
+  }, [addLog, clearLogs, openClassSelect]);
 
   const handleRestoreHealth = useCallback(
     (cost: number, amount: number) => {
@@ -4112,7 +4120,7 @@ export function DungeonGame() {
                   if (data) {
                     handleLoadSave(data);
                   } else {
-                    setShowMenu(true);
+                    setShowMenuTrue();
                   }
                 }}
                 className="block w-48 mx-auto px-6 py-3 bg-emerald-800/50 hover:bg-emerald-700/50 text-emerald-200 transition-colors"
@@ -4122,7 +4130,7 @@ export function DungeonGame() {
             )}
 
             <button
-              onClick={() => setShowClassSelect(true)}
+              onClick={openClassSelect}
               className="block w-48 mx-auto px-6 py-3 bg-amber-900/50 hover:bg-amber-800/50 text-amber-200 transition-colors"
             >
               New Game
@@ -4130,7 +4138,7 @@ export function DungeonGame() {
 
             {hasExistingSaves && (
               <button
-                onClick={() => setShowMenu(true)}
+                onClick={setShowMenuTrue}
                 className="block w-48 mx-auto px-6 py-3 bg-stone-800/50 hover:bg-stone-700/50 text-stone-300 transition-colors"
               >
                 Load Game
@@ -4146,7 +4154,7 @@ export function DungeonGame() {
         {showMenu && (
           <GameMenu
             isOpen={true}
-            onClose={() => setShowMenu(false)}
+            onClose={setShowMenuFalse}
             gameState={gameState}
             worldState={worldState}
             logs={logs}
@@ -4173,7 +4181,7 @@ export function DungeonGame() {
         logs={logs}
         addLog={addLog}
         isOpen={showDevPanel}
-        onClose={() => setShowDevPanel(false)}
+        onClose={toggleDevPanel}
       />
 
       {/* Left Sidebar - Stats (shown after class select) */}
@@ -4192,7 +4200,7 @@ export function DungeonGame() {
         {/* Menu button */}
         {gameState.gameStarted && !gameState.gameOver && (
           <button
-            onClick={() => setShowMenu(true)}
+            onClick={setShowMenuTrue}
             className="fixed top-4 right-4 z-30 px-3 py-1 bg-stone-800/80 hover:bg-stone-700 text-stone-400 text-sm transition-colors"
           >
             [ESC] Menu
@@ -4202,7 +4210,7 @@ export function DungeonGame() {
         {/* Game Menu */}
         <GameMenu
           isOpen={showMenu}
-          onClose={() => setShowMenu(false)}
+          onClose={setShowMenuFalse}
           gameState={gameState}
           worldState={worldState}
           logs={logs}

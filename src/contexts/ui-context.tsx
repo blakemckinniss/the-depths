@@ -8,17 +8,11 @@ import {
   type ReactNode,
 } from "react";
 import type { ParsedNarrative } from "@/lib/game-types";
+import type { LootContainer } from "@/lib/ai-drops-system";
 
 // ============================================================================
 // UI STATE TYPES
 // ============================================================================
-
-interface LootContainer {
-  id: string;
-  name: string;
-  contents: unknown[]; // Using unknown as the actual type may vary
-  rarity?: string;
-}
 
 interface UIState {
   // Menu/modal states
