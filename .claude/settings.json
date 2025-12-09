@@ -44,6 +44,38 @@
             "type": "command",
             "command": ".claude/hooks/lint-check.sh",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/log-action.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/session-start.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/session-memory.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/git-context.sh",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/system-inventory.sh",
+            "timeout": 15
           }
         ]
       }
@@ -56,17 +88,10 @@
             "type": "command",
             "command": ".claude/hooks/stop-git-check.sh",
             "timeout": 10
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
+          },
           {
             "type": "command",
-            "command": ".claude/hooks/session-start.sh",
+            "command": ".claude/hooks/session-summary.sh",
             "timeout": 10
           }
         ]

@@ -1,0 +1,6 @@
+# Session-specific files (don't commit personal session data)
+session-log.md
+memory.md
+
+# Local settings override
+settings.local.json
