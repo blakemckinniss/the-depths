@@ -28,21 +28,21 @@ const ContainerSchema = z.object({
   hints: z.object({
     weight: z.string().describe("How heavy it feels"),
     sound: z.string().describe("What you hear when shaken"),
-    smell: z.string().optional().describe("Any scent"),
-    aura: z.string().optional().describe("Magical aura if present"),
+    smell: z.string().nullish().describe("Any scent"),
+    aura: z.string().nullish().describe("Magical aura if present"),
   }),
   locked: z.boolean(),
-  lockDescription: z.string().optional(),
+  lockDescription: z.string().nullish(),
   cursed: z.boolean(),
-  curseHint: z.string().optional().describe("Subtle warning if cursed"),
+  curseHint: z.string().nullish().describe("Subtle warning if cursed"),
 })
 
 // Examination result - build anticipation
 const ExamineResultSchema = z.object({
   detailedDescription: z.string().describe("Closer look reveals more details"),
   qualityHint: z.enum(["worthless", "modest", "valuable", "precious", "priceless"]),
-  dangerWarning: z.string().optional().describe("If something seems off"),
-  loreFragment: z.string().optional().describe("Any markings or inscriptions"),
+  dangerWarning: z.string().nullish().describe("If something seems off"),
+  loreFragment: z.string().nullish().describe("Any markings or inscriptions"),
   anticipationText: z.string().describe("Text that builds excitement/dread"),
 })
 
@@ -56,12 +56,12 @@ const OpeningResultSchema = z.object({
     rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]),
     description: z.string(),
     value: z.number(),
-    effect: z.string().optional(),
-    isJackpot: z.boolean().optional().describe("True for exceptional finds"),
+    effect: z.string().nullish(),
+    isJackpot: z.boolean().nullish().describe("True for exceptional finds"),
   })),
-  jackpotMoment: z.string().optional().describe("Special text if legendary/jackpot"),
-  curseTriggered: z.boolean().optional(),
-  curseEffect: z.string().optional(),
+  jackpotMoment: z.string().nullish().describe("Special text if legendary/jackpot"),
+  curseTriggered: z.boolean().nullish(),
+  curseEffect: z.string().nullish(),
   afterglow: z.string().describe("How player feels after opening"),
 })
 
