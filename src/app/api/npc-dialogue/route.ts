@@ -6,8 +6,12 @@
  */
 
 import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai-utils"
+import { generateMechanicsPrompt } from "@/lib/game-mechanics-ledger"
 import { z } from "zod"
 import { NextResponse } from "next/server"
+
+// Get mechanics prompt once at module load
+const MECHANICS_PROMPT = generateMechanicsPrompt()
 
 // Schema for NPC dialogue response
 const DialogueResponseSchema = z.object({
@@ -58,7 +62,10 @@ RULES:
 - Quest givers should tease their quest naturally
 - Keep individual lines brief (1-2 sentences)
 - Provide 2-4 meaningful response options
-- Dark fantasy tone - no modern references`
+- Dark fantasy tone - no modern references
+
+When NPCs mention items, effects, or abilities, only reference mechanics that actually exist in the game:
+${MECHANICS_PROMPT}`
 
 export async function POST(request: Request) {
   try {

@@ -943,6 +943,37 @@ export function processTrigger(
               }
             }
             break
+
+          case "stat_modifier":
+          case "damage_modifier":
+          case "utility":
+            // These categories work through modifiers applied in calculateEffectiveStats
+            // No direct trigger processing needed - they're always active when the effect exists
+            // The modifiers (attack, defense, damageMultiplier, goldMultiplier, etc.) are read
+            // by calculateEffectiveStats and applied to the player's effective stats
+            break
+
+          case "resistance":
+          case "vulnerability":
+            // Resistance/vulnerability work through damageTaken modifier
+            // TODO: Could extend to check context.damageType for type-specific resistance
+            // For now, general resistance uses damageTaken modifier in calculateEffectiveStats
+            break
+
+          case "control":
+            // Control effects (stun, slow, blind) would need game loop integration
+            // Stun: skip turn, Slow: reduced actions, Blind: miss chance
+            // Currently represented as stat modifiers (e.g., -attack for weakness)
+            break
+
+          case "transformation":
+          case "aura":
+          case "compound":
+            // These are complex categories requiring additional game systems:
+            // - transformation: temporary form change, different abilities
+            // - aura: affects nearby entities (needs spatial awareness)
+            // - compound: multiple sub-effects (already handled by having multiple effects)
+            break
         }
 
         // Decrement duration based on type

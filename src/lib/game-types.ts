@@ -102,6 +102,10 @@ export interface StatusEffect extends GameEntity {
     goldMultiplier?: number
     expMultiplier?: number
     dodgeChance?: number
+    critChance?: number
+    critDamage?: number
+    damageMultiplier?: number
+    damageTaken?: number // Incoming damage multiplier (< 1 = resistance, > 1 = vulnerability)
   }
   onTurnStart?: string // AI-generated flavor text
   onExpire?: string

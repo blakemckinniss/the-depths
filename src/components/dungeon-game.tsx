@@ -1508,6 +1508,9 @@ export function DungeonGame() {
         )
       }
 
+      // Apply damage taken multiplier from effects (e.g., "take 20% less damage")
+      finalDamage = Math.floor(finalDamage * effectiveStats.damageTakenMultiplier)
+
       updateRunStats({ damageTaken: gameState.runStats.damageTaken + finalDamage })
 
       const newHealth = player.stats.health - finalDamage
@@ -1803,12 +1806,15 @@ export function DungeonGame() {
     const baseDamage = calculateDamage({ attack: effectiveStats.attack }, gameState.currentEnemy)
 
     const weaponDamageType = gameState.player.equipment.weapon?.damageType || "physical"
-    const { damage, effectiveness } = calculateDamageWithType(
+    const { damage: rawDamage, effectiveness } = calculateDamageWithType(
       baseDamage,
       weaponDamageType,
       gameState.currentEnemy,
       gameState.player,
     )
+
+    // Apply damage multiplier from effects (e.g., "deal 20% more damage")
+    const damage = Math.floor(rawDamage * effectiveStats.damageMultiplier)
 
     updateRunStats({ damageDealt: gameState.runStats.damageDealt + damage })
 

@@ -1,7 +1,7 @@
 import { generateObject } from "ai"
 import { createGroq } from "@ai-sdk/groq"
 import type { z } from "zod"
-import { generateMechanicsPrompt } from "./game-mechanics-ledger"
+import { generateMechanicsPrompt, validateEffect, type ConstraintSource } from "./game-mechanics-ledger"
 
 // Groq client singleton
 export const groq = createGroq({
@@ -280,3 +280,78 @@ export function buildSystemPrompt(context: {
 export function getItemMechanicsPrompt(): string {
   return MECHANICS_PROMPT
 }
+
+/**
+ * Validate an item's effects against constraint rules.
+ * Clamps values that exceed limits and logs violations.
+ *
+ * @param item - The item with effects to validate
+ * @param source - The constraint source (e.g., "common_item", "rare_item")
+ * @returns The item with clamped/validated effects
+ */
+export function validateItemEffects<T extends {
+  effect?: {
+    power?: number
+    duration?: number
+    stacks?: number
+    category?: string
+    trigger?: string
+  } | null
+  effects?: Array<{
+    power?: number
+    duration?: number
+    stacks?: number
+    category?: string
+    trigger?: string
+  }>
+}>(item: T, source: ConstraintSource): T {
+  // Validate single effect
+  if (item.effect) {
+    const validation = validateEffect(item.effect, source)
+    if (!validation.valid) {
+      console.warn(`[AI Validation] Effect violations for ${source}:`, validation.violations)
+      // Clamp values to constraints - don't reject, just fix
+      const constraints = getEffectConstraints(source)
+      item = {
+        ...item,
+        effect: {
+          ...item.effect,
+          power: item.effect.power ? Math.min(item.effect.power, constraints.maxPower) : undefined,
+          duration: item.effect.duration && constraints.maxDuration > 0
+            ? Math.min(item.effect.duration, constraints.maxDuration)
+            : item.effect.duration,
+          stacks: item.effect.stacks ? Math.min(item.effect.stacks, constraints.maxStacks) : undefined,
+        }
+      }
+    }
+  }
+
+  // Validate effects array
+  if (item.effects && item.effects.length > 0) {
+    const constraints = getEffectConstraints(source)
+    item = {
+      ...item,
+      effects: item.effects.map(effect => {
+        const validation = validateEffect(effect, source)
+        if (!validation.valid) {
+          console.warn(`[AI Validation] Effect violations for ${source}:`, validation.violations)
+          return {
+            ...effect,
+            power: effect.power ? Math.min(effect.power, constraints.maxPower) : undefined,
+            duration: effect.duration && constraints.maxDuration > 0
+              ? Math.min(effect.duration, constraints.maxDuration)
+              : effect.duration,
+            stacks: effect.stacks ? Math.min(effect.stacks, constraints.maxStacks) : undefined,
+          }
+        }
+        return effect
+      })
+    }
+  }
+
+  return item
+}
+
+// Re-export constraint getter for internal use
+import { getConstraints as getEffectConstraints } from "./game-mechanics-ledger"
+export { getEffectConstraints }

@@ -239,6 +239,8 @@ export function calculateEffectiveStats(player: Player): {
   critDamage: number
   dodgeChance: number
   healthRegen: number
+  damageMultiplier: number
+  damageTakenMultiplier: number
   setSpecials: string[]
 } {
   let attack = player.stats.attack + (player.equipment.weapon?.stats?.attack ?? 0)
@@ -250,6 +252,8 @@ export function calculateEffectiveStats(player: Player): {
   let critDamage = 0.5 // Base crit multiplier (1.5x damage)
   let dodgeChance = player.stats.dodgeChance ?? 0
   let healthRegen = 0
+  let damageMultiplier = 1 // Outgoing damage multiplier
+  let damageTakenMultiplier = 1 // Incoming damage multiplier
   const setSpecials: string[] = []
 
   // Apply status effects
@@ -259,6 +263,12 @@ export function calculateEffectiveStats(player: Player): {
     maxHealth += effect.modifiers.maxHealth ?? 0
     goldMultiplier *= effect.modifiers.goldMultiplier ?? 1
     expMultiplier *= effect.modifiers.expMultiplier ?? 1
+    critChance += effect.modifiers.critChance ?? 0
+    critDamage += effect.modifiers.critDamage ?? 0
+    dodgeChance += effect.modifiers.dodgeChance ?? 0
+    healthRegen += effect.modifiers.healthRegen ?? 0
+    damageMultiplier *= effect.modifiers.damageMultiplier ?? 1
+    damageTakenMultiplier *= effect.modifiers.damageTaken ?? 1
   }
 
   // Apply set bonuses from equipped items
@@ -296,6 +306,8 @@ export function calculateEffectiveStats(player: Player): {
     critDamage,
     dodgeChance,
     healthRegen,
+    damageMultiplier,
+    damageTakenMultiplier,
     setSpecials,
   }
 }
