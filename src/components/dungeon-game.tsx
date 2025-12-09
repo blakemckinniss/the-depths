@@ -1365,8 +1365,9 @@ export function DungeonGame() {
 
         switch (action.action) {
           case "attack": {
+            if (!currentEnemy) break
             const damage = calculateCompanionDamage(companion)
-            const newHealth = currentEnemy.health - damage
+            const newHealth: number = currentEnemy.health - damage
             const bondTier = getBondTier(companion.bond.level)
             const colorClass = getCompanionColor(companion)
 
@@ -1411,7 +1412,7 @@ export function DungeonGame() {
 
             if (action.ability.effect.type === "damage" && currentEnemy) {
               const damage = calculateCompanionDamage(companion, action.ability)
-              const newHealth = currentEnemy.health - damage
+              const newHealth: number = currentEnemy.health - damage
 
               addLog(
                 <span>
@@ -1430,7 +1431,7 @@ export function DungeonGame() {
                 currentEnemy = { ...currentEnemy, health: newHealth }
               }
             } else if (action.ability.effect.type === "heal") {
-              const healing = action.ability.effect.value
+              const healing = action.ability.effect.value || 10
               totalPlayerHealed += healing
 
               addLog(
@@ -1849,6 +1850,85 @@ export function DungeonGame() {
     }
     setIsProcessing(false)
   }, [gameState, isProcessing, calculateDamage, addLog, checkLevelUp, enemyAttack, updateRunStats, processCompanionTurns])
+
+  // Attempt to tame an enemy as a companion
+  const handleTameEnemy = useCallback(async () => {
+    if (!gameState.currentEnemy || !gameState.inCombat || isProcessing) return
+    setIsProcessing(true)
+
+    const tameCheck = canTameEnemy(gameState.currentEnemy, gameState.player)
+
+    if (!tameCheck.canTame) {
+      addLog(
+        <span className="text-yellow-500">{tameCheck.reason}</span>,
+        "system",
+      )
+      setIsProcessing(false)
+      return
+    }
+
+    const roll = Math.random()
+    const success = roll < tameCheck.chance
+
+    if (success) {
+      // Taming successful
+      const newCompanion = createBasicCompanionFromEnemy(gameState.currentEnemy, "tame")
+
+      addLog(
+        <span className="text-emerald-400">
+          You reach out to the wounded <EntityText type="enemy">{gameState.currentEnemy.name}</EntityText>...
+          It recognizes your intent and submits. <span className="font-bold">{newCompanion.name}</span> joins your party!
+        </span>,
+        "combat",
+      )
+
+      // Add to party
+      let updatedParty = gameState.player.party || createInitialParty()
+      updatedParty = {
+        ...updatedParty,
+        maxActive: getMaxActiveCompanions(gameState.player.stats.level),
+      }
+      updatedParty = addCompanionToParty(updatedParty, newCompanion, updatedParty.active.length < updatedParty.maxActive)
+
+      const inActive = updatedParty.active.some(c => c.id === newCompanion.id)
+      if (inActive) {
+        addLog(
+          <span className="text-cyan-400">{newCompanion.name} joins your active party!</span>,
+          "system",
+        )
+      } else {
+        addLog(
+          <span className="text-zinc-400">{newCompanion.name} waits in reserve (party full).</span>,
+          "system",
+        )
+      }
+
+      // End combat
+      setGameState((prev) => ({
+        ...prev,
+        player: {
+          ...prev.player,
+          party: updatedParty,
+        },
+        inCombat: false,
+        currentEnemy: null,
+        combatRound: 1,
+      }))
+    } else {
+      // Taming failed - enemy attacks
+      addLog(
+        <span className="text-red-400">
+          You attempt to tame the <EntityText type="enemy">{gameState.currentEnemy.name}</EntityText>,
+          but it lashes out in defiance!
+        </span>,
+        "combat",
+      )
+
+      await enemyAttack(gameState.currentEnemy, gameState.player)
+    }
+
+    setIsProcessing(false)
+  }, [gameState, isProcessing, addLog, enemyAttack])
 
   const exploreRoom = useCallback(async () => {
     if (isProcessing) return
@@ -2842,6 +2922,18 @@ export function DungeonGame() {
         })
       }
 
+      // Taming option - available when enemy HP is low enough
+      const tameCheck = canTameEnemy(gameState.currentEnemy, gameState.player)
+      if (tameCheck.canTame) {
+        choices.push({
+          id: "tame",
+          text: "Tame",
+          action: handleTameEnemy,
+          tooltip: `${Math.floor(tameCheck.chance * 100)}% success chance`,
+          disabled: isProcessing,
+        })
+      }
+
       return choices
     }
 
@@ -2894,6 +2986,7 @@ export function DungeonGame() {
     descendFloor,
     restartGame,
     startGame,
+    handleTameEnemy,
   ])
 
   const npcOptions = useMemo(() => {

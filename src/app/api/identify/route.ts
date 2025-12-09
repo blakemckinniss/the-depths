@@ -16,11 +16,11 @@ const IdentifiedItemSchema = z.object({
   lore: z.string().describe("Brief history or origin of this item"),
   effects: z.array(z.object({
     type: z.string(),
-    value: z.number().optional(),
+    value: z.number().nullish(),
     description: z.string(),
-  })).optional().describe("Special effects if any"),
+  })).nullish().describe("Special effects if any"),
   revealText: z.string().describe("Dramatic text for the moment of revelation"),
-  warnings: z.array(z.string()).optional().describe("Any dangers or curses"),
+  warnings: z.array(z.string()).nullish().describe("Any dangers or curses"),
 })
 
 const RequestSchema = z.object({

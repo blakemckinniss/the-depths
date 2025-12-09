@@ -26,21 +26,21 @@ const RecipeDiscoverySchema = z.object({
     rarity: z.enum(["common", "uncommon", "rare", "legendary"]).describe("Item rarity based on materials used"),
     description: z.string().describe("Short atmospheric description of the item"),
     stats: z.object({
-      attack: z.number().optional(),
-      defense: z.number().optional(),
-      health: z.number().optional(),
-    }).optional(),
+      attack: z.number().nullish(),
+      defense: z.number().nullish(),
+      health: z.number().nullish(),
+    }).nullish(),
     effect: z.object({
       name: z.string(),
       description: z.string(),
-      duration: z.number().optional(),
-    }).optional(),
-  }).optional(),
+      duration: z.number().nullish(),
+    }).nullish(),
+  }).nullish(),
   failure: z.object({
     reason: z.string().describe("Why the combination failed"),
     hint: z.string().describe("Cryptic hint about what might work better"),
-    byproduct: z.string().optional().describe("Minor item produced from failed attempt"),
-  }).optional(),
+    byproduct: z.string().nullish().describe("Minor item produced from failed attempt"),
+  }).nullish(),
   lore: z.string().describe("Brief alchemical observation about this combination"),
 })
 
@@ -48,9 +48,9 @@ const RecipeDiscoverySchema = z.object({
 const ItemLoreSchema = z.object({
   origin: z.string().describe("Where/how the item was created (1-2 sentences)"),
   history: z.string().describe("Notable events in the item's past (1-2 sentences)"),
-  legend: z.string().optional().describe("Any myths or legends (only for rare+ items)"),
-  curse: z.string().optional().describe("Hidden curse or drawback (only sometimes)"),
-  inscription: z.string().optional().describe("Text inscribed on the item"),
+  legend: z.string().nullish().describe("Any myths or legends (only for rare+ items)"),
+  curse: z.string().nullish().describe("Hidden curse or drawback (only sometimes)"),
+  inscription: z.string().nullish().describe("Text inscribed on the item"),
 })
 
 // Salvage Results - What materials come from breaking down an item?
@@ -65,7 +65,7 @@ const SalvageResultSchema = z.object({
     material: z.string(),
     quantity: z.number(),
     reason: z.string(),
-  }).optional().describe("Rare bonus material from exceptional salvage"),
+  }).nullish().describe("Rare bonus material from exceptional salvage"),
 })
 
 // Enchantment Suggestion - What enchantments fit these materials?

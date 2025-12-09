@@ -21,11 +21,11 @@ const DialogueResponseSchema = z.object({
     tone: z.enum(["friendly", "aggressive", "curious", "dismissive"]),
     outcome: z.string().describe("Brief hint about what this leads to"),
   })).describe("2-4 dialogue options for the player"),
-  secrets: z.array(z.string()).optional().describe("Information NPC might reveal if trust is high"),
+  secrets: z.array(z.string()).nullish().describe("Information NPC might reveal if trust is high"),
   questHook: z.object({
     available: z.boolean(),
-    hint: z.string().optional(),
-  }).optional().describe("Whether NPC has a quest to offer"),
+    hint: z.string().nullish(),
+  }).nullish().describe("Whether NPC has a quest to offer"),
 })
 
 const RequestSchema = z.object({
