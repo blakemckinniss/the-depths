@@ -9,8 +9,13 @@
  */
 
 import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai-utils"
+import { generateCraftingMechanicsPrompt, generateMechanicsPrompt } from "@/lib/game-mechanics-ledger"
 import { z } from "zod"
 import { NextResponse } from "next/server"
+
+// Get mechanics prompts once at module load
+const CRAFTING_MECHANICS = generateCraftingMechanicsPrompt()
+const ITEM_MECHANICS = generateMechanicsPrompt()
 
 // =============================================================================
 // SCHEMAS
@@ -140,7 +145,11 @@ MATERIAL TAG MEANINGS:
 - holy/dark: Divine vs corrupted
 - weapon_material/armor_material: Can be forged into equipment
 - flammable/fuel: Fire-related, volatile
-- structural/binding: Physical crafting`
+- structural/binding: Physical crafting
+
+${CRAFTING_MECHANICS}
+
+${ITEM_MECHANICS}`
 
 const LORE_SYSTEM = `You are a lorekeeper AI for a dark fantasy dungeon crawler.
 Generate atmospheric backstories for items.
@@ -152,7 +161,9 @@ RULES:
 - Hint at the world's dark history
 - Legendary items should feel unique and storied
 - Occasionally include curses or hidden properties
-- No modern references or humor`
+- No modern references or humor
+
+${ITEM_MECHANICS}`
 
 const SALVAGE_SYSTEM = `You are an alchemist AI determining salvage results.
 When items are broken down, determine what materials are recovered.
@@ -165,7 +176,9 @@ RULES:
 - Magical items yield essence, dust, or shards
 - Quality depends on salvage skill
 - Occasionally grant bonus rare materials
-- Total value of materials < original item value (entropy)`
+- Total value of materials < original item value (entropy)
+
+${CRAFTING_MECHANICS}`
 
 const ENCHANT_SYSTEM = `You are an enchanter AI suggesting magical enhancements.
 Based on available materials, suggest possible enchantments.
@@ -177,7 +190,9 @@ RULES:
 - Catalyst materials boost enchantment power
 - Suggest 2-4 options with varying power levels
 - Higher affinity = better success chance
-- Include both prefix and suffix options`
+- Include both prefix and suffix options
+
+${ITEM_MECHANICS}`
 
 // =============================================================================
 // HANDLERS

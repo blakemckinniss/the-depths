@@ -1,4 +1,4 @@
-import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai-utils"
+import { generateWithAI, AI_CONFIG, entityCache, getItemMechanicsPrompt } from "@/lib/ai-utils"
 import {
   itemSchema,
   enemySchema,
@@ -12,6 +12,9 @@ import {
   eventOutcomeSchema,
 } from "@/lib/ai-schemas"
 
+// Get mechanics prompt once at module load
+const ITEM_MECHANICS = getItemMechanicsPrompt()
+
 export async function POST(req: Request) {
   const body = await req.json()
   const { type, context } = body
@@ -23,6 +26,11 @@ Never use emojis. Never break character. Never mention game mechanics directly.
 The setting is cursed ancient dungeons filled with monsters, traps, and dark magic.
 Theme context: ${context.dungeonTheme || "ancient cursed dungeon"}`
 
+  // Extended system prompt for item generation
+  const itemSystem = `${baseSystem}
+
+${ITEM_MECHANICS}`
+
   switch (type) {
     case "item": {
       const cacheKey = entityCache.generateKey("item", context.rarity, context.itemType, context.floor)
@@ -33,7 +41,7 @@ ${context.itemType === "weapon" ? `Weapon damage tier: ${context.damage}` : ""}
 ${context.itemType === "armor" ? `Armor defense tier: ${context.defense}` : ""}
 ${context.itemType === "potion" ? "This is a consumable potion." : ""}
 Make it feel ${context.rarity === "legendary" ? "mythical and powerful" : context.rarity === "rare" ? "notable and well-crafted" : "functional but worn"}.`,
-        system: baseSystem,
+        system: itemSystem,
         temperature: AI_CONFIG.temperature.creative,
         maxTokens: 300,
         cacheKey,

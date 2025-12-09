@@ -1,6 +1,7 @@
 import { generateObject } from "ai"
 import { createGroq } from "@ai-sdk/groq"
 import type { z } from "zod"
+import { generateMechanicsPrompt } from "./game-mechanics-ledger"
 
 // Groq client singleton
 export const groq = createGroq({
@@ -219,6 +220,9 @@ export async function generateBatch<T extends z.ZodType>(
   return results as Array<z.infer<T>>
 }
 
+// Cached mechanics prompt (generated once at module load)
+const MECHANICS_PROMPT = generateMechanicsPrompt()
+
 // Base system prompt builder
 export function buildSystemPrompt(context: {
   dungeonTheme?: string
@@ -232,6 +236,8 @@ export function buildSystemPrompt(context: {
   companions?: string
   currentHazard?: string
   recentEvents?: string
+  /** Set to true to include item mechanics rules (for loot generation) */
+  includeItemMechanics?: boolean
 }): string {
   const parts = [
     "You are a dark fantasy dungeon master running a roguelike dungeon crawler.",
@@ -259,5 +265,18 @@ export function buildSystemPrompt(context: {
     parts.push(`Recent events: ${context.recentEvents}`)
   }
 
+  // Include mechanics rules when generating items/loot
+  if (context.includeItemMechanics !== false) {
+    parts.push("")
+    parts.push(MECHANICS_PROMPT)
+  }
+
   return parts.join("\n")
+}
+
+/**
+ * Get just the mechanics prompt for routes that build their own system prompts
+ */
+export function getItemMechanicsPrompt(): string {
+  return MECHANICS_PROMPT
 }
