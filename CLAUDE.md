@@ -265,3 +265,22 @@ ClassSelect → DungeonSelect → PathSelect → [Room Loop]
 2. Define Zod schema in `ai-schemas.ts`
 3. Create React hook in `src/lib/use-<name>.ts`
 4. Integrate in game component
+
+---
+
+## Local `.claude/` Override
+
+The repo includes a `.claude/` config for contributors. If you have a global `~/.claude/` setup and want to use that instead:
+
+```bash
+# Ignore local .claude/ changes (run once after clone)
+git ls-files .claude/ | xargs git update-index --skip-worktree
+echo ".claude/" >> .git/info/exclude
+```
+
+To pull `.claude/` updates from GitHub later:
+```bash
+git ls-files .claude/ | xargs git update-index --no-skip-worktree
+git pull
+git ls-files .claude/ | xargs git update-index --skip-worktree
+```
