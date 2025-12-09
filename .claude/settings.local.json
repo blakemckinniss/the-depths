@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy this to settings.json and customize for your local setup",
+  "_comment": "Local settings override - copy and modify as needed",
   "permissions": {
     "allow": [
       "Bash(npm run:*)",
@@ -15,8 +15,5 @@
       "Grep(*)"
     ],
     "deny": []
-  },
-  "hooks": {
-    "preCommit": ".claude/hooks/pre-commit.sh"
   }
 }
