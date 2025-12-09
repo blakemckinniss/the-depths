@@ -34,7 +34,18 @@ import {
   createInitialPlayer,
   createInitialRunStats,
 } from "@/lib/game-data"
-import { processStatusEffects, calculateEffectiveStats, STATUS_EFFECTS } from "@/lib/entity-system"
+import { calculateEffectiveStats, STATUS_EFFECTS } from "@/lib/entity-system"
+import {
+  triggerTurnEnd,
+  triggerOnAttack,
+  triggerOnDamageDealt,
+  triggerOnCriticalHit,
+  triggerOnDamageTaken,
+  triggerOnKill,
+  triggerCombatStart,
+  triggerCombatEnd,
+  triggerRoomEnter,
+} from "@/lib/effect-system"
 import {
   initializePlayerClass,
   executeAbility,
@@ -936,7 +947,17 @@ export function DungeonGame() {
   }, [addLog])
 
   const processTurnEffects = useCallback(() => {
-    const { player, expiredEffects, tickDamage, tickHeal } = processStatusEffects(gameState.player)
+    // Use enhanced trigger system for turn_end effects
+    const triggerResult = triggerTurnEnd(gameState.player)
+    let player = triggerResult.player
+    const tickDamage = triggerResult.damageToPlayer
+    const tickHeal = triggerResult.healToPlayer
+    const expiredEffects = triggerResult.expiredEffects
+
+    // Log narratives from triggered effects
+    for (const narrative of triggerResult.narratives) {
+      addLog(<span className="text-muted-foreground italic">{narrative}</span>, "effect")
+    }
 
     let newHealth = player.stats.health
     if (tickDamage > 0) {
@@ -1491,7 +1512,74 @@ export function DungeonGame() {
 
       const newHealth = player.stats.health - finalDamage
 
-      if (newHealth <= 0) {
+      // Process on_damage_taken triggers
+      const damageTakenTrigger = triggerOnDamageTaken(player, { enemy, damageTaken: finalDamage })
+      let updatedPlayer = damageTakenTrigger.player
+      let actualNewHealth = newHealth
+
+      // Apply healing from damage taken triggers (e.g., thorns that heal)
+      if (damageTakenTrigger.healToPlayer > 0) {
+        actualNewHealth = Math.min(
+          updatedPlayer.stats.maxHealth,
+          newHealth + damageTakenTrigger.healToPlayer,
+        )
+        addLog(
+          <span>
+            Reactive effect: <EntityText type="heal">+{damageTakenTrigger.healToPlayer}</EntityText> HP
+          </span>,
+          "effect",
+        )
+      }
+
+      // Apply damage reflection to enemy
+      let updatedEnemy = enemy
+      if (damageTakenTrigger.damageToEnemy > 0) {
+        const reflectedHealth = enemy.health - damageTakenTrigger.damageToEnemy
+        updatedEnemy = { ...enemy, health: reflectedHealth }
+        addLog(
+          <span>
+            Thorns deal <EntityText type="damage">{damageTakenTrigger.damageToEnemy}</EntityText> damage to{" "}
+            <EntityText type="enemy">{enemy.name}</EntityText>!
+          </span>,
+          "effect",
+        )
+        // Check if reflection killed the enemy
+        if (reflectedHealth <= 0) {
+          const expGain = Math.floor(enemy.expReward * calculateEffectiveStats(updatedPlayer).expMultiplier)
+          const goldGain = Math.floor(enemy.goldReward * calculateEffectiveStats(updatedPlayer).goldMultiplier)
+          addLog(
+            <span>
+              <EntityText type="enemy">{enemy.name}</EntityText> is slain by your thorns! You gain{" "}
+              <EntityText type="gold">{goldGain}</EntityText> gold and{" "}
+              <EntityText type="heal">{expGain}</EntityText> experience.
+            </span>,
+            "combat",
+          )
+          setGameState((prev) => ({
+            ...prev,
+            player: {
+              ...updatedPlayer,
+              stats: {
+                ...updatedPlayer.stats,
+                health: actualNewHealth,
+                gold: updatedPlayer.stats.gold + goldGain,
+                experience: updatedPlayer.stats.experience + expGain,
+              },
+            },
+            currentEnemy: null,
+            inCombat: false,
+            combatRound: 1,
+          }))
+          return
+        }
+      }
+
+      // Log trigger narratives
+      for (const narrative of damageTakenTrigger.narratives) {
+        addLog(<span className="text-cyan-300 italic">{narrative}</span>, "effect")
+      }
+
+      if (actualNewHealth <= 0) {
         triggerDeath("Slain in combat", enemy.name)
         addLog(
           <span className="text-red-500 font-bold">You have fallen in battle. Your adventure ends here.</span>,
@@ -1501,13 +1589,13 @@ export function DungeonGame() {
         setGameState((prev) => ({
           ...prev,
           player: {
-            ...prev.player,
-            stats: { ...prev.player.stats, health: newHealth },
+            ...updatedPlayer,
+            stats: { ...updatedPlayer.stats, health: actualNewHealth },
             activeEffects: selectedAbility?.effect
-              ? [...prev.player.activeEffects, selectedAbility.effect]
-              : prev.player.activeEffects,
+              ? [...updatedPlayer.activeEffects, selectedAbility.effect]
+              : updatedPlayer.activeEffects,
           },
-          currentEnemy: enemy,
+          currentEnemy: updatedEnemy,
           combatRound: prev.combatRound + 1,
         }))
       }
@@ -1739,6 +1827,70 @@ export function DungeonGame() {
       )
     }
 
+    // Process attack triggers (on_attack, on_damage_dealt, on_critical_hit)
+    let bonusDamageToEnemy = 0
+    const attackTrigger = triggerOnAttack(updatedPlayer, {
+      damageDealt: damage,
+      isCritical,
+      enemy: gameState.currentEnemy,
+    })
+    updatedPlayer = attackTrigger.player
+    bonusDamageToEnemy += attackTrigger.damageToEnemy
+    for (const narrative of attackTrigger.narratives) {
+      addLog(<span className="text-amber-300 italic">{narrative}</span>, "effect")
+    }
+
+    const damageTrigger = triggerOnDamageDealt(updatedPlayer, {
+      damageDealt: damage,
+      isCritical,
+      enemy: gameState.currentEnemy,
+    })
+    updatedPlayer = damageTrigger.player
+    bonusDamageToEnemy += damageTrigger.damageToEnemy
+    for (const narrative of damageTrigger.narratives) {
+      addLog(<span className="text-amber-300 italic">{narrative}</span>, "effect")
+    }
+
+    // Critical hit triggers
+    if (isCritical) {
+      const critTrigger = triggerOnCriticalHit(updatedPlayer, {
+        damageDealt: damage,
+        enemy: gameState.currentEnemy,
+      })
+      updatedPlayer = critTrigger.player
+      bonusDamageToEnemy += critTrigger.damageToEnemy
+      if (critTrigger.healToPlayer > 0) {
+        updatedPlayer = {
+          ...updatedPlayer,
+          stats: {
+            ...updatedPlayer.stats,
+            health: Math.min(updatedPlayer.stats.maxHealth, updatedPlayer.stats.health + critTrigger.healToPlayer),
+          },
+        }
+        addLog(
+          <span>
+            Critical hit effect: <EntityText type="heal">+{critTrigger.healToPlayer}</EntityText> HP
+          </span>,
+          "effect",
+        )
+      }
+      for (const narrative of critTrigger.narratives) {
+        addLog(<span className="text-amber-300 italic">{narrative}</span>, "effect")
+      }
+    }
+
+    // Apply bonus damage from triggers
+    const totalDamage = damage + bonusDamageToEnemy
+    const actualNewEnemyHealth = gameState.currentEnemy.health - totalDamage
+    if (bonusDamageToEnemy > 0) {
+      addLog(
+        <span>
+          Triggered effects deal <EntityText type="damage">{bonusDamageToEnemy}</EntityText> bonus damage!
+        </span>,
+        "effect",
+      )
+    }
+
     const attackResponse = await generateNarrative<CombatResponse>("player_attack", {
       enemyName: gameState.currentEnemy.name,
       damage,
@@ -1784,7 +1936,29 @@ export function DungeonGame() {
       )
     }
 
-    if (newEnemyHealth <= 0) {
+    if (actualNewEnemyHealth <= 0) {
+      // Process on_kill triggers
+      const killTrigger = triggerOnKill(updatedPlayer, { enemy: gameState.currentEnemy })
+      updatedPlayer = killTrigger.player
+      for (const narrative of killTrigger.narratives) {
+        addLog(<span className="text-emerald-400 italic">{narrative}</span>, "effect")
+      }
+      if (killTrigger.healToPlayer > 0) {
+        updatedPlayer = {
+          ...updatedPlayer,
+          stats: {
+            ...updatedPlayer.stats,
+            health: Math.min(updatedPlayer.stats.maxHealth, updatedPlayer.stats.health + killTrigger.healToPlayer),
+          },
+        }
+        addLog(
+          <span>
+            Kill effect: <EntityText type="heal">+{killTrigger.healToPlayer}</EntityText> HP
+          </span>,
+          "effect",
+        )
+      }
+
       const expGain = Math.floor(gameState.currentEnemy.expReward * effectiveStats.expMultiplier)
       const goldGain = Math.floor(gameState.currentEnemy.goldReward * effectiveStats.goldMultiplier)
       const loot = gameState.currentEnemy.loot
@@ -1935,7 +2109,7 @@ export function DungeonGame() {
         combatRound: 1,
       }))
     } else {
-      const tickedEnemy = tickEnemyAbilities({ ...gameState.currentEnemy, health: newEnemyHealth })
+      const tickedEnemy = tickEnemyAbilities({ ...gameState.currentEnemy, health: actualNewEnemyHealth })
 
       // Process companion turns after player attack
       const companionResult = await processCompanionTurns(tickedEnemy, updatedPlayer)

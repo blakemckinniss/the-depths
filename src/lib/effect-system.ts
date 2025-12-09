@@ -23,6 +23,7 @@ export type EffectTrigger =
   | "on_room_enter"
   | "on_combat_start"
   | "on_combat_end"
+  | "on_critical_hit"
   | "passive" // Always active
 
 // Effect categories for AI classification
@@ -822,3 +823,232 @@ BALANCE GUIDELINES:
 
 Respond with JSON matching EnhancedStatusEffect schema.`
 }
+
+// =============================================================================
+// TRIGGER PROCESSOR FOR GAME INTEGRATION
+// =============================================================================
+
+/**
+ * Process triggers for a player's active effects.
+ * This is the main entry point for the game to call on various events.
+ *
+ * Works with both regular StatusEffect and EnhancedStatusEffect.
+ * Regular effects are treated as stat_modifier with passive/turn_end triggers.
+ */
+export function processTrigger(
+  player: Player,
+  trigger: EffectTrigger,
+  context: {
+    enemy?: Enemy
+    damageDealt?: number
+    damageTaken?: number
+    healAmount?: number
+    isCritical?: boolean
+  } = {}
+): {
+  player: Player
+  damageToPlayer: number
+  healToPlayer: number
+  damageToEnemy: number
+  narratives: string[]
+  expiredEffects: StatusEffect[]
+  newEffects: StatusEffect[]
+} {
+  let damageToPlayer = 0
+  let healToPlayer = 0
+  let damageToEnemy = 0
+  const narratives: string[] = []
+  const expiredEffects: StatusEffect[] = []
+  const newEffects: StatusEffect[] = []
+
+  // Process each active effect
+  const updatedEffects = player.activeEffects
+    .map((effect) => {
+      // Check if effect is enhanced or regular
+      const enhanced = effect as unknown as EnhancedStatusEffect
+      const isEnhanced = enhanced.triggers !== undefined
+
+      if (isEnhanced) {
+        // Enhanced effect - check trigger match
+        if (!enhanced.triggers.includes(trigger) && !enhanced.triggers.includes("passive")) {
+          return effect
+        }
+
+        // Calculate stack multiplier
+        const stackMult = enhanced.stackBehavior === "intensity"
+          ? 1 + ((enhanced.currentStacks || 1) - 1) * ((enhanced.stackModifier || 1) - 1)
+          : 1
+
+        // Process by category
+        switch (enhanced.category) {
+          case "damage_over_time":
+            if (trigger === "turn_start" || trigger === "turn_end") {
+              const dot = Math.floor((enhanced.modifiers.healthRegen ?? -3) * stackMult)
+              if (dot < 0) {
+                damageToPlayer += Math.abs(dot)
+                if (enhanced.tickNarration) narratives.push(enhanced.tickNarration)
+              }
+            }
+            break
+
+          case "heal_over_time":
+            if (trigger === "turn_start" || trigger === "turn_end") {
+              const hot = Math.floor((enhanced.modifiers.healthRegen ?? 3) * stackMult)
+              if (hot > 0) {
+                healToPlayer += hot
+                if (enhanced.tickNarration) narratives.push(enhanced.tickNarration)
+              }
+            }
+            break
+
+          case "triggered":
+            // Process triggered sub-effects
+            if (enhanced.triggeredEffects) {
+              for (const triggered of enhanced.triggeredEffects) {
+                // Check trigger match
+                const triggerMatches = triggered.trigger === trigger ||
+                  (trigger === "on_critical_hit" && triggered.trigger === "on_damage_dealt" && context.isCritical)
+
+                if (triggerMatches && Math.random() < triggered.chance) {
+                  if (triggered.narrative) narratives.push(triggered.narrative)
+
+                  if (typeof triggered.effect === "object") {
+                    // Create new effect from triggered definition
+                    const newEffect = createEnhancedEffect({
+                      name: triggered.effect.name || `${enhanced.name} Trigger`,
+                      effectType: enhanced.effectType,
+                      ...triggered.effect,
+                    })
+                    newEffects.push(newEffect as unknown as StatusEffect)
+                  } else if (triggered.effect === "remove_self") {
+                    expiredEffects.push(effect)
+                    return null
+                  }
+
+                  // Handle damage/heal from triggered effects
+                  if (typeof triggered.effect === "object") {
+                    if (triggered.effect.modifiers?.healthRegen) {
+                      const val = triggered.effect.modifiers.healthRegen
+                      if (val < 0) damageToPlayer += Math.abs(val)
+                      else healToPlayer += val
+                    }
+                    // Check for damage to enemy (on_attack, on_damage_dealt triggers)
+                    if (triggered.targetType === "attacker" || triggered.targetType === "random_enemy" || triggered.targetType === "all_enemies") {
+                      if (triggered.effect.modifiers?.healthRegen && triggered.effect.modifiers.healthRegen < 0) {
+                        damageToEnemy += Math.abs(triggered.effect.modifiers.healthRegen)
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            break
+        }
+
+        // Decrement duration based on type
+        let shouldDecrement = false
+        switch (enhanced.durationType) {
+          case "turns":
+            shouldDecrement = trigger === "turn_end"
+            break
+          case "actions":
+            shouldDecrement = ["on_attack", "on_defend", "on_heal"].includes(trigger)
+            break
+          case "rooms":
+            shouldDecrement = trigger === "on_room_enter"
+            break
+          case "hits":
+            shouldDecrement = trigger === "on_damage_taken" || trigger === "on_damage_dealt"
+            break
+          case "permanent":
+            shouldDecrement = false
+            break
+          case "conditional":
+            // Could add condition evaluation here
+            shouldDecrement = false
+            break
+        }
+
+        if (shouldDecrement && enhanced.durationRemaining > 0) {
+          const newDuration = enhanced.durationRemaining - 1
+          if (newDuration <= 0) {
+            expiredEffects.push(effect)
+            if (enhanced.expireNarration) narratives.push(enhanced.expireNarration)
+            return null
+          }
+          return {
+            ...enhanced,
+            durationRemaining: newDuration,
+            duration: newDuration
+          } as StatusEffect
+        }
+
+        return effect
+      } else {
+        // Regular StatusEffect - only process on turn_end for duration/healthRegen
+        if (trigger === "turn_end") {
+          // Apply healthRegen
+          if (effect.modifiers.healthRegen) {
+            if (effect.modifiers.healthRegen > 0) {
+              healToPlayer += effect.modifiers.healthRegen
+            } else {
+              damageToPlayer += Math.abs(effect.modifiers.healthRegen)
+            }
+          }
+
+          // Decrement duration
+          if (effect.duration > 0) {
+            const newDuration = effect.duration - 1
+            if (newDuration <= 0) {
+              expiredEffects.push(effect)
+              return null
+            }
+            return { ...effect, duration: newDuration }
+          }
+        }
+        return effect
+      }
+    })
+    .filter((e): e is StatusEffect => e !== null)
+
+  return {
+    player: {
+      ...player,
+      activeEffects: [...updatedEffects, ...newEffects],
+    },
+    damageToPlayer,
+    healToPlayer,
+    damageToEnemy,
+    narratives,
+    expiredEffects,
+    newEffects,
+  }
+}
+
+// Convenience functions for common triggers
+export const triggerOnAttack = (player: Player, context: { damageDealt: number; isCritical?: boolean; enemy?: Enemy }) =>
+  processTrigger(player, "on_attack", context)
+
+export const triggerOnDamageDealt = (player: Player, context: { damageDealt: number; isCritical?: boolean; enemy?: Enemy }) =>
+  processTrigger(player, "on_damage_dealt", context)
+
+export const triggerOnCriticalHit = (player: Player, context: { damageDealt: number; enemy?: Enemy }) =>
+  processTrigger(player, "on_critical_hit", { ...context, isCritical: true })
+
+export const triggerOnDamageTaken = (player: Player, context: { damageTaken: number; enemy?: Enemy }) =>
+  processTrigger(player, "on_damage_taken", context)
+
+export const triggerOnKill = (player: Player, context: { enemy?: Enemy }) =>
+  processTrigger(player, "on_kill", context)
+
+export const triggerTurnEnd = (player: Player) =>
+  processTrigger(player, "turn_end", {})
+
+export const triggerCombatStart = (player: Player, context: { enemy?: Enemy }) =>
+  processTrigger(player, "on_combat_start", context)
+
+export const triggerCombatEnd = (player: Player) =>
+  processTrigger(player, "on_combat_end", {})
+
+export const triggerRoomEnter = (player: Player) =>
+  processTrigger(player, "on_room_enter", {})
