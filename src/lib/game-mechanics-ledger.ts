@@ -1,454 +1,426 @@
 /**
- * Game Mechanics Ledger
+ * Game Mechanics Ledger - Capability Registry
  *
  * ┌─────────────────────────────────────────────────────────────────────────┐
- * │ SINGLE SOURCE OF TRUTH FOR GAME MECHANICS                               │
+ * │ SINGLE SOURCE OF TRUTH FOR GAME ENGINE CAPABILITIES                     │
  * │                                                                         │
- * │ This file defines what game mechanics ACTUALLY exist vs what DON'T.     │
- * │ AI prompts reference this to generate truthful descriptions.            │
+ * │ This file defines what the game engine CAN PROCESS.                     │
+ * │ AI generates effects using these primitives as building blocks.         │
  * │                                                                         │
- * │ WHEN YOU IMPLEMENT A NEW MECHANIC:                                      │
- * │ 1. Add it to the appropriate "implemented" array                        │
- * │ 2. Remove it from the "notImplemented" array                            │
- * │ 3. AI will automatically start allowing those descriptions              │
+ * │ The engine interprets effect metadata - AI has creative freedom         │
+ * │ within these bounds. Any combination of valid primitives works.         │
+ * │                                                                         │
+ * │ TO ADD NEW CAPABILITY:                                                  │
+ * │ 1. Add to appropriate array below                                       │
+ * │ 2. Wire up processing in effect-system.ts or combat-system.ts           │
+ * │ 3. AI automatically gains access to the new primitive                   │
  * └─────────────────────────────────────────────────────────────────────────┘
  */
 
 // =============================================================================
-// WEAPON MECHANICS
+// EFFECT ENGINE CAPABILITIES
+// These are the atomic building blocks AI can combine into effects
 // =============================================================================
 
-export const WEAPON_MECHANICS = {
-  /**
-   * Damage types affect effectiveness against enemies with weaknesses/resistances.
-   * Weakness = 1.5x damage, Resistance = 0.5x damage
-   */
-  damageTypes: [
-    "physical",
-    "fire",
-    "ice",
-    "lightning",
-    "shadow",
-    "holy",
-    "poison",
-    "arcane",
-  ] as const,
+/**
+ * Effect triggers - WHEN effects activate
+ * Processed by processEffectTrigger() in effect-system.ts
+ */
+export const EFFECT_TRIGGERS = [
+  "passive",           // Always active while effect exists
+  "turn_start",        // Start of each turn
+  "turn_end",          // End of each turn
+  "on_attack",         // When player attacks
+  "on_defend",         // When player defends/blocks
+  "on_damage_taken",   // When player takes damage
+  "on_damage_dealt",   // When player deals damage
+  "on_kill",           // When player kills an enemy
+  "on_heal",           // When player is healed
+  "on_room_enter",     // When entering a new room
+  "on_combat_start",   // When combat begins
+  "on_combat_end",     // When combat ends
+  "on_critical_hit",   // When player lands a critical hit
+] as const
 
-  /**
-   * Stat bonuses that weapons can provide
-   */
-  statBonuses: [
-    "attack",
-    "defense",
-    "health",
-    "critChance",
-    "critDamage",
-  ] as const,
+/**
+ * Effect categories - WHAT TYPE of effect it is
+ * Determines how the effect is processed
+ */
+export const EFFECT_CATEGORIES = [
+  "damage_over_time",   // Deals damage each tick (burning, bleeding, poison)
+  "heal_over_time",     // Heals each tick (regeneration)
+  "stat_modifier",      // Modifies stats while active (+attack, +defense)
+  "damage_modifier",    // Modifies damage dealt/taken
+  "resistance",         // Reduces damage from specific types
+  "vulnerability",      // Increases damage from specific types
+  "control",            // Stun, slow, blind, etc.
+  "utility",            // Gold find, exp boost, etc.
+  "triggered",          // Has sub-effects that fire on conditions
+  "transformation",     // Changes player state (form, abilities)
+  "aura",               // Affects nearby entities
+  "compound",           // Multiple effect types combined
+] as const
 
-  /**
-   * Weapon properties from profiles (item-generator.ts)
-   */
-  weaponProperties: [
-    "attackSpeed",  // slow/normal/fast - affects ability cooldowns
-    "range",        // melee/ranged/magic
-    "twoHanded",    // boolean
-  ] as const,
+/**
+ * Duration types - HOW LONG effects last
+ */
+export const DURATION_TYPES = [
+  "turns",        // Lasts N turns
+  "actions",      // Lasts N player actions
+  "rooms",        // Lasts N room transitions
+  "hits",         // Lasts N times triggered
+  "permanent",    // Until explicitly removed
+  "conditional",  // Until condition met (AI defines condition)
+] as const
 
-  /**
-   * ON-HIT EFFECTS - Currently NOT implemented
-   * When these are added, move them to implementedOnHitEffects
-   */
-  notImplementedOnHitEffects: [
-    "burn on hit",
-    "freeze on hit",
-    "poison on hit",
-    "X damage on critical hit",
-    "proc chance effects",
-    "lifesteal",
-    "mana steal",
-    "chance to stun",
-    "chance to bleed",
-    "execute at low HP",
-    "bonus damage vs type",
-  ] as const,
+/**
+ * Stacking behaviors - WHAT HAPPENS when effect reapplied
+ */
+export const STACK_BEHAVIORS = [
+  "none",         // Refreshes duration only
+  "duration",     // Adds to duration
+  "intensity",    // Increases power (stack count)
+  "independent",  // Creates separate instance
+] as const
 
-  /**
-   * ON-HIT EFFECTS - Currently implemented
-   * Add effects here as they get implemented in combat-system.ts
-   */
-  implementedOnHitEffects: [] as const,
+/**
+ * Stat modifiers - WHAT STATS effects can modify
+ * Applied in calculateEffectiveStats() in entity-system.ts
+ */
+export const STAT_MODIFIERS = [
+  "attack",           // Flat attack bonus
+  "defense",          // Flat defense bonus
+  "maxHealth",        // Max HP bonus
+  "healthRegen",      // HP per turn (negative = damage)
+  "critChance",       // Critical hit chance (0-1)
+  "critDamage",       // Critical damage multiplier
+  "dodgeChance",      // Chance to avoid damage (0-1)
+  "goldMultiplier",   // Gold find multiplier
+  "expMultiplier",    // Experience multiplier
+  "damageMultiplier", // Outgoing damage multiplier
+  "damageTaken",      // Incoming damage multiplier
+] as const
+
+/**
+ * Damage types - elemental/physical damage categories
+ * Used for weakness/resistance calculations
+ */
+export const DAMAGE_TYPES = [
+  "physical",
+  "fire",
+  "ice",
+  "lightning",
+  "shadow",
+  "holy",
+  "poison",
+  "arcane",
+] as const
+
+// =============================================================================
+// ITEM CAPABILITIES
+// =============================================================================
+
+/**
+ * Item types the game recognizes
+ */
+export const ITEM_TYPES = [
+  "weapon",
+  "armor",
+  "trinket",
+  "consumable",
+  "material",
+  "key",
+  "quest",
+] as const
+
+/**
+ * Weapon subtypes
+ */
+export const WEAPON_SUBTYPES = [
+  "sword", "axe", "mace", "dagger", "spear", "bow", "crossbow",
+  "staff", "wand", "flail", "hammer", "scythe", "claws",
+] as const
+
+/**
+ * Armor subtypes
+ */
+export const ARMOR_SUBTYPES = [
+  "cloth", "leather", "chainmail", "plate", "robes", "hide",
+] as const
+
+/**
+ * Consumable subtypes
+ */
+export const CONSUMABLE_SUBTYPES = [
+  "potion", "elixir", "food", "scroll", "bomb", "salve",
+] as const
+
+/**
+ * Rarities and their power scaling
+ */
+export const RARITIES = {
+  common: { statMultiplier: 1.0, maxEffects: 0, effectChance: 0 },
+  uncommon: { statMultiplier: 1.2, maxEffects: 1, effectChance: 0.3 },
+  rare: { statMultiplier: 1.5, maxEffects: 2, effectChance: 0.6 },
+  legendary: { statMultiplier: 2.0, maxEffects: 3, effectChance: 1.0 },
 } as const
 
 // =============================================================================
-// ARMOR MECHANICS
+// CONSTRAINT SYSTEM
+// Defines power bounds by source - AI must stay within these
 // =============================================================================
 
-export const ARMOR_MECHANICS = {
-  statBonuses: [
-    "defense",
-    "health",
-    "dodge",
-    "resistance",
-  ] as const,
+export const EFFECT_CONSTRAINTS = {
+  /** Common items - weak, short, no stacking */
+  common_item: {
+    maxPower: 2,
+    maxDuration: 3,
+    maxStacks: 1,
+    allowedCategories: ["stat_modifier", "utility"] as const,
+    forbiddenTriggers: ["on_kill", "on_critical_hit"] as const,
+  },
 
-  /**
-   * Damage resistances - reduce damage from specific types
-   */
-  resistances: WEAPON_MECHANICS.damageTypes,
+  /** Uncommon items - moderate effects */
+  uncommon_item: {
+    maxPower: 4,
+    maxDuration: 5,
+    maxStacks: 2,
+    allowedCategories: ["stat_modifier", "utility", "damage_modifier", "heal_over_time"] as const,
+    forbiddenTriggers: [] as const,
+  },
 
-  notImplementedEffects: [
-    "thorns damage",
-    "damage reflection",
-    "on-hit-taken effects",
-    "auto-heal when hit",
-    "damage absorption shields",
-  ] as const,
+  /** Rare items - strong effects, can trigger */
+  rare_item: {
+    maxPower: 6,
+    maxDuration: 8,
+    maxStacks: 3,
+    allowedCategories: EFFECT_CATEGORIES,
+    forbiddenTriggers: [] as const,
+  },
 
-  implementedEffects: [] as const,
-} as const
+  /** Legendary items - powerful, unique effects */
+  legendary_item: {
+    maxPower: 10,
+    maxDuration: -1, // Can be permanent
+    maxStacks: 5,
+    allowedCategories: EFFECT_CATEGORIES,
+    forbiddenTriggers: [] as const,
+  },
 
-// =============================================================================
-// CONSUMABLE MECHANICS
-// =============================================================================
+  /** Enemy attacks - debuffs and damage */
+  enemy_attack: {
+    maxPower: 5,
+    maxDuration: 4,
+    maxStacks: 3,
+    allowedCategories: ["damage_over_time", "stat_modifier", "control", "vulnerability"] as const,
+    forbiddenTriggers: ["on_kill"] as const,
+  },
 
-export const CONSUMABLE_MECHANICS = {
-  /**
-   * Effects consumables CAN have (implemented)
-   */
-  implementedEffects: [
-    "heal HP (immediate)",
-    "restore resource/mana",
-    "apply temporary buff (stat boost with duration)",
-    "cure/remove debuffs",
-    "deal immediate damage",
-    "reveal hidden things",
-  ] as const,
+  /** Shrine blessings - varied power */
+  shrine: {
+    maxPower: 7,
+    maxDuration: 10,
+    maxStacks: 1,
+    allowedCategories: EFFECT_CATEGORIES,
+    forbiddenTriggers: [] as const,
+  },
 
-  /**
-   * Effects consumables CANNOT have (not implemented)
-   */
-  notImplementedEffects: [
-    "permanent stat increases",
-    "learn new abilities",
-    "summon creatures",
-    "teleportation",
-  ] as const,
+  /** Curses - nasty long-lasting effects */
+  curse: {
+    maxPower: 6,
+    maxDuration: -1, // Often permanent until cured
+    maxStacks: 1,
+    allowedCategories: ["damage_over_time", "stat_modifier", "vulnerability", "control"] as const,
+    forbiddenTriggers: [] as const,
+  },
 
-  /**
-   * Status effects that CAN be applied via consumables
-   */
-  implementedStatusEffects: {
-    buffs: [
-      "attack boost (flat or %)",
-      "defense boost (flat or %)",
-      "health regen per turn",
-      "crit chance boost",
-      "damage type effectiveness boost",
-    ] as const,
-    debuffs: [
-      "attack reduction",
-      "defense reduction",
-      "damage over time (poison, burn, bleed)",
-      "slow (reduced actions)",
-    ] as const,
+  /** Environmental hazards */
+  environmental: {
+    maxPower: 4,
+    maxDuration: 0, // Room-based duration
+    maxStacks: 1,
+    allowedCategories: ["damage_over_time", "stat_modifier", "control"] as const,
+    forbiddenTriggers: ["on_kill", "on_combat_end"] as const,
+  },
+
+  /** Crafted items - scales with material tier */
+  crafted: {
+    maxPower: 8, // Tier-dependent
+    maxDuration: 10,
+    maxStacks: 3,
+    allowedCategories: EFFECT_CATEGORIES,
+    forbiddenTriggers: [] as const,
   },
 } as const
 
 // =============================================================================
-// TRINKET/ACCESSORY MECHANICS
-// =============================================================================
-
-export const TRINKET_MECHANICS = {
-  /**
-   * Passive stat bonuses trinkets CAN provide
-   */
-  implementedBonuses: [
-    "attack",
-    "defense",
-    "health",
-    "critChance",
-    "critDamage",
-    "goldFind",
-    "expBonus",
-  ] as const,
-
-  /**
-   * Effects trinkets CANNOT have
-   */
-  notImplementedEffects: [
-    "on-kill effects",
-    "on-room-enter effects",
-    "activated abilities",
-    "aura effects on allies",
-    "auto-cast spells",
-  ] as const,
-
-  implementedActiveEffects: [] as const,
-} as const
-
-// =============================================================================
-// SET BONUS MECHANICS
-// =============================================================================
-
-export const SET_MECHANICS = {
-  implementedBonuses: [
-    "flat stat bonuses (attack, defense, health)",
-    "percentage damage bonuses by type",
-    "percentage resistances by type",
-  ] as const,
-
-  notImplementedBonuses: [
-    "proc effects on set completion",
-    "on-kill bonuses",
-    "activated set abilities",
-    "transform effects",
-  ] as const,
-} as const
-
-// =============================================================================
-// CRAFTING/ALCHEMY MECHANICS
-// =============================================================================
-
-export const CRAFTING_MECHANICS = {
-  /**
-   * What alchemy/crafting CAN produce
-   */
-  implementedOutputs: [
-    "consumables (potions, elixirs, bombs)",
-    "materials (refined from raw)",
-    "basic equipment with stats",
-  ] as const,
-
-  /**
-   * What alchemy/crafting CANNOT produce
-   */
-  notImplementedOutputs: [
-    "items with on-hit effects",
-    "items with proc chances",
-    "legendary items with unique abilities",
-    "items that cast spells",
-  ] as const,
-
-  /**
-   * Crafted item stats should follow these rules
-   */
-  craftedItemRules: [
-    "Stats scale with material tier (1-5)",
-    "Quality affects stat values (crude to pristine)",
-    "Elemental materials give damage type, not on-hit burns",
-  ] as const,
-} as const
-
-// =============================================================================
-// ABILITY/SKILL MECHANICS
-// =============================================================================
-
-export const ABILITY_MECHANICS = {
-  /**
-   * What player abilities CAN do
-   */
-  implementedEffects: [
-    "deal damage (with damage type)",
-    "apply status effects to target",
-    "heal self or allies",
-    "buff self or allies (temporary)",
-    "debuff enemies (temporary)",
-    "change combat stance",
-  ] as const,
-
-  /**
-   * Ability costs
-   */
-  implementedCosts: [
-    "resource cost (mana, energy, rage, etc.)",
-    "cooldown in turns",
-    "health cost",
-  ] as const,
-
-  /**
-   * What abilities CANNOT do
-   */
-  notImplementedEffects: [
-    "permanent stat changes",
-    "instant kill effects",
-    "summon persistent creatures",
-    "modify the dungeon",
-  ] as const,
-} as const
-
-// =============================================================================
-// ENEMY MECHANICS
-// =============================================================================
-
-export const ENEMY_MECHANICS = {
-  /**
-   * What enemies CAN have
-   */
-  implementedTraits: [
-    "weakness to damage type (take 1.5x)",
-    "resistance to damage type (take 0.5x)",
-    "abilities with cooldowns",
-    "special attacks with warnings",
-    "death drops (gold, items)",
-  ] as const,
-
-  /**
-   * What enemies CANNOT have
-   */
-  notImplementedTraits: [
-    "damage reflection",
-    "instant kill attacks",
-    "resurrection after death",
-    "spawning additional enemies mid-combat",
-  ] as const,
-} as const
-
-// =============================================================================
-// AI PROMPT GENERATION - CORE FUNCTIONS
+// PROMPT GENERATION
 // =============================================================================
 
 /**
- * Generates the full "truthful effects" section for AI prompts.
- * Use this in API routes that generate items/equipment.
+ * Generates comprehensive prompt describing what effects AI can create.
+ * Used by API routes for item/effect generation.
  */
 export function generateMechanicsPrompt(): string {
-  const weaponDamageTypes = WEAPON_MECHANICS.damageTypes.join(", ")
-  const weaponStats = WEAPON_MECHANICS.statBonuses.join(", ")
-  const armorStats = ARMOR_MECHANICS.statBonuses.join(", ")
-  const hasOnHit = WEAPON_MECHANICS.implementedOnHitEffects.length > 0
-  const onHitEffects = hasOnHit
-    ? WEAPON_MECHANICS.implementedOnHitEffects.join(", ")
-    : null
+  return `EFFECT SYSTEM CAPABILITIES:
+You can create effects using these building blocks. Combine them creatively.
 
-  const notImplemented = [
-    ...WEAPON_MECHANICS.notImplementedOnHitEffects,
-    ...ARMOR_MECHANICS.notImplementedEffects,
-  ]
+TRIGGERS (when effects activate):
+${EFFECT_TRIGGERS.map(t => `• ${t}`).join("\n")}
 
-  return `IMPORTANT - TRUTHFUL ITEM EFFECTS:
-Only describe effects that actually exist in the game.
+CATEGORIES (effect types):
+${EFFECT_CATEGORIES.map(c => `• ${c}`).join("\n")}
 
-IMPLEMENTED (you CAN describe these):
-✓ Weapon damage types: ${weaponDamageTypes}
-  → These affect damage vs enemy weaknesses/resistances (1.5x/0.5x)
-✓ Weapon stat bonuses: ${weaponStats}
-✓ Armor stat bonuses: ${armorStats}
-✓ Consumables: heal, buff, debuff, cure, damage
-${onHitEffects ? `✓ On-hit effects: ${onHitEffects}` : ""}
+STAT MODIFIERS (what can be changed):
+${STAT_MODIFIERS.map(s => `• ${s}`).join("\n")}
 
-NOT IMPLEMENTED (do NOT claim these):
-${notImplemented.slice(0, 8).map(e => `✗ "${e}"`).join("\n")}
+DAMAGE TYPES:
+${DAMAGE_TYPES.join(", ")}
 
-Examples of GOOD descriptions:
-- "A blade wreathed in shadow, dealing shadow damage effective against holy creatures"
-- "Grants +5 attack and +10% critical chance"
-- "Armor imbued with fire resistance"
+DURATION TYPES: ${DURATION_TYPES.join(", ")}
+STACKING: ${STACK_BEHAVIORS.join(", ")}
 
-Examples of BAD descriptions (these mechanics don't exist):
-- "Burns enemies for 3 fire damage on critical hits"
-- "15% chance to freeze on hit"
-- "Steals 10% of damage dealt as health"
-- "Reflects 20% of damage taken back to attacker"`
+EFFECT STRUCTURE:
+Items can grant effects with:
+- category: The effect type
+- triggers: When it activates (can be multiple)
+- modifiers: Stat changes (attack, defense, healthRegen, etc.)
+- duration/durationType: How long it lasts
+- stackBehavior: What happens on reapplication
+- triggeredEffects: Sub-effects that fire on specific triggers
+
+EXAMPLES OF VALID EFFECTS:
+✓ "Grants +5 attack while equipped" (stat_modifier, passive, attack: 5)
+✓ "Burns for 3 damage per turn for 3 turns" (damage_over_time, turn_end, healthRegen: -3, duration: 3)
+✓ "On critical hit, gain 2 health" (triggered, on_critical_hit, heal: 2)
+✓ "When hit, 30% chance to reflect 5 damage" (triggered, on_damage_taken, chance: 0.3, damage: 5)
+✓ "Increases gold found by 20%" (utility, passive, goldMultiplier: 1.2)
+
+CONSTRAINTS:
+- Power scales with rarity (common=weak, legendary=strong)
+- Effects must use defined triggers and modifiers
+- Be creative with combinations, but stay within the system`
 }
 
 /**
- * Generates mechanics prompt specifically for crafted/alchemical items
+ * Generates crafting-specific mechanics prompt
  */
 export function generateCraftingMechanicsPrompt(): string {
   return `CRAFTED ITEM MECHANICS:
-Crafted items follow these rules:
+Crafted items can have effects based on materials used.
 
-CAN HAVE:
-${CRAFTING_MECHANICS.implementedOutputs.map(e => `✓ ${e}`).join("\n")}
-${CRAFTING_MECHANICS.craftedItemRules.map(e => `✓ ${e}`).join("\n")}
+MATERIAL TIER → EFFECT POWER:
+• Tier 1: Basic stats only (+1-2)
+• Tier 2: Minor effects (duration 2-3)
+• Tier 3: Moderate effects, can have triggers
+• Tier 4: Strong effects, multiple modifiers
+• Tier 5: Powerful effects, complex triggers
 
-CANNOT HAVE:
-${CRAFTING_MECHANICS.notImplementedOutputs.map(e => `✗ ${e}`).join("\n")}
+ELEMENTAL MATERIALS:
+Fire materials → fire damage type, can grant burn effects (damage_over_time)
+Ice materials → ice damage type, can grant slow effects
+Lightning materials → lightning damage type, can grant stun triggers
+Shadow materials → shadow damage type, can grant lifesteal triggers
+Holy materials → holy damage type, can grant healing triggers
 
-When materials have elemental tags (fire, ice, etc.):
-- They grant that DAMAGE TYPE, not on-hit effects
-- "Fire essence" → weapon deals fire damage, NOT "burns on hit"
-- "Frost crystal" → weapon deals ice damage, NOT "freezes on hit"`
+CRAFTED EFFECT RULES:
+✓ Effects must match material properties
+✓ Combining materials can create compound effects
+✓ Quality affects effect power within tier bounds
+✓ Higher tier = more complex triggers allowed`
 }
 
 /**
- * Generates prompt section for status effects
+ * Generates status effect prompt for consumables/abilities
  */
 export function generateStatusEffectPrompt(): string {
-  const buffs = CONSUMABLE_MECHANICS.implementedStatusEffects.buffs.join(", ")
-  const debuffs = CONSUMABLE_MECHANICS.implementedStatusEffects.debuffs.join(", ")
+  const buffs = ["attack boost", "defense boost", "health regen", "crit chance", "damage multiplier"]
+  const debuffs = ["attack reduction", "defense reduction", "damage over time", "slow", "vulnerability"]
 
   return `STATUS EFFECT RULES:
-Valid buff types: ${buffs}
-Valid debuff types: ${debuffs}
+Valid buff types: ${buffs.join(", ")}
+Valid debuff types: ${debuffs.join(", ")}
 
 Effects must have:
-- Duration in turns (1-10 typically)
+- Duration in turns (or durationType for special cases)
 - Clear modifier values (+X attack, -Y defense, etc.)
-- Stack behavior (does it stack? refresh? independent?)
+- Stack behavior (refresh, stack duration, or stack intensity)
 
-Effects CANNOT:
-- Be permanent (max ~10 turns for powerful effects)
-- Instantly kill or incapacitate
-- Create other entities
-- Modify the dungeon layout`
+Effects CAN:
+- Trigger on specific events (on_attack, on_damage_taken, etc.)
+- Have sub-effects that fire conditionally
+- Stack up to defined limits
+- Be permanent (for curses/blessings)
+
+Effects use the standard modifier system:
+${STAT_MODIFIERS.map(s => `• ${s}`).join("\n")}`
 }
 
 /**
- * Shorter version for Zod schema .describe() fields
+ * Short hint for schema .describe() fields
  */
 export function getMechanicsHint(): string {
-  return "Describe appearance and damage type only. Do NOT claim on-hit effects, procs, lifesteal, or triggers (not implemented)"
+  return "Describe the effect using valid triggers (on_attack, turn_end, etc.) and modifiers (attack, defense, healthRegen). Be creative within the effect system."
 }
 
 /**
- * Even shorter hint for nested schema fields
+ * Get constraint set for a source type
  */
-export function getShortMechanicsHint(): string {
-  return "No on-hit/proc effects"
+export function getConstraints(source: keyof typeof EFFECT_CONSTRAINTS) {
+  return EFFECT_CONSTRAINTS[source]
 }
 
 /**
- * Get valid damage types for schema enums
+ * Validate an effect against constraints
  */
-export function getDamageTypes() {
-  return WEAPON_MECHANICS.damageTypes
-}
+export function validateEffect(
+  effect: { power?: number; duration?: number; stacks?: number; category?: string; trigger?: string },
+  source: keyof typeof EFFECT_CONSTRAINTS,
+): { valid: boolean; violations: string[] } {
+  const constraints = EFFECT_CONSTRAINTS[source]
+  const violations: string[] = []
 
-/**
- * Check if a described effect is valid
- * Returns { valid: boolean, reason?: string }
- */
-export function validateEffectDescription(description: string): { valid: boolean; reason?: string } {
-  const lowerDesc = description.toLowerCase()
-
-  const invalidPatterns = [
-    { pattern: /\d+%?\s*(chance|proc)/i, reason: "Proc chance effects not implemented" },
-    { pattern: /on (hit|strike|attack)/i, reason: "On-hit effects not implemented" },
-    { pattern: /lifesteal|life steal/i, reason: "Lifesteal not implemented" },
-    { pattern: /mana steal/i, reason: "Mana steal not implemented" },
-    { pattern: /reflects? (damage|back)/i, reason: "Damage reflection not implemented" },
-    { pattern: /stun(s|ning)? (on|chance)/i, reason: "Stun-on-hit not implemented" },
-    { pattern: /bleed(s|ing)? (on|chance)/i, reason: "Bleed-on-hit not implemented" },
-    { pattern: /burn(s|ing)? (enemies|on|for \d)/i, reason: "Burn-on-hit not implemented" },
-    { pattern: /freeze(s|ing)? (enemies|on|chance)/i, reason: "Freeze-on-hit not implemented" },
-    { pattern: /poison(s|ing)? (enemies|on)/i, reason: "Poison-on-hit not implemented" },
-  ]
-
-  for (const { pattern, reason } of invalidPatterns) {
-    if (pattern.test(lowerDesc)) {
-      return { valid: false, reason }
-    }
+  if (effect.power && effect.power > constraints.maxPower) {
+    violations.push(`Power ${effect.power} exceeds max ${constraints.maxPower} for ${source}`)
   }
 
-  return { valid: true }
+  if (effect.duration && constraints.maxDuration > 0 && effect.duration > constraints.maxDuration) {
+    violations.push(`Duration ${effect.duration} exceeds max ${constraints.maxDuration} for ${source}`)
+  }
+
+  if (effect.stacks && effect.stacks > constraints.maxStacks) {
+    violations.push(`Stacks ${effect.stacks} exceeds max ${constraints.maxStacks} for ${source}`)
+  }
+
+  if (effect.category && !(constraints.allowedCategories as readonly string[]).includes(effect.category)) {
+    violations.push(`Category "${effect.category}" not allowed for ${source}`)
+  }
+
+  if (effect.trigger && (constraints.forbiddenTriggers as readonly string[]).includes(effect.trigger)) {
+    violations.push(`Trigger "${effect.trigger}" forbidden for ${source}`)
+  }
+
+  return { valid: violations.length === 0, violations }
 }
 
 // =============================================================================
 // TYPE EXPORTS
 // =============================================================================
 
-export type DamageType = typeof WEAPON_MECHANICS.damageTypes[number]
-export type WeaponStat = typeof WEAPON_MECHANICS.statBonuses[number]
-export type ArmorStat = typeof ARMOR_MECHANICS.statBonuses[number]
-export type ConsumableEffect = typeof CONSUMABLE_MECHANICS.implementedEffects[number]
+export type EffectTrigger = typeof EFFECT_TRIGGERS[number]
+export type EffectCategory = typeof EFFECT_CATEGORIES[number]
+export type DurationType = typeof DURATION_TYPES[number]
+export type StackBehavior = typeof STACK_BEHAVIORS[number]
+export type StatModifier = typeof STAT_MODIFIERS[number]
+export type DamageType = typeof DAMAGE_TYPES[number]
+export type ItemType = typeof ITEM_TYPES[number]
+export type Rarity = keyof typeof RARITIES
+export type ConstraintSource = keyof typeof EFFECT_CONSTRAINTS
+
+// Re-export for backwards compatibility with existing imports
+export const WEAPON_MECHANICS = {
+  damageTypes: DAMAGE_TYPES,
+  statBonuses: ["attack", "defense", "health", "critChance", "critDamage"] as const,
+} as const
+
+export const getDamageTypes = () => DAMAGE_TYPES
