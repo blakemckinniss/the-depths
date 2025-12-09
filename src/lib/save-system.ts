@@ -1,6 +1,7 @@
 import type React from "react"
 // Save/Load system for full game state persistence
 
+import { debugLog } from "./debug"
 import type {
   GameState,
   Player,
@@ -170,7 +171,7 @@ export class SaveSystem {
         return { ...defaultSettings, ...JSON.parse(saved) }
       }
     } catch (e) {
-      console.error("Failed to load settings:", e)
+      debugLog("Failed to load settings", e, { level: "error" })
     }
     return defaultSettings
   }
@@ -182,7 +183,7 @@ export class SaveSystem {
       try {
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings))
       } catch (e) {
-        console.error("Failed to save settings:", e)
+        debugLog("Failed to save settings", e, { level: "error" })
       }
     }
 
@@ -215,7 +216,7 @@ export class SaveSystem {
         return data.metadata
       }
     } catch (e) {
-      console.error(`Failed to load save metadata for slot ${slot}:`, e)
+      debugLog(`Failed to load save metadata for slot ${slot}`, e, { level: "error" })
     }
 
     return null
@@ -268,7 +269,7 @@ export class SaveSystem {
 
       return true
     } catch (e) {
-      console.error(`Failed to save game to slot ${slot}:`, e)
+      debugLog(`Failed to save game to slot ${slot}`, e, { level: "error" })
       return false
     }
   }
@@ -317,7 +318,7 @@ export class SaveSystem {
 
       return data
     } catch (e) {
-      console.error(`Failed to load save from slot ${slot}:`, e)
+      debugLog(`Failed to load save from slot ${slot}`, e, { level: "error" })
       return null
     }
   }
@@ -331,7 +332,7 @@ export class SaveSystem {
       localStorage.removeItem(key)
       return true
     } catch (e) {
-      console.error(`Failed to delete save from slot ${slot}:`, e)
+      debugLog(`Failed to delete save from slot ${slot}`, e, { level: "error" })
       return false
     }
   }
@@ -440,7 +441,7 @@ export class SaveSystem {
   // Version migration
   private migrateSaveData(data: SaveData): SaveData {
     // Add migration logic here for future versions
-    console.log(`Migrating save from version ${data.metadata.version} to ${SAVE_VERSION}`)
+    debugLog(`Migrating save from version ${data.metadata.version} to ${SAVE_VERSION}`, null, { level: "info" })
 
     // Update version
     data.metadata.version = SAVE_VERSION
@@ -474,7 +475,7 @@ export class SaveSystem {
 
       return true
     } catch (e) {
-      console.error("Failed to import save:", e)
+      debugLog("Failed to import save", e, { level: "error" })
       return false
     }
   }

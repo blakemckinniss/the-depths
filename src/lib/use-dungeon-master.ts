@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback } from "react"
+import { debugLog } from "./debug"
 
 interface DungeonMasterContext {
   [key: string]: string | number | boolean | undefined | object
@@ -19,14 +20,14 @@ export function useDungeonMaster() {
       })
 
       if (!res.ok) {
-        console.error("Dungeon master request failed:", res.status)
+        debugLog("Dungeon master request failed", { status: res.status }, { level: "error" })
         return null
       }
 
       const data = await res.json()
       return data as T
     } catch (error) {
-      console.error("Dungeon master error:", error)
+      debugLog("Dungeon master error", error, { level: "error" })
       return null
     } finally {
       setIsGenerating(false)

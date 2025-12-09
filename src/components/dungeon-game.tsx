@@ -73,6 +73,7 @@ import { Tavern } from "./tavern"
 import { InteractiveNarrative } from "./interactive-narrative"
 import { LootContainerReveal } from "./loot-container-reveal"
 import { useSaveSystem, type SaveData } from "@/lib/save-system"
+import { useDungeonMaster } from "@/lib/use-dungeon-master"
 import {
   enhanceEnemyWithLore,
   generateFloorReward,
@@ -165,6 +166,7 @@ export function DungeonGame() {
   const [hasExistingSaves, setHasExistingSaves] = useState(false) // Client-side only to avoid hydration mismatch
 
   const { autoSave, hasSaves, load, deserializeWorldState } = useSaveSystem()
+  const { generate: generateNarrative, isGenerating: isAiGenerating } = useDungeonMaster()
 
   // Check for saves only on client side to avoid hydration mismatch
   useEffect(() => {
@@ -286,28 +288,6 @@ export function DungeonGame() {
     [addLog],
   )
 
-  // Declare isAiGenerating and generateEnvironmentalInteraction here, assuming they are imported or defined elsewhere
-  const isAiGenerating = false // Placeholder, replace with actual import or definition
-  const generateEnvironmentalInteraction = async (_state: GameState, _details: Record<string, unknown>): Promise<{
-    narration: string
-    rewards: {
-      gold?: number
-      healing?: number
-      damage?: number
-      experience?: number
-      item?: { name?: string; type?: string; rarity?: ItemRarity; description?: string; lore?: string }
-    }
-    consequences: { entityConsumed: boolean }
-    companionReaction?: string
-    newEntity?: { name: string; entityClass: string; description: string; interactionTags: string[] }
-  }> => {
-    return {
-      narration: "The object reacts to your interaction.",
-      rewards: { gold: 10 },
-      consequences: { entityConsumed: true },
-    }
-  }
-
   const handleEnvironmentalInteraction = useCallback(
     async (entityId: string, interactionId: string) => {
       if (isProcessing || isAiGenerating) return
@@ -346,7 +326,19 @@ export function DungeonGame() {
       )
 
       // Generate AI outcome
-      const result = await generateEnvironmentalInteraction(gameState, {
+      const result = await generateNarrative<{
+        narration: string
+        rewards: {
+          gold?: number
+          healing?: number
+          damage?: number
+          experience?: number
+          item?: { name?: string; type?: string; rarity?: ItemRarity; description?: string; lore?: string }
+        }
+        consequences: { entityConsumed: boolean }
+        companionReaction?: string
+        newEntity?: { name: string; entityClass: string; description: string; interactionTags: string[] }
+      }>("environmental_interaction", {
         entityName: entity.name,
         entityClass: entity.entityClass,
         entityDescription: entity.description,
@@ -354,7 +346,13 @@ export function DungeonGame() {
         interactionLabel: interaction.label,
         dangerLevel: interaction.dangerLevel,
         itemUsed,
-      })
+        playerLevel: gameState.player.stats.level,
+        floor: gameState.floor,
+      }) ?? {
+        narration: "The object reacts to your interaction.",
+        rewards: { gold: Math.floor(Math.random() * 10) + 1 },
+        consequences: { entityConsumed: true },
+      }
 
       if (result) {
         // Add narration
@@ -1354,24 +1352,7 @@ export function DungeonGame() {
       )
     }
 
-    // Declare generate here, assuming it's imported or defined elsewhere
-    const generate = async <T extends object>(eventType: string, payload: any): Promise<T | undefined> => {
-      if (eventType === "player_attack") {
-        return {
-          attackNarration: `You swing your ${payload.playerWeapon} at the ${payload.enemyName}...`,
-          enemyReaction: "The enemy roars in pain!",
-        } as T
-      }
-      if (eventType === "victory") {
-        return {
-          deathNarration: `The ${payload.enemyName} collapses before you.`,
-          spoilsNarration: `You find loot!`,
-        } as T
-      }
-      return undefined
-    }
-
-    const attackResponse = await generate<CombatResponse>("player_attack", {
+    const attackResponse = await generateNarrative<CombatResponse>("player_attack", {
       enemyName: gameState.currentEnemy.name,
       damage,
       playerWeapon: gameState.player.equipment.weapon?.name,
@@ -1431,7 +1412,7 @@ export function DungeonGame() {
         itemsFound: [...gameState.runStats.itemsFound, ...allLoot],
       })
 
-      const victoryResponse = await generate<VictoryResponse>("victory", {
+      const victoryResponse = await generateNarrative<VictoryResponse>("victory", {
         enemyName: gameState.currentEnemy.name,
         expGain,
         goldGain,
@@ -1597,17 +1578,7 @@ export function DungeonGame() {
 
     const paths = generatePathOptions(gameState.floor, gameState.currentRoom, dungeonTheme)
 
-    const generate = async <T extends object>(eventType: string, _payload: unknown): Promise<T | undefined> => {
-      if (eventType === "room") {
-        return {
-          roomDescription: `You enter a dimly lit chamber. The air is thick with dust.`,
-          eventNarration: "A faint whisper echoes from the shadows.",
-        } as T
-      }
-      return undefined
-    }
-
-    const roomResponse = await generate<RoomResponse>("room", {
+    const roomResponse = await generateNarrative<RoomResponse>("room", {
       floor: gameState.floor,
       roomNumber: gameState.currentRoom + 1,
       playerHealth: gameState.player.stats.health,
@@ -2226,17 +2197,7 @@ export function DungeonGame() {
         )
       }, 2000)
     } else {
-      const generate = async <T extends object>(eventType: string, _payload: unknown): Promise<T | undefined> => {
-        if (eventType === "descend") {
-          return {
-            roomDescription: `The descent is arduous. You hear skittering in the distance.`,
-            eventNarration: "A chill permeates the air.",
-          } as T
-        }
-        return undefined
-      }
-
-      const response = await generate<RoomResponse>("descend", {
+      const response = await generateNarrative<RoomResponse>("descend", {
         newFloor,
         roomsExplored: gameState.currentRoom,
         playerLevel: gameState.player.stats.level,
@@ -2284,23 +2245,7 @@ export function DungeonGame() {
     const fleeChance = 0.4 + gameState.player.stats.level * 0.05
     const success = Math.random() < fleeChance
 
-    const generate = async <T extends object>(eventType: string, payload: any): Promise<T | undefined> => {
-      if (eventType === "flee_success") {
-        return {
-          fleeNarration: `You manage to slip away from the ${payload.enemyName}!`,
-          outcome: "success",
-        } as T
-      }
-      if (eventType === "flee_fail") {
-        return {
-          fleeNarration: `You try to flee, but the ${payload.enemyName} intercepts you!`,
-          outcome: "fail",
-        } as T
-      }
-      return undefined
-    }
-
-    const fleeResponse = await generate<FleeResponse>(success ? "flee_success" : "flee_fail", {
+    const fleeResponse = await generateNarrative<FleeResponse>(success ? "flee_success" : "flee_fail", {
       enemyName: gameState.currentEnemy.name,
       damage: success ? 0 : undefined,
     })
@@ -2853,7 +2798,7 @@ export function DungeonGame() {
 
       {/* Left Sidebar - Stats (shown after class select) */}
       {gameState.phase !== "title" && !showClassSelect && gameState.player && (
-        <div className="hidden lg:block w-64 bg-stone-900/30 border-r border-border/30 sticky top-0 h-screen overflow-y-auto">
+        <div className="hidden lg:block w-64 bg-stone-900/50 sticky top-0 h-screen overflow-y-auto">
           <SidebarStats
             player={gameState.player}
             floor={gameState.floor} // Corrected to gameState.floor
@@ -2983,7 +2928,7 @@ export function DungeonGame() {
             )}
 
             {gameState.inCombat && gameState.currentEnemy && gameState.player.abilities.length > 0 && (
-              <div className="mt-4 p-3 bg-stone-800/30 rounded">
+              <div className="mt-4">
                 <AbilityBar
                   player={gameState.player}
                   currentEnemy={gameState.currentEnemy}
@@ -3012,7 +2957,7 @@ export function DungeonGame() {
 
       {/* Right Sidebar - Inventory & Keys */}
       {gameState.phase !== "title" && !showClassSelect && gameState.player && (
-        <div className="hidden lg:block w-64 bg-stone-900/30 border-l border-border/30 sticky top-0 h-screen overflow-y-auto">
+        <div className="hidden lg:block w-64 bg-stone-900/50 sticky top-0 h-screen overflow-y-auto">
           <div className="p-4 space-y-6">
             <SidebarInventory
               player={gameState.player}

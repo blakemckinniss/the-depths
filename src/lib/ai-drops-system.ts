@@ -211,11 +211,12 @@ export function treasureToItems(contents: TreasureContents): Item[] {
         name: item.name,
         entityType: "item",
         type: "misc",
-        rarity: "common",
+        rarity: "common" as const,
         description: item.description,
         value: item.quantity || 10,
-        category: "misc",
-      } as unknown as Item
+        category: "currency" as Item["category"],
+        aiGenerated: true,
+      }
     }
 
     if (item.type === "key") {
@@ -223,28 +224,35 @@ export function treasureToItems(contents: TreasureContents): Item[] {
         id,
         name: item.name,
         entityType: "item",
-        type: "misc",
-        rarity: item.rarity || "uncommon",
+        type: "key",
+        rarity: (item.rarity || "uncommon") as ItemRarity,
         description: item.description,
         value: 50,
-        category: "misc",
-      } as unknown as Item
+        category: "key" as Item["category"],
+        aiGenerated: true,
+      }
     }
+
+    const entityType = item.type === "weapon" ? "weapon" as const
+      : item.type === "armor" ? "armor" as const
+      : "item" as const
+    const itemType = item.type === "weapon" ? "weapon" as const
+      : item.type === "armor" ? "armor" as const
+      : item.type === "consumable" ? "potion" as const
+      : "misc" as const
 
     return {
       id,
       name: item.name,
-      entityType: item.type === "weapon" ? "weapon" : item.type === "armor" ? "armor" : "item",
-      type: item.type === "weapon" ? "weapon" : item.type === "armor" ? "armor" :
-            item.type === "consumable" ? "potion" : "misc",
-      rarity: item.rarity || "common",
+      entityType,
+      type: itemType,
+      rarity: (item.rarity || "common") as ItemRarity,
       description: item.description,
       value: calculateDropValue(item.rarity || "common", item.type),
       category: item.type as Item["category"],
       aiGenerated: true,
       useText: item.effect,
-      quantity: item.quantity,
-    } as Item
+    }
   })
 }
 

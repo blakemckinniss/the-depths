@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback } from "react"
+import { debugLog } from "./debug"
 
 export type EntityGenerationType =
   | "item"
@@ -27,14 +28,14 @@ export function useEntityGenerator() {
       })
 
       if (!response.ok) {
-        console.error("Entity generation failed:", response.status)
+        debugLog("Entity generation failed", { status: response.status }, { level: "error" })
         return null
       }
 
       const data = await response.json()
       return data
     } catch (error) {
-      console.error("Entity generation error:", error)
+      debugLog("Entity generation error", error, { level: "error" })
       return null
     } finally {
       setIsGenerating(false)

@@ -50,7 +50,7 @@ export function CombatDisplay({
       {hazard && <HazardDisplay hazard={hazard} isMitigated={hazard.mitigatedBy?.includes(player.class || "")} />}
 
       {/* Enemy Info */}
-      <div className="p-3 bg-stone-800/30 rounded space-y-2">
+      <div className="py-2 space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <EntityText type="enemy" className="text-lg" entity={enemy}>

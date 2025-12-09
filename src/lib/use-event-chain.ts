@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback } from "react"
+import { debugLog } from "./debug"
 import type { GameState, EnvironmentalInteractionResult, SkillType } from "./game-types"
 import type { EffectCategory, DurationType, EffectTrigger, StackBehavior } from "./effect-system"
 
@@ -380,7 +381,7 @@ export function useEventChain() {
         if (!response.ok) {
           const error = await response.text()
           setLastError(error)
-          console.error("Event chain generation failed:", error)
+          debugLog("Event chain generation failed", { error }, { level: "error" })
           return null
         }
 
@@ -389,7 +390,7 @@ export function useEventChain() {
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error"
         setLastError(message)
-        console.error("Event chain error:", error)
+        debugLog("Event chain error", error, { level: "error" })
         return null
       } finally {
         setIsGenerating(false)
