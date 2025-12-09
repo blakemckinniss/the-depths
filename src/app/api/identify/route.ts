@@ -5,8 +5,11 @@
  */
 
 import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai-utils"
+import { generateMechanicsPrompt } from "@/lib/game-mechanics-ledger"
 import { z } from "zod"
 import { NextResponse } from "next/server"
+
+const MECHANICS_PROMPT = generateMechanicsPrompt()
 
 // Schema for identified item
 const IdentifiedItemSchema = z.object({
@@ -55,12 +58,7 @@ RULES:
 - Keep descriptions atmospheric and brief
 - Effects should be mechanically meaningful
 
-IMPORTANT - TRUTHFUL ITEM EFFECTS:
-Only describe effects that actually exist in the game:
-✓ Damage types (fire/ice/shadow/holy/arcane/lightning/poison) - affects damage vs enemy weaknesses
-✓ Stat bonuses (attack, defense, health, crit chance, crit damage)
-✗ DO NOT claim on-hit effects like "burns enemies" or "X damage on critical"
-✗ DO NOT claim proc effects or passive triggers - these are NOT implemented`
+${MECHANICS_PROMPT}`
 
 export async function POST(request: Request) {
   try {

@@ -9,8 +9,13 @@
  */
 
 import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai-utils"
+import { generateMechanicsPrompt, getDamageTypes } from "@/lib/game-mechanics-ledger"
 import { z } from "zod"
 import { NextResponse } from "next/server"
+
+// Get mechanics prompt once at module load
+const MECHANICS_PROMPT = generateMechanicsPrompt()
+const DAMAGE_TYPES = getDamageTypes()
 
 // =============================================================================
 // SCHEMAS
@@ -144,12 +149,7 @@ RULES:
 - Dark fantasy tone - no humor or modern references
 - Weakness hints should be cryptic, not obvious
 
-IMPORTANT - TRUTHFUL ITEM EFFECTS:
-Only describe effects that actually exist in the game:
-✓ Damage types (fire/ice/shadow/holy/arcane/lightning/poison) - affects damage vs enemy weaknesses
-✓ Stat bonuses (attack, defense, health, crit chance, crit damage)
-✗ DO NOT claim on-hit effects like "burns enemies" or "X damage on critical"
-✗ DO NOT claim proc effects or passive triggers - these are NOT implemented`
+${MECHANICS_PROMPT}`
 
 const TREASURE_SYSTEM = `You are a dungeon treasure generator for a dark fantasy game.
 Determine what treasures are found in containers.
@@ -162,12 +162,7 @@ RULES:
 - Inscriptions/lore should hint at dungeon history
 - Gold amounts: common=10-50, rare=50-200, legendary=200-500
 
-IMPORTANT - TRUTHFUL ITEM EFFECTS:
-Only describe effects that actually exist in the game:
-✓ Damage types (fire/ice/shadow/holy/arcane/lightning/poison) - affects damage vs enemy weaknesses
-✓ Stat bonuses (attack, defense, health, crit chance, crit damage)
-✗ DO NOT claim on-hit effects like "burns enemies" or "X damage on critical"
-✗ DO NOT claim proc effects or passive triggers - these are NOT implemented`
+${MECHANICS_PROMPT}`
 
 const BOSS_REWARD_SYSTEM = `You are a boss reward generator for a dark fantasy dungeon crawler.
 Create unique, memorable boss loot.
@@ -179,20 +174,7 @@ RULES:
 - Lore should reference the battle
 - Names should be evocative and memorable
 
-IMPORTANT - TRUTHFUL DESCRIPTIONS:
-Weapon mechanics that ARE implemented (describe these):
-- Damage type effectiveness (fire/ice/shadow/holy/arcane/lightning/poison vs enemy weaknesses)
-- Attack, defense, health bonuses
-- Critical hit chance and damage bonuses
-
-Weapon mechanics that are NOT implemented (DO NOT claim these):
-- "X damage on critical hit" effects
-- "Burns/freezes/poisons on hit" effects
-- Proc effects or on-hit triggers
-- Passive abilities that trigger during combat
-
-Example GOOD description: "A blade wreathed in shadow, dealing shadow damage effective against holy creatures"
-Example BAD description: "Burns enemies for 3 fire damage on critical hits" (this mechanic doesn't exist)`
+${MECHANICS_PROMPT}`
 
 const DUNGEON_THEME_SYSTEM = `You are a themed loot generator for a dark fantasy dungeon crawler.
 Create items that match the dungeon's theme and atmosphere.
@@ -205,12 +187,7 @@ RULES:
 - Higher floors = better rarity distribution
 - Items should feel like they belong in this specific dungeon
 
-IMPORTANT - TRUTHFUL ITEM EFFECTS:
-Only describe effects that actually exist in the game:
-✓ Damage types (fire/ice/shadow/holy/arcane/lightning/poison) - affects damage vs enemy weaknesses
-✓ Stat bonuses (attack, defense, health, crit chance, crit damage)
-✗ DO NOT claim on-hit effects like "burns enemies" or "X damage on critical"
-✗ DO NOT claim proc effects or passive triggers - these are NOT implemented`
+${MECHANICS_PROMPT}`
 
 // =============================================================================
 // HANDLERS

@@ -8,8 +8,11 @@
  */
 
 import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai-utils"
+import { generateMechanicsPrompt } from "@/lib/game-mechanics-ledger"
 import { z } from "zod"
 import { NextResponse } from "next/server"
+
+const MECHANICS_PROMPT = generateMechanicsPrompt()
 
 // =============================================================================
 // SCHEMAS
@@ -135,12 +138,7 @@ LOOT DISTRIBUTION BY CONTAINER RARITY:
 - epic: 3-5 items, guaranteed rare, chance of epic
 - legendary: 4-6 items, guaranteed epic, high legendary chance
 
-IMPORTANT - TRUTHFUL ITEM EFFECTS:
-Only describe effects that actually exist in the game:
-✓ Damage types (fire/ice/shadow/holy/arcane/lightning/poison) - affects damage vs enemy weaknesses
-✓ Stat bonuses (attack, defense, health, crit chance, crit damage)
-✗ DO NOT claim on-hit effects like "burns enemies" or "X damage on critical"
-✗ DO NOT claim proc effects or passive triggers - these are NOT implemented
+${MECHANICS_PROMPT}
 
 Make the reveal FEEL rewarding.`
 
