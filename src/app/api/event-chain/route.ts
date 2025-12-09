@@ -1,4 +1,14 @@
-import { generateWithAI, buildSystemPrompt, AI_CONFIG, entityCache } from "@/lib/ai-utils"
+import {
+  generateWithAI,
+  buildSystemPrompt,
+  AI_CONFIG,
+  entityCache,
+} from "@/lib/ai-utils";
+import {
+  generateEntitySystemPrompt,
+  ENTITY_CLASSES,
+  ENTITY_TAGS,
+} from "@/lib/game-mechanics-ledger";
 import {
   roomEventSchema,
   combatRoundSchema,
@@ -16,11 +26,11 @@ import {
   generateEffectSchema,
   effectComboSchema,
   ambientEffectSchema,
-} from "@/lib/ai-schemas"
+} from "@/lib/ai-schemas";
 
 export async function POST(req: Request) {
-  const body = await req.json()
-  const { eventType, context } = body
+  const body = await req.json();
+  const { eventType, context } = body;
 
   const system = buildSystemPrompt({
     dungeonName: context.dungeonName,
@@ -34,17 +44,24 @@ export async function POST(req: Request) {
     companions: context.companions,
     currentHazard: context.currentHazard,
     recentEvents: context.recentEvents,
-  })
+  });
 
   switch (eventType) {
     case "room_event": {
-      const cacheKey = context.roomTypeHint === "empty"
-        ? entityCache.generateKey("room", context.dungeonTheme, context.floor, "empty")
-        : undefined // Don't cache non-empty rooms - they need variety
+      const cacheKey =
+        context.roomTypeHint === "empty"
+          ? entityCache.generateKey(
+              "room",
+              context.dungeonTheme,
+              context.floor,
+              "empty",
+            )
+          : undefined; // Don't cache non-empty rooms - they need variety
 
-      return Response.json(await generateWithAI({
-        schema: roomEventSchema,
-        prompt: `Generate a room event for floor ${context.floor}, room ${context.room}.
+      return Response.json(
+        await generateWithAI({
+          schema: roomEventSchema,
+          prompt: `Generate a room event for floor ${context.floor}, room ${context.room}.
 Dungeon theme: ${context.dungeonTheme || "dark fantasy"}.
 Room type preference: ${context.roomTypeHint || "any"}.
 Recent rooms: ${context.recentRooms || "none"}.
@@ -57,24 +74,20 @@ PLAYER CONTEXT:
 - Has lockpicks: ${context.hasLockpicks || "unknown"}
 - Known abilities: ${context.playerAbilities || "basic"}
 
-ENTITY GENERATION RULES:
-Embed 3-5 interactive environmental entities in roomDescription using {entity:name:class:tags} format.
-Format: {entity:NAME:CLASS:TAG1,TAG2,TAG3}
-Classes: object, substance, creature, mechanism, magical, corpse, container
-Tags: collectible, dangerous, readable, breakable, consumable, tameable, interactive, lootable, ancient, magical, hidden, trapped, valuable, quest
-
-Make each entity feel like it could lead to interesting gameplay decisions.`,
-        system,
-        temperature: AI_CONFIG.temperature.creative,
-        maxTokens: 800,
-        cacheKey,
-      }))
+${generateEntitySystemPrompt()}`,
+          system,
+          temperature: AI_CONFIG.temperature.creative,
+          maxTokens: 800,
+          cacheKey,
+        }),
+      );
     }
 
     case "combat_round": {
-      return Response.json(await generateWithAI({
-        schema: combatRoundSchema,
-        prompt: `Generate a combat round between player and ${context.enemyName}.
+      return Response.json(
+        await generateWithAI({
+          schema: combatRoundSchema,
+          prompt: `Generate a combat round between player and ${context.enemyName}.
 
 Combat state:
 - Player dealt ${context.playerDamage} damage (${context.damageType || "physical"})
@@ -87,34 +100,38 @@ Combat state:
 
 ${context.enemyAttacks ? `Enemy attacks for ${context.enemyDamage} damage.` : "Enemy staggered."}
 ${context.enemyUsedAbility ? `Enemy used: ${context.enemyAbilityName}` : ""}`,
-        system,
-        temperature: AI_CONFIG.temperature.narrative,
-        maxTokens: 500,
-        useCache: false,
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.narrative,
+          maxTokens: 500,
+          useCache: false,
+        }),
+      );
     }
 
     case "victory": {
-      return Response.json(await generateWithAI({
-        schema: victorySchema,
-        prompt: `Generate victory sequence for defeating ${context.enemyName}.
+      return Response.json(
+        await generateWithAI({
+          schema: victorySchema,
+          prompt: `Generate victory sequence for defeating ${context.enemyName}.
 
 Rounds fought: ${context.roundsFought}
 Player HP: ${context.playerHealth}/${context.maxHealth}
 Gold: ${context.goldGain}, XP: ${context.expGain}
 ${context.lootName ? `Loot: ${context.lootName} (${context.lootRarity})` : "No loot"}
 ${context.leveledUp ? "LEVELED UP!" : ""}`,
-        system,
-        temperature: AI_CONFIG.temperature.narrative,
-        maxTokens: 500,
-        useCache: false,
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.narrative,
+          maxTokens: 500,
+          useCache: false,
+        }),
+      );
     }
 
     case "companion_recruit": {
-      return Response.json(await generateWithAI({
-        schema: companionRecruitSchema,
-        prompt: `Generate a unique companion being recruited.
+      return Response.json(
+        await generateWithAI({
+          schema: companionRecruitSchema,
+          prompt: `Generate a unique companion being recruited.
 
 Method: ${context.recruitMethod}
 ${context.sourceEntity ? `Source: ${context.sourceEntity.name}` : ""}
@@ -123,17 +140,19 @@ Floor: ${context.floor || 1}
 Player class: ${context.playerClass || "adventurer"}
 
 Make them MEMORABLE and UNIQUE. Stats should be numbers. Abilities 1-3 max.`,
-        system,
-        temperature: AI_CONFIG.temperature.creative,
-        maxTokens: 800,
-        useCache: false,
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.creative,
+          maxTokens: 800,
+          useCache: false,
+        }),
+      );
     }
 
     case "companion_action": {
-      return Response.json(await generateWithAI({
-        schema: companionActionSchema,
-        prompt: `Generate companion combat action.
+      return Response.json(
+        await generateWithAI({
+          schema: companionActionSchema,
+          prompt: `Generate companion combat action.
 
 Companion: ${context.companionName} (${context.companionSpecies})
 Style: ${context.combatStyle}, Mood: ${context.mood}
@@ -141,97 +160,123 @@ Bond: ${context.bondLevel}
 Action: ${context.actionType}
 ${context.abilityName ? `Using: ${context.abilityName}` : ""}
 Enemy: ${context.enemyName || "none"}`,
-        system,
-        temperature: AI_CONFIG.temperature.narrative,
-        maxTokens: 400,
-        useCache: false,
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.narrative,
+          maxTokens: 400,
+          useCache: false,
+        }),
+      );
     }
 
     case "companion_moment": {
-      return Response.json(await generateWithAI({
-        schema: companionMomentSchema,
-        prompt: `Generate a small companion moment.
+      return Response.json(
+        await generateWithAI({
+          schema: companionMomentSchema,
+          prompt: `Generate a small companion moment.
 
 Companion: ${context.companionName}
 Personality: ${context.personality?.join(", ")}
 Quirk: ${context.quirk}
 Situation: ${context.situation}`,
-        system,
-        temperature: AI_CONFIG.temperature.creative,
-        maxTokens: 300,
-        useCache: false,
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.creative,
+          maxTokens: 300,
+          useCache: false,
+        }),
+      );
     }
 
     case "path_preview": {
-      const cacheKey = entityCache.generateKey("path", context.dungeonName, context.floor, context.numPaths)
-      return Response.json(await generateWithAI({
-        schema: pathPreviewSchema,
-        prompt: `Generate ${context.numPaths} branching path previews.
+      const cacheKey = entityCache.generateKey(
+        "path",
+        context.dungeonName,
+        context.floor,
+        context.numPaths,
+      );
+      return Response.json(
+        await generateWithAI({
+          schema: pathPreviewSchema,
+          prompt: `Generate ${context.numPaths} branching path previews.
 
 Dungeon: ${context.dungeonName}
 Floor: ${context.floor}
 Path types: ${context.pathTypes?.join(", ") || "varied"}
 
 Make each path feel distinct. Include exactly ${context.numPaths} paths in the array.`,
-        system,
-        temperature: AI_CONFIG.temperature.creative,
-        maxTokens: 500,
-        cacheKey,
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.creative,
+          maxTokens: 500,
+          cacheKey,
+        }),
+      );
     }
 
     case "hazard_narration": {
-      const cacheKey = entityCache.generateKey("hazard", context.hazardName, context.hazardType)
-      return Response.json(await generateWithAI({
-        schema: hazardNarrationSchema,
-        prompt: `Generate narration for ${context.hazardName} hazard.
+      const cacheKey = entityCache.generateKey(
+        "hazard",
+        context.hazardName,
+        context.hazardType,
+      );
+      return Response.json(
+        await generateWithAI({
+          schema: hazardNarrationSchema,
+          prompt: `Generate narration for ${context.hazardName} hazard.
 
 Type: ${context.hazardType}
 Damage: ${context.damagePerTurn || "none"}
 Effects: ${context.specialEffects || "none"}`,
-        system,
-        temperature: AI_CONFIG.temperature.narrative,
-        maxTokens: 300,
-        cacheKey,
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.narrative,
+          maxTokens: 300,
+          cacheKey,
+        }),
+      );
     }
 
     case "enhanced_loot": {
-      const cacheKey = entityCache.generateKey("loot", context.itemType, context.rarity, context.dungeonTheme)
-      return Response.json(await generateWithAI({
-        schema: enhancedLootSchema,
-        prompt: `Generate enhanced loot description.
+      const cacheKey = entityCache.generateKey(
+        "loot",
+        context.itemType,
+        context.rarity,
+        context.dungeonTheme,
+      );
+      return Response.json(
+        await generateWithAI({
+          schema: enhancedLootSchema,
+          prompt: `Generate enhanced loot description.
 
 Item: ${context.itemType} (${context.rarity})
 Dungeon theme: ${context.dungeonTheme}
 Floor: ${context.floor}`,
-        system,
-        temperature: AI_CONFIG.temperature.creative,
-        maxTokens: 300,
-        cacheKey,
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.creative,
+          maxTokens: 300,
+          cacheKey,
+        }),
+      );
     }
 
     case "dungeon_card": {
-      return Response.json(await generateWithAI({
-        schema: dungeonCardSchema,
-        prompt: `Generate a ${context.rarity} dungeon card.
+      return Response.json(
+        await generateWithAI({
+          schema: dungeonCardSchema,
+          prompt: `Generate a ${context.rarity} dungeon card.
 
 ${context.isMystery ? "MYSTERY dungeon - be cryptic." : ""}
 Floors: ${context.floors}`,
-        system,
-        temperature: AI_CONFIG.temperature.creative,
-        maxTokens: 400,
-        useCache: false, // Each dungeon should be unique
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.creative,
+          maxTokens: 400,
+          useCache: false, // Each dungeon should be unique
+        }),
+      );
     }
 
     case "death_narration": {
-      return Response.json(await generateWithAI({
-        schema: deathNarrationSchema,
-        prompt: `Generate death narration.
+      return Response.json(
+        await generateWithAI({
+          schema: deathNarrationSchema,
+          prompt: `Generate death narration.
 
 Killed by: ${context.killedBy}
 Floor: ${context.floor}
@@ -241,17 +286,19 @@ Gold collected: ${context.goldTotal}
 Enemies slain: ${context.enemiesSlain}
 
 Make it dramatic and dark.`,
-        system,
-        temperature: AI_CONFIG.temperature.creative,
-        maxTokens: 400,
-        useCache: false,
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.creative,
+          maxTokens: 400,
+          useCache: false,
+        }),
+      );
     }
 
     case "environmental_interaction": {
-      return Response.json(await generateWithAI({
-        schema: environmentalInteractionSchema,
-        prompt: `Player interacts with environmental entity.
+      return Response.json(
+        await generateWithAI({
+          schema: environmentalInteractionSchema,
+          prompt: `Player interacts with environmental entity.
 
 Entity: ${context.entityName} (${context.entityClass})
 Entity description: ${context.entityDescription || "unknown"}
@@ -268,17 +315,19 @@ Generate the outcome. Consider:
 - Using proper items guarantees success for risky actions
 - Dangerous actions have meaningful consequences
 - Include companion reactions if one is present`,
-        system,
-        temperature: AI_CONFIG.temperature.balanced,
-        maxTokens: 600,
-        useCache: false,
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.balanced,
+          maxTokens: 600,
+          useCache: false,
+        }),
+      );
     }
 
     case "unknown_item_use": {
-      return Response.json(await generateWithAI({
-        schema: unknownItemUseSchema,
-        prompt: `A player is using an unknown/mysterious item. Determine what happens.
+      return Response.json(
+        await generateWithAI({
+          schema: unknownItemUseSchema,
+          prompt: `A player is using an unknown/mysterious item. Determine what happens.
 
 ITEM DETAILS:
 Name: ${context.itemName}
@@ -308,18 +357,25 @@ DETERMINATION GUIDELINES:
 - Even harmful effects should feel interesting, not punishing
 
 BE A FAIR BUT DRAMATIC DUNGEON MASTER.`,
-        system,
-        temperature: AI_CONFIG.temperature.balanced,
-        maxTokens: 800,
-        useCache: false,
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.balanced,
+          maxTokens: 800,
+          useCache: false,
+        }),
+      );
     }
 
     case "generate_effect": {
-      const cacheKey = entityCache.generateKey("effect", context.source, context.intendedType, context.maxPowerLevel)
-      return Response.json(await generateWithAI({
-        schema: generateEffectSchema,
-        prompt: `Generate a balanced status effect for a dungeon crawler RPG.
+      const cacheKey = entityCache.generateKey(
+        "effect",
+        context.source,
+        context.intendedType,
+        context.maxPowerLevel,
+      );
+      return Response.json(
+        await generateWithAI({
+          schema: generateEffectSchema,
+          prompt: `Generate a balanced status effect for a dungeon crawler RPG.
 
 SOURCE & CONTEXT:
 - Source: ${context.source} (${context.sourceType || "unknown"})
@@ -346,17 +402,19 @@ BALANCE GUIDELINES:
 ${context.themeHints || "Match the dungeon's dark fantasy atmosphere."}
 
 Generate a SINGLE effect that fits the context. Be creative but balanced.`,
-        system,
-        temperature: AI_CONFIG.temperature.balanced,
-        maxTokens: 600,
-        cacheKey,
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.balanced,
+          maxTokens: 600,
+          cacheKey,
+        }),
+      );
     }
 
     case "effect_combo": {
-      return Response.json(await generateWithAI({
-        schema: effectComboSchema,
-        prompt: `Two effects have combined into something greater.
+      return Response.json(
+        await generateWithAI({
+          schema: effectComboSchema,
+          prompt: `Two effects have combined into something greater.
 
 COMBO TRIGGERED:
 - Effect 1: ${context.effect1Name} (${context.effect1Element})
@@ -368,18 +426,24 @@ ${context.damage ? `Damage dealt: ${context.damage}` : ""}
 ${context.newEffectName ? `New effect created: ${context.newEffectName}` : ""}
 
 Describe this dramatic elemental interaction. Make it visceral and memorable.`,
-        system,
-        temperature: AI_CONFIG.temperature.creative,
-        maxTokens: 400,
-        useCache: false,
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.creative,
+          maxTokens: 400,
+          useCache: false,
+        }),
+      );
     }
 
     case "ambient_effect": {
-      const cacheKey = entityCache.generateKey("ambient", context.environmentType, context.effectName)
-      return Response.json(await generateWithAI({
-        schema: ambientEffectSchema,
-        prompt: `The dungeon environment is affecting the player.
+      const cacheKey = entityCache.generateKey(
+        "ambient",
+        context.environmentType,
+        context.effectName,
+      );
+      return Response.json(
+        await generateWithAI({
+          schema: ambientEffectSchema,
+          prompt: `The dungeon environment is affecting the player.
 
 ENVIRONMENT: ${context.environmentType}
 EFFECT: ${context.effectName}
@@ -388,14 +452,15 @@ ${context.wasResisted ? "The player RESISTED this effect." : context.wasMitigate
 Player class: ${context.playerClass}
 
 Describe how this environmental hazard manifests. Be atmospheric and foreboding.`,
-        system,
-        temperature: AI_CONFIG.temperature.narrative,
-        maxTokens: 300,
-        cacheKey,
-      }))
+          system,
+          temperature: AI_CONFIG.temperature.narrative,
+          maxTokens: 300,
+          cacheKey,
+        }),
+      );
     }
 
     default:
-      return Response.json({ error: "Unknown event type" }, { status: 400 })
+      return Response.json({ error: "Unknown event type" }, { status: 400 });
   }
 }
