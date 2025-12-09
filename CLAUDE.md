@@ -4,6 +4,48 @@
 
 ---
 
+## Task Management with Beads
+
+**IMPORTANT: Use `bd` (beads) for ALL task and issue management.** Do NOT use TodoWrite for task tracking - use beads instead.
+
+### Required Workflow
+
+1. **Before starting work:** Check for existing issues with `bd list` or `bd ready`
+2. **Starting a task:** Create or claim an issue with `bd create` or `bd update <id> --status in_progress`
+3. **During work:** Update issues as you discover blockers or sub-tasks
+4. **Completing work:** Close issues with `bd close <id> --reason "description"`
+
+### Essential Commands
+
+```bash
+bd list                              # View all issues
+bd ready                             # Find unblocked work (issues with no dependencies)
+bd create "Task description"         # Create new issue
+bd show <id>                         # View issue details
+bd update <id> --status in_progress  # Start working on issue
+bd close <id> --reason "Done"        # Complete and close issue
+bd dep add <id> --blocks <other>     # Add dependency between issues
+bd dep tree <id>                     # Visualize dependency graph
+bd sync                              # Sync with git
+```
+
+### For AI Agents
+
+```bash
+bd ready --json | jq '.[0]'          # Get next actionable issue as JSON
+bd update <id> --status in_progress --json
+bd list --json                       # Machine-readable output
+```
+
+### Issue States
+
+- `open` - Not yet started
+- `in_progress` - Currently being worked on
+- `blocked` - Waiting on dependencies
+- `done` - Completed
+
+---
+
 ## Quick Reference
 
 ```bash

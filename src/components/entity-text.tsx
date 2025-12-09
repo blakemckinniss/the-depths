@@ -1,19 +1,36 @@
-import type React from "react"
-import { cn } from "@/lib/utils"
-import type { EntityType, ItemRarity } from "@/lib/game-types"
-import { useEntityModal, type DisplayableEntity } from "./entity-modal-context"
+import type React from "react";
+import { cn } from "@/lib/utils";
+import type {
+  EntityType,
+  ItemRarity,
+  Enemy,
+  Item,
+  NPC,
+  Trap,
+  Shrine,
+  StatusEffect,
+  Companion,
+  Ability,
+} from "@/lib/game-types";
+import { useEntityModal, type DisplayableEntity } from "./entity-modal-context";
 
-export type EntityAnimation = "none" | "critical" | "heal-surge" | "damage-shake" | "levelup" | "combo-ready"
+export type EntityAnimation =
+  | "none"
+  | "critical"
+  | "heal-surge"
+  | "damage-shake"
+  | "levelup"
+  | "combo-ready";
 
 interface EntityTextProps {
-  children: React.ReactNode
-  type: EntityType | ItemRarity
-  className?: string
-  tooltip?: string
-  animation?: EntityAnimation
-  noAnimation?: boolean
-  entity?: DisplayableEntity // Optional entity for click-to-view
-  onClick?: () => void // Custom click handler (overrides entity modal)
+  children: React.ReactNode;
+  type: EntityType | ItemRarity;
+  className?: string;
+  tooltip?: string;
+  animation?: EntityAnimation;
+  noAnimation?: boolean;
+  entity?: DisplayableEntity; // Optional entity for click-to-view
+  onClick?: () => void; // Custom click handler (overrides entity modal)
 }
 
 // Base styles (colors and font weights)
@@ -43,7 +60,7 @@ const entityStyles: Record<EntityType | ItemRarity, string> = {
   unknown: "text-amber-400/80 italic",
   ability: "text-cyan-400 font-medium",
   environmental: "text-emerald-400/80",
-}
+};
 
 // Animation class mapping
 const animationStyles: Record<EntityAnimation, string> = {
@@ -53,7 +70,7 @@ const animationStyles: Record<EntityAnimation, string> = {
   "damage-shake": "entity-damage-shake",
   levelup: "entity-levelup",
   "combo-ready": "entity-combo-ready",
-}
+};
 
 // Wrapper component that uses the hook
 function ClickableEntityText({
@@ -66,7 +83,7 @@ function ClickableEntityText({
   entity,
   onClick,
 }: EntityTextProps & { entity: DisplayableEntity }) {
-  const { openEntity } = useEntityModal()
+  const { openEntity } = useEntityModal();
 
   return (
     <EntityTextInner
@@ -80,7 +97,7 @@ function ClickableEntityText({
     >
       {children}
     </EntityTextInner>
-  )
+  );
 }
 
 // Inner component without hook dependency
@@ -95,16 +112,16 @@ function EntityTextInner({
   isClickable = false,
 }: Omit<EntityTextProps, "entity"> & { isClickable?: boolean }) {
   // Get base style, stripping animation class if noAnimation is true
-  let baseStyle = entityStyles[type] || ""
+  let baseStyle = entityStyles[type] || "";
   if (noAnimation) {
-    baseStyle = baseStyle.replace(/entity-\w+/g, "").trim()
+    baseStyle = baseStyle.replace(/entity-\w+/g, "").trim();
   }
 
-  const animationClass = animation !== "none" ? animationStyles[animation] : ""
+  const animationClass = animation !== "none" ? animationStyles[animation] : "";
 
   const clickableStyles = isClickable
     ? "cursor-pointer hover:underline hover:brightness-125 transition-all"
-    : ""
+    : "";
 
   const content = (
     <span
@@ -112,11 +129,15 @@ function EntityTextInner({
       onClick={isClickable && onClick ? onClick : undefined}
       role={isClickable ? "button" : undefined}
       tabIndex={isClickable ? 0 : undefined}
-      onKeyDown={isClickable && onClick ? (e) => e.key === "Enter" && onClick() : undefined}
+      onKeyDown={
+        isClickable && onClick
+          ? (e) => e.key === "Enter" && onClick()
+          : undefined
+      }
     >
       {children}
     </span>
-  )
+  );
 
   if (tooltip) {
     return (
@@ -126,10 +147,10 @@ function EntityTextInner({
           {tooltip}
         </span>
       </span>
-    )
+    );
   }
 
-  return content
+  return content;
 }
 
 export function EntityText({
@@ -156,7 +177,7 @@ export function EntityText({
       >
         {children}
       </ClickableEntityText>
-    )
+    );
   }
 
   // Otherwise use the simple inner component (no entity = not clickable unless onClick provided)
@@ -172,7 +193,7 @@ export function EntityText({
     >
       {children}
     </EntityTextInner>
-  )
+  );
 }
 
 export function MysteryText({
@@ -180,15 +201,21 @@ export function MysteryText({
   revealed = false,
   className,
 }: {
-  children: React.ReactNode
-  revealed?: boolean
-  className?: string
+  children: React.ReactNode;
+  revealed?: boolean;
+  className?: string;
 }) {
   if (revealed) {
-    return <span className={className}>{children}</span>
+    return <span className={className}>{children}</span>;
   }
 
-  return <span className={cn("text-muted-foreground italic entity-mystery", className)}>{children}</span>
+  return (
+    <span
+      className={cn("text-muted-foreground italic entity-mystery", className)}
+    >
+      {children}
+    </span>
+  );
 }
 
 export function DamageNumber({
@@ -197,17 +224,17 @@ export function DamageNumber({
   isHeal = false,
   className,
 }: {
-  amount: number
-  isCritical?: boolean
-  isHeal?: boolean
-  className?: string
+  amount: number;
+  isCritical?: boolean;
+  isHeal?: boolean;
+  className?: string;
 }) {
   if (isHeal) {
     return (
       <EntityText type="heal" animation="heal-surge" className={className}>
         +{amount}
       </EntityText>
-    )
+    );
   }
 
   return (
@@ -219,15 +246,15 @@ export function DamageNumber({
       {isCritical && "CRIT! "}
       {amount}
     </EntityText>
-  )
+  );
 }
 
 export function LevelUpText({
   level,
   className,
 }: {
-  level: number
-  className?: string
+  level: number;
+  className?: string;
 }) {
   return (
     <span className={cn("entity-levelup inline-block", className)}>
@@ -235,22 +262,22 @@ export function LevelUpText({
       <span className="text-muted-foreground"> → </span>
       <span className="text-entity-player font-bold">Level {level}</span>
     </span>
-  )
+  );
 }
 
 export function RarityBadge({
   rarity,
   className,
 }: {
-  rarity: ItemRarity
-  className?: string
+  rarity: ItemRarity;
+  className?: string;
 }) {
   const rarityLabels: Record<ItemRarity, string> = {
     common: "Common",
     uncommon: "Uncommon",
     rare: "Rare",
     legendary: "Legendary",
-  }
+  };
 
   return (
     <span
@@ -265,5 +292,185 @@ export function RarityBadge({
     >
       {rarityLabels[rarity]}
     </span>
-  )
+  );
+}
+
+// =============================================================================
+// ENTITY-SPECIFIC COMPONENTS
+// These auto-extract name and provide clickability - use these instead of
+// manually passing entity={x} and children={x.name} to EntityText
+// =============================================================================
+
+interface EntityComponentProps {
+  className?: string;
+  animation?: EntityAnimation;
+  noAnimation?: boolean;
+}
+
+/** Clickable enemy name - auto-links to entity modal */
+export function EnemyText({
+  enemy,
+  className,
+  animation,
+  noAnimation,
+}: EntityComponentProps & { enemy: Enemy }) {
+  return (
+    <EntityText
+      type="enemy"
+      entity={enemy}
+      className={className}
+      animation={animation}
+      noAnimation={noAnimation}
+    >
+      {enemy.name}
+    </EntityText>
+  );
+}
+
+/** Clickable item name - auto-infers rarity styling and links to entity modal */
+export function ItemText({
+  item,
+  className,
+  animation,
+  noAnimation,
+}: EntityComponentProps & { item: Item }) {
+  // Use rarity for styling if available, otherwise fall back to entityType
+  const type = item.rarity || item.entityType || "item";
+  return (
+    <EntityText
+      type={type}
+      entity={item}
+      className={className}
+      animation={animation}
+      noAnimation={noAnimation}
+    >
+      {item.name}
+    </EntityText>
+  );
+}
+
+/** Clickable NPC name - auto-links to entity modal */
+export function NPCText({
+  npc,
+  className,
+  animation,
+  noAnimation,
+}: EntityComponentProps & { npc: NPC }) {
+  return (
+    <EntityText
+      type="npc"
+      entity={npc}
+      className={className}
+      animation={animation}
+      noAnimation={noAnimation}
+    >
+      {npc.name}
+    </EntityText>
+  );
+}
+
+/** Clickable trap name - auto-links to entity modal */
+export function TrapText({
+  trap,
+  className,
+  animation,
+  noAnimation,
+}: EntityComponentProps & { trap: Trap }) {
+  return (
+    <EntityText
+      type="trap"
+      entity={trap}
+      className={className}
+      animation={animation}
+      noAnimation={noAnimation}
+    >
+      {trap.name}
+    </EntityText>
+  );
+}
+
+/** Clickable shrine name - auto-links to entity modal */
+export function ShrineText({
+  shrine,
+  className,
+  animation,
+  noAnimation,
+}: EntityComponentProps & { shrine: Shrine }) {
+  return (
+    <EntityText
+      type="shrine"
+      entity={shrine}
+      className={className}
+      animation={animation}
+      noAnimation={noAnimation}
+    >
+      {shrine.name}
+    </EntityText>
+  );
+}
+
+/** Clickable status effect name - auto-styles based on buff/debuff */
+export function EffectText({
+  effect,
+  className,
+  animation,
+  noAnimation,
+}: EntityComponentProps & { effect: StatusEffect }) {
+  const type =
+    effect.effectType === "buff"
+      ? "blessing"
+      : effect.effectType === "debuff"
+        ? "curse"
+        : "effect";
+  return (
+    <EntityText
+      type={type}
+      entity={effect}
+      className={className}
+      animation={animation}
+      noAnimation={noAnimation}
+    >
+      {effect.name}
+    </EntityText>
+  );
+}
+
+/** Clickable companion name - auto-links to entity modal */
+export function CompanionText({
+  companion,
+  className,
+  animation,
+  noAnimation,
+}: EntityComponentProps & { companion: Companion }) {
+  return (
+    <EntityText
+      type="companion"
+      entity={companion}
+      className={className}
+      animation={animation}
+      noAnimation={noAnimation}
+    >
+      {companion.name}
+    </EntityText>
+  );
+}
+
+/** Clickable ability name - auto-links to entity modal */
+export function AbilityText({
+  ability,
+  className,
+  animation,
+  noAnimation,
+}: EntityComponentProps & { ability: Ability }) {
+  return (
+    <EntityText
+      type="ability"
+      entity={ability}
+      className={className}
+      animation={animation}
+      noAnimation={noAnimation}
+    >
+      {ability.name}
+    </EntityText>
+  );
 }

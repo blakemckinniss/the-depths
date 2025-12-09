@@ -84,6 +84,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": ".claude/hooks/beads-check.sh",
+            "timeout": 15
+          },
+          {
+            "type": "command",
             "command": ".claude/hooks/session-start.sh",
             "timeout": 10
           },
@@ -131,6 +136,16 @@
       {
         "matcher": "",
         "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/task-checklist.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/beads-reminder.sh",
+            "timeout": 10
+          },
           {
             "type": "command",
             "command": ".claude/hooks/context-injector.sh",
