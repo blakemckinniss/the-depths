@@ -1098,3 +1098,872 @@ export type ContainerType = (typeof CONTAINER_TYPES)[number];
 export type DungeonTheme = (typeof DUNGEON_THEMES)[number];
 export type NPCRole = (typeof NPC_ROLES)[number];
 export type AITemperaturePreset = keyof typeof AI_TEMPERATURES;
+
+// =============================================================================
+// COMBAT SYSTEM CONSTANTS
+// Damage calculations, multipliers, AI behavior thresholds
+// =============================================================================
+
+/**
+ * Damage type effectiveness multipliers
+ */
+export const DAMAGE_EFFECTIVENESS = {
+  /** Damage multiplier when hitting enemy weakness */
+  weaknessMultiplier: 1.5,
+  /** Damage multiplier when hitting enemy resistance */
+  resistanceMultiplier: 0.5,
+  /** Defense reduction ratio for damage calculation */
+  defenseReductionRatio: 0.5,
+} as const;
+
+/**
+ * Critical hit configuration
+ */
+export const CRITICAL_HIT_CONFIG = {
+  /** Base critical hit chance (before modifiers) */
+  baseChance: 0.05,
+  /** Base critical damage multiplier */
+  baseDamageMultiplier: 1.5,
+} as const;
+
+/**
+ * Combo system definitions - sequences that trigger bonuses
+ */
+export const COMBO_BONUSES = {
+  fire_burst: {
+    bonus: 0.5,
+    duration: 2,
+    description: "+50% fire damage for 2 turns",
+  },
+  shadow_chain: {
+    ignoreDefense: true,
+    duration: 1,
+    description: "Next attack ignores defense",
+  },
+  holy_shield: {
+    blockNextAttack: true,
+    duration: 1,
+    description: "Block next attack completely",
+  },
+  frost_lock: {
+    attackReduction: -0.3,
+    duration: 2,
+    description: "Enemy slowed, -30% attack",
+  },
+  berserker_rage: {
+    damageBoost: 0.25,
+    defenseReduction: 0.15,
+    duration: 3,
+    description: "+25% damage, -15% defense for 3 turns",
+  },
+} as const;
+
+/**
+ * Enemy AI behavior thresholds
+ */
+export const ENEMY_AI_THRESHOLDS = {
+  /** Health percentage to trigger defensive behavior */
+  defensiveHealthThreshold: 0.4,
+  /** Chance to use ability when in defensive mode with low health */
+  defensiveLowHealthAbilityChance: 0.8,
+  /** Chance to use ability in defensive mode normally */
+  defensiveNormalAbilityChance: 0.3,
+  /** Player health threshold to trigger finishing moves (smart AI) */
+  finishingMoveThreshold: 0.3,
+  /** Chance to use finishing move when player is low */
+  finishingMoveChance: 0.7,
+  /** Player health threshold for early debuffs (smart AI) */
+  earlyDebuffThreshold: 0.6,
+  /** Chance to use debuff early */
+  earlyDebuffChance: 0.5,
+  /** Base ability usage chance for smart AI */
+  smartBaseAbilityChance: 0.4,
+} as const;
+
+/**
+ * Enemy ability generation parameters
+ */
+export const ENEMY_ABILITY_CONFIG = {
+  /** Base cooldown for generated abilities */
+  baseCooldown: 2,
+  /** Random cooldown variance */
+  cooldownVariance: 2,
+  /** Ability damage templates with multipliers */
+  damageMultipliers: {
+    savageStrike: 1.5,
+    poisonSpit: 0.8,
+    darkBolt: 1.2,
+    flameBreath: 1.4,
+    frostTouch: 0.9,
+    arcaneBlast: 1.1,
+  },
+  /** Effect chances by damage type */
+  effectChances: {
+    poison: 0.7,
+    shadow: 0.5,
+    fire: 0.6,
+    ice: 0.6,
+    arcane: 0.5,
+    physical: 0,
+  },
+} as const;
+
+// =============================================================================
+// ITEM GENERATION CONSTANTS
+// Weapon/armor base stats, rarity scaling, loot rolls
+// =============================================================================
+
+/**
+ * Weapon base stats by subtype
+ */
+export const WEAPON_BASE_STATS = {
+  sword: {
+    baseDamage: 6,
+    critChance: 0.1,
+    critDamage: 1.5,
+    attackSpeed: "normal",
+  },
+  axe: {
+    baseDamage: 8,
+    critChance: 0.15,
+    critDamage: 2.0,
+    attackSpeed: "slow",
+  },
+  dagger: {
+    baseDamage: 4,
+    critChance: 0.25,
+    critDamage: 2.5,
+    attackSpeed: "fast",
+  },
+  bow: {
+    baseDamage: 5,
+    critChance: 0.15,
+    critDamage: 1.75,
+    attackSpeed: "normal",
+  },
+  staff: {
+    baseDamage: 4,
+    critChance: 0.1,
+    critDamage: 1.5,
+    attackSpeed: "slow",
+  },
+  wand: {
+    baseDamage: 3,
+    critChance: 0.12,
+    critDamage: 1.75,
+    attackSpeed: "fast",
+  },
+  mace: {
+    baseDamage: 7,
+    critChance: 0.08,
+    critDamage: 1.5,
+    attackSpeed: "slow",
+  },
+  spear: {
+    baseDamage: 5,
+    critChance: 0.12,
+    critDamage: 1.75,
+    attackSpeed: "normal",
+  },
+  greatsword: {
+    baseDamage: 12,
+    critChance: 0.1,
+    critDamage: 2.0,
+    attackSpeed: "slow",
+  },
+  scythe: {
+    baseDamage: 9,
+    critChance: 0.2,
+    critDamage: 2.25,
+    attackSpeed: "slow",
+  },
+} as const;
+
+/**
+ * Armor base defense by slot
+ */
+export const ARMOR_BASE_DEFENSE = {
+  helmet: 3,
+  chest: 6,
+  gloves: 2,
+  boots: 2,
+  shield: 5,
+  cloak: 1,
+} as const;
+
+/**
+ * Item rarity stat multipliers for scaling
+ */
+export const ITEM_RARITY_MULTIPLIERS = {
+  common: 1.0,
+  uncommon: 1.4,
+  rare: 2.0,
+  legendary: 3.5,
+} as const;
+
+/**
+ * Per-floor stat scaling percentage
+ */
+export const ITEM_FLOOR_SCALING = 0.08; // 8% per floor
+
+/**
+ * Rarity roll probabilities (base chances before floor bonus)
+ */
+export const RARITY_ROLL_BASE = {
+  legendary: 0.03,
+  rare: 0.12,
+  uncommon: 0.25,
+  /** Floor bonus multipliers per rarity */
+  floorBonusMultipliers: {
+    legendary: 0.005,
+    rare: 0.01,
+    uncommon: 0.015,
+  },
+} as const;
+
+/**
+ * Elemental damage roll chances by rarity
+ */
+export const ELEMENTAL_DAMAGE_CHANCES = {
+  common: 0, // Always physical
+  uncommon: 0.2,
+  rare: 0.5,
+  legendary: 0.8,
+} as const;
+
+/**
+ * Weapon subtype spawn weights (higher = more common)
+ */
+export const WEAPON_SPAWN_WEIGHTS = {
+  sword: 20,
+  axe: 15,
+  dagger: 15,
+  bow: 12,
+  staff: 10,
+  wand: 8,
+  mace: 10,
+  spear: 10,
+  greatsword: 5,
+  scythe: 3,
+} as const;
+
+/**
+ * Armor subtype spawn weights (higher = more common)
+ */
+export const ARMOR_SPAWN_WEIGHTS = {
+  chest: 25,
+  helmet: 20,
+  boots: 18,
+  gloves: 15,
+  shield: 12,
+  cloak: 10,
+} as const;
+
+/**
+ * Ego enchantment chances
+ */
+export const EGO_ENCHANT_CONFIG = {
+  /** Uncommon items have small chance for ego */
+  uncommonEgoChance: 0.3,
+  /** Rare and legendary always get ego */
+  guaranteedEgoRarities: ["rare", "legendary"] as const,
+} as const;
+
+// =============================================================================
+// ENEMY RANK SYSTEM CONSTANTS
+// Rank modifiers, spawn rates, naming conventions
+// =============================================================================
+
+/**
+ * Enemy rank stat multipliers
+ */
+export const ENEMY_RANK_MODIFIERS = {
+  normal: {
+    healthMultiplier: 1.0,
+    attackMultiplier: 1.0,
+    defenseMultiplier: 1.0,
+    expMultiplier: 1.0,
+    goldMultiplier: 1.0,
+    abilityCount: 0,
+    guaranteedLoot: false,
+    lootRarityBoost: 0,
+  },
+  rare: {
+    healthMultiplier: 1.5,
+    attackMultiplier: 1.3,
+    defenseMultiplier: 1.2,
+    expMultiplier: 2.0,
+    goldMultiplier: 2.5,
+    abilityCount: 1,
+    guaranteedLoot: true,
+    lootRarityBoost: 1,
+  },
+  unique: {
+    healthMultiplier: 2.0,
+    attackMultiplier: 1.6,
+    defenseMultiplier: 1.5,
+    expMultiplier: 4.0,
+    goldMultiplier: 5.0,
+    abilityCount: 2,
+    guaranteedLoot: true,
+    lootRarityBoost: 2,
+  },
+  boss: {
+    healthMultiplier: 3.0,
+    attackMultiplier: 2.0,
+    defenseMultiplier: 2.0,
+    expMultiplier: 8.0,
+    goldMultiplier: 10.0,
+    abilityCount: 3,
+    guaranteedLoot: true,
+    lootRarityBoost: 2,
+  },
+  elite_boss: {
+    healthMultiplier: 5.0,
+    attackMultiplier: 2.5,
+    defenseMultiplier: 2.5,
+    expMultiplier: 15.0,
+    goldMultiplier: 20.0,
+    abilityCount: 4,
+    guaranteedLoot: true,
+    lootRarityBoost: 3,
+  },
+} as const;
+
+/**
+ * Enemy rank spawn probabilities (cumulative thresholds)
+ */
+export const ENEMY_RANK_SPAWN_RATES = {
+  normal: 0.7, // 70% normal
+  rare: 0.9, // 20% rare (70-90)
+  unique: 0.97, // 7% unique (90-97)
+  /** Floor bonus for rank rolling */
+  floorBonusPerFloor: 0.02,
+  maxFloorBonus: 0.15,
+  /** Elite boss spawn chance on high floors */
+  eliteBossFloorRequirement: 5,
+  eliteBossChance: 0.01,
+} as const;
+
+/**
+ * Rank ability damage multipliers
+ */
+export const RANK_ABILITY_MULTIPLIERS = {
+  rare: {
+    crushingBlow: 1.8,
+    venomousStrike: 1.2,
+  },
+  unique: {
+    soulRend: 2.0,
+    lifeDrain: 1.5,
+    infernalBlast: 2.2,
+    frostNova: 1.6,
+  },
+  boss: {
+    annihilate: 3.0,
+    voidRift: 2.5,
+  },
+} as const;
+
+// =============================================================================
+// SKILL CHECK CONSTANTS
+// Difficulty thresholds, class bonuses, stat calculations
+// =============================================================================
+
+/**
+ * Skill check difficulty class (DC) thresholds
+ */
+export const SKILL_DIFFICULTY_THRESHOLDS = {
+  trivial: 5,
+  easy: 10,
+  moderate: 15,
+  hard: 20,
+  veryHard: 25,
+  nearlyImpossible: 30,
+} as const;
+
+/**
+ * Get difficulty label from DC value
+ */
+export function getDifficultyLabel(dc: number): string {
+  if (dc <= SKILL_DIFFICULTY_THRESHOLDS.trivial) return "Trivial";
+  if (dc <= SKILL_DIFFICULTY_THRESHOLDS.easy) return "Easy";
+  if (dc <= SKILL_DIFFICULTY_THRESHOLDS.moderate) return "Moderate";
+  if (dc <= SKILL_DIFFICULTY_THRESHOLDS.hard) return "Hard";
+  if (dc <= SKILL_DIFFICULTY_THRESHOLDS.veryHard) return "Very Hard";
+  return "Nearly Impossible";
+}
+
+/**
+ * Class skill bonuses for skill checks
+ */
+export const CLASS_SKILL_BONUSES = {
+  rogue: { stealth: 3, dexterity: 3, perception: 2 },
+  mage: { arcana: 3, intelligence: 3 },
+  warlock: { arcana: 3, intelligence: 3 },
+  necromancer: { arcana: 3, intelligence: 3 },
+  cleric: { wisdom: 3, medicine: 3 },
+  paladin: { wisdom: 3, medicine: 3 },
+  ranger: { survival: 3, perception: 3, stealth: 2 },
+  barbarian: { strength: 3 },
+  warrior: { strength: 3 },
+  monk: { wisdom: 2, dexterity: 2 },
+} as const;
+
+/**
+ * Skill check calculation constants
+ */
+export const SKILL_CHECK_CONFIG = {
+  /** Base stat value for modifier calculation */
+  baseStatValue: 10,
+  /** Stat divisor for modifier (stat - 10) / 2 */
+  modifierDivisor: 2,
+  /** Level scaling (bonus per X levels) */
+  levelScalingDivisor: 4,
+  /** Charisma scaling divisor (level-based) */
+  charismaLevelDivisor: 3,
+  /** Critical success roll */
+  criticalSuccess: 20,
+  /** Critical failure roll */
+  criticalFailure: 1,
+} as const;
+
+// =============================================================================
+// PATH SYSTEM CONSTANTS
+// Path generation, danger levels, reward multipliers
+// =============================================================================
+
+/**
+ * Path generation configuration
+ */
+export const PATH_GENERATION_CONFIG = {
+  /** Minimum paths per junction */
+  minPaths: 2,
+  /** Maximum paths per junction */
+  maxPaths: 3,
+  /** Chance to guarantee at least one safe option */
+  safePathGuaranteeChance: 0.7,
+  /** Chance to add a mystery path */
+  mysteryPathChance: 0.2,
+} as const;
+
+/**
+ * Path danger level thresholds (based on roll)
+ */
+export const PATH_DANGER_THRESHOLDS = {
+  /** Roll above this = safe path */
+  safe: 0.7,
+  /** Roll above this = moderate path */
+  moderate: 0.4,
+  /** Roll above this = dangerous path */
+  dangerous: 0.15,
+  /** Below dangerous threshold = boss path chance */
+} as const;
+
+/**
+ * Path reward multipliers
+ */
+export const PATH_REWARD_MULTIPLIERS = {
+  rich: 1.5,
+  standard: 1.0,
+  poor: 0.6,
+  /** Unknown has variable rewards */
+  unknownGood: 2.0,
+  unknownBad: 0.8,
+  /** Chance for unknown to be good */
+  unknownGoodChance: 0.3,
+} as const;
+
+/**
+ * Room type probabilities by danger level
+ */
+export const ROOM_TYPE_PROBABILITIES = {
+  safe: {
+    treasure: 0.5,
+    shrine: 0.25,
+    npc: 0.25,
+  },
+  moderate: {
+    enemy: 0.6,
+    trap: 0.2,
+    treasure: 0.2,
+  },
+  dangerous: {
+    enemy: 0.7,
+    trap: 0.3,
+  },
+} as const;
+
+// =============================================================================
+// COMPANION SYSTEM CONSTANTS
+// Party limits, bond mechanics, taming rules
+// =============================================================================
+
+/**
+ * Party composition limits
+ */
+export const PARTY_LIMITS = {
+  /** Max active companions by player level */
+  activeByLevel: {
+    level10Plus: 3,
+    level5Plus: 2,
+    default: 1,
+  },
+  /** Level thresholds */
+  levelThresholds: {
+    tier3: 10,
+    tier2: 5,
+  },
+  /** Maximum total companions (active + reserve) */
+  maxTotal: 10,
+} as const;
+
+/**
+ * Get max active companions for a player level
+ */
+export function getMaxActiveCompanions(playerLevel: number): number {
+  if (playerLevel >= PARTY_LIMITS.levelThresholds.tier3)
+    return PARTY_LIMITS.activeByLevel.level10Plus;
+  if (playerLevel >= PARTY_LIMITS.levelThresholds.tier2)
+    return PARTY_LIMITS.activeByLevel.level5Plus;
+  return PARTY_LIMITS.activeByLevel.default;
+}
+
+/**
+ * Bond tier thresholds
+ */
+export const BOND_TIER_THRESHOLDS = {
+  hostile: { max: 10 },
+  wary: { min: 10, max: 25 },
+  neutral: { min: 25, max: 50 },
+  friendly: { min: 50, max: 75 },
+  loyal: { min: 75, max: 95 },
+  soulbound: { min: 95 },
+} as const;
+
+/**
+ * Get bond tier from bond level
+ */
+export function getBondTierFromLevel(
+  bondLevel: number,
+): "hostile" | "wary" | "neutral" | "friendly" | "loyal" | "soulbound" {
+  if (bondLevel < BOND_TIER_THRESHOLDS.hostile.max) return "hostile";
+  if (bondLevel < BOND_TIER_THRESHOLDS.wary.max) return "wary";
+  if (bondLevel < BOND_TIER_THRESHOLDS.neutral.max) return "neutral";
+  if (bondLevel < BOND_TIER_THRESHOLDS.friendly.max) return "friendly";
+  if (bondLevel < BOND_TIER_THRESHOLDS.loyal.max) return "loyal";
+  return "soulbound";
+}
+
+/**
+ * Bond tier combat effects
+ */
+export const BOND_TIER_EFFECTS = {
+  hostile: { damageBonus: -0.5, defenseBonus: -0.5, betrayalChance: 0.3 },
+  wary: { damageBonus: -0.2, defenseBonus: -0.2, betrayalChance: 0.1 },
+  neutral: { damageBonus: 0, defenseBonus: 0, betrayalChance: 0.02 },
+  friendly: { damageBonus: 0.1, defenseBonus: 0.1, betrayalChance: 0 },
+  loyal: { damageBonus: 0.25, defenseBonus: 0.25, betrayalChance: 0 },
+  soulbound: { damageBonus: 0.5, defenseBonus: 0.5, betrayalChance: 0 },
+} as const;
+
+/**
+ * Taming mechanics configuration
+ */
+export const TAMING_CONFIG = {
+  /** Enemy HP threshold to allow taming (percentage) */
+  hpThreshold: 0.25,
+  /** Base taming success chance */
+  baseChance: 0.3,
+  /** Ranger class bonus */
+  rangerBonus: 0.25,
+  /** Penalty per level difference */
+  levelDiffPenalty: 0.1,
+  /** Minimum taming chance */
+  minChance: 0.05,
+  /** Maximum taming chance */
+  maxChance: 0.9,
+  /** EXP to level ratio for enemy level estimate */
+  expToLevelRatio: 15,
+} as const;
+
+/**
+ * Companion fallback stats by NPC role
+ */
+export const NPC_COMPANION_STATS = {
+  merchant: { health: 20, attack: 3, defense: 2, style: "passive" },
+  quest_giver: { health: 25, attack: 5, defense: 3, style: "support" },
+  trapped: { health: 30, attack: 6, defense: 4, style: "defensive" },
+  mysterious: { health: 25, attack: 7, defense: 3, style: "tactical" },
+  hostile_neutral: { health: 35, attack: 8, defense: 5, style: "aggressive" },
+} as const;
+
+// =============================================================================
+// CHAOS EVENT CONSTANTS
+// Event probabilities, durations, severity effects
+// =============================================================================
+
+/**
+ * Chaos event severity levels
+ */
+export const CHAOS_SEVERITY_LEVELS = [
+  "minor",
+  "moderate",
+  "major",
+  "catastrophic",
+] as const;
+
+/**
+ * Chaos event type categories
+ */
+export const CHAOS_EVENT_TYPES = [
+  "environmental",
+  "invasion",
+  "magical",
+  "factional",
+  "cosmic",
+  "personal",
+] as const;
+
+/**
+ * Base chaos event trigger probabilities
+ */
+export const CHAOS_TRIGGER_PROBABILITIES = {
+  /** Random event base chances */
+  random: {
+    tunnelCollapse: 0.03,
+    risingWaters: 0.02,
+    planarRift: 0.01,
+  },
+  /** Mood threshold triggers */
+  moodThreshold: {
+    tunnelCollapse: { threshold: 70, chance: 0.1 },
+    risingWaters: { threshold: 70, chance: 0.05 },
+    monsterMigration: { threshold: 80, chance: 0.2 },
+    wildMagicSurge: { threshold: 60, chance: 0.08 },
+  },
+  /** Floor-based triggers */
+  floorBased: {
+    risingWaters: { floor: 3, chance: 0.05 },
+    planarRift: { floor: 5, chance: 0.05 },
+    stalker: { floor: 2, chance: 0.05 },
+  },
+  /** Turn count triggers */
+  turnCount: {
+    monsterMigration: { every: 50, chance: 0.1 },
+    bloodMoon: { every: 100, chance: 0.15 },
+  },
+  /** Kill threshold triggers */
+  killThreshold: {
+    stalker: { kills: 10, chance: 0.1 },
+  },
+  /** Player action triggers */
+  playerAction: {
+    spreadingFire: { action: "fire_spell", chance: 0.15 },
+    wildMagicSurge: { action: "spell_cast", chance: 0.05 },
+  },
+  /** Cascade triggers from other events */
+  cascade: {
+    spreadingFire: { from: "oil_spill", chance: 0.8 },
+    nemesisReturns: { from: "enemy_escaped", chance: 0.5 },
+    factionWar: { from: "at_war", chance: 0.3 },
+  },
+} as const;
+
+/**
+ * Chaos event duration ranges
+ */
+export const CHAOS_EVENT_DURATIONS = {
+  /** Short environmental events */
+  short: { min: 3, max: 5 },
+  /** Medium duration events */
+  medium: { min: 8, max: 15 },
+  /** Long cosmic/invasion events */
+  long: { min: 15, max: 25 },
+  /** Permanent until resolved */
+  permanent: -1,
+} as const;
+
+/**
+ * Chaos event reward scaling
+ */
+export const CHAOS_EVENT_REWARDS = {
+  minor: { exp: 25, gold: 15 },
+  moderate: { exp: 50, gold: 30 },
+  major: { exp: 100, gold: 50 },
+  catastrophic: { exp: 200, gold: 100 },
+} as const;
+
+/**
+ * Chaos event escalation timing
+ */
+export const CHAOS_ESCALATION_CONFIG = {
+  /** Turns between escalation checks */
+  escalationInterval: 5,
+} as const;
+
+// =============================================================================
+// EXTENDED PROMPT GENERATORS FOR NEW SYSTEMS
+// =============================================================================
+
+/**
+ * Generate combat system prompt for AI
+ */
+export function generateCombatPrompt(): string {
+  return `COMBAT MECHANICS:
+Damage effectiveness:
+• Weakness hit: ${DAMAGE_EFFECTIVENESS.weaknessMultiplier}x damage
+• Resistance hit: ${DAMAGE_EFFECTIVENESS.resistanceMultiplier}x damage
+• Defense reduces damage by ${DAMAGE_EFFECTIVENESS.defenseReductionRatio * 100}%
+
+Stances:
+${Object.entries(STANCE_MODIFIERS)
+  .map(
+    ([stance, mods]) =>
+      `• ${stance}: ${mods.damageMultiplier}x damage, ${mods.defenseMultiplier}x defense`,
+  )
+  .join("\n")}
+
+Critical hits: ${CRITICAL_HIT_CONFIG.baseChance * 100}% chance, ${CRITICAL_HIT_CONFIG.baseDamageMultiplier}x damage`;
+}
+
+/**
+ * Generate enemy rank prompt for AI
+ */
+export function generateEnemyRankPrompt(): string {
+  return `ENEMY RANKS:
+${Object.entries(ENEMY_RANK_MODIFIERS)
+  .map(
+    ([rank, mods]) =>
+      `• ${rank}: ${mods.healthMultiplier}x HP, ${mods.attackMultiplier}x ATK, ${mods.expMultiplier}x EXP, ${mods.abilityCount} abilities`,
+  )
+  .join("\n")}
+
+Spawn rates: Normal ${ENEMY_RANK_SPAWN_RATES.normal * 100}%, Rare ${(ENEMY_RANK_SPAWN_RATES.rare - ENEMY_RANK_SPAWN_RATES.normal) * 100}%, Unique ${(ENEMY_RANK_SPAWN_RATES.unique - ENEMY_RANK_SPAWN_RATES.rare) * 100}%`;
+}
+
+/**
+ * Generate skill check prompt for AI
+ */
+export function generateSkillCheckPrompt(): string {
+  return `SKILL CHECK DCs:
+${Object.entries(SKILL_DIFFICULTY_THRESHOLDS)
+  .map(([diff, dc]) => `• ${diff}: DC ${dc}`)
+  .join("\n")}
+
+Natural 20 = Critical Success, Natural 1 = Critical Failure
+Modifiers: (stat - 10) / 2 + class bonus + level/${SKILL_CHECK_CONFIG.levelScalingDivisor}`;
+}
+
+/**
+ * Generate companion system prompt for AI
+ */
+export function generateCompanionPrompt(): string {
+  return `COMPANION MECHANICS:
+Party limits: Level 1-4 = 1 active, Level 5-9 = 2 active, Level 10+ = 3 active
+Max total companions: ${PARTY_LIMITS.maxTotal}
+
+Bond tiers and effects:
+${Object.entries(BOND_TIER_EFFECTS)
+  .map(
+    ([tier, effects]) =>
+      `• ${tier}: ${effects.damageBonus > 0 ? "+" : ""}${effects.damageBonus * 100}% damage, ${effects.betrayalChance > 0 ? `${effects.betrayalChance * 100}% betrayal` : "no betrayal"}`,
+  )
+  .join("\n")}
+
+Taming: Enemy must be below ${TAMING_CONFIG.hpThreshold * 100}% HP, base ${TAMING_CONFIG.baseChance * 100}% chance, Ranger +${TAMING_CONFIG.rangerBonus * 100}%`;
+}
+
+/**
+ * Generate chaos event prompt for AI
+ */
+export function generateChaosPrompt(): string {
+  return `CHAOS EVENTS:
+Severity levels: ${CHAOS_SEVERITY_LEVELS.join(" < ")}
+Event types: ${CHAOS_EVENT_TYPES.join(", ")}
+
+Reward scaling:
+${Object.entries(CHAOS_EVENT_REWARDS)
+  .map(
+    ([severity, rewards]) =>
+      `• ${severity}: ${rewards.exp} EXP, ${rewards.gold} gold`,
+  )
+  .join("\n")}
+
+Events can be triggered by: random chance, mood thresholds, floor depth, turn count, kills, player actions, or cascade from other events.`;
+}
+
+/**
+ * Generate path system prompt for AI
+ */
+export function generatePathPrompt(): string {
+  return `PATH SYSTEM:
+Paths per junction: ${PATH_GENERATION_CONFIG.minPaths}-${PATH_GENERATION_CONFIG.maxPaths}
+Safe path guarantee: ${PATH_GENERATION_CONFIG.safePathGuaranteeChance * 100}%
+Mystery path chance: ${PATH_GENERATION_CONFIG.mysteryPathChance * 100}%
+
+Danger levels affect rewards:
+• Safe (>${PATH_DANGER_THRESHOLDS.safe * 100}%): Poor rewards, treasure/shrine/NPC
+• Moderate (>${PATH_DANGER_THRESHOLDS.moderate * 100}%): Standard rewards, enemy/trap/treasure
+• Dangerous (>${PATH_DANGER_THRESHOLDS.dangerous * 100}%): Rich rewards, enemy/trap/boss
+
+Reward multipliers: rich=${PATH_REWARD_MULTIPLIERS.rich}x, standard=${PATH_REWARD_MULTIPLIERS.standard}x, poor=${PATH_REWARD_MULTIPLIERS.poor}x`;
+}
+
+/**
+ * Generate item generation prompt for AI
+ */
+export function generateItemGenerationPrompt(): string {
+  return `ITEM GENERATION:
+Rarity multipliers: ${Object.entries(ITEM_RARITY_MULTIPLIERS)
+    .map(([r, m]) => `${r}=${m}x`)
+    .join(", ")}
+Floor scaling: +${ITEM_FLOOR_SCALING * 100}% per floor
+
+Weapon base damage by type:
+${Object.entries(WEAPON_BASE_STATS)
+  .map(
+    ([type, stats]) =>
+      `• ${type}: ${stats.baseDamage} base, ${stats.critChance * 100}% crit, ${stats.critDamage}x crit dmg`,
+  )
+  .join("\n")}
+
+Elemental damage chances: ${Object.entries(ELEMENTAL_DAMAGE_CHANCES)
+    .map(([r, c]) => `${r}=${c * 100}%`)
+    .join(", ")}`;
+}
+
+/**
+ * Master comprehensive prompt with all new systems
+ */
+export function generateFullMechanicsPrompt(options?: {
+  includeCombat?: boolean;
+  includeEnemyRanks?: boolean;
+  includeSkillChecks?: boolean;
+  includeCompanions?: boolean;
+  includeChaos?: boolean;
+  includePaths?: boolean;
+  includeItemGen?: boolean;
+}): string {
+  const parts = [generateMechanicsPrompt()];
+
+  if (options?.includeCombat) parts.push(generateCombatPrompt());
+  if (options?.includeEnemyRanks) parts.push(generateEnemyRankPrompt());
+  if (options?.includeSkillChecks) parts.push(generateSkillCheckPrompt());
+  if (options?.includeCompanions) parts.push(generateCompanionPrompt());
+  if (options?.includeChaos) parts.push(generateChaosPrompt());
+  if (options?.includePaths) parts.push(generatePathPrompt());
+  if (options?.includeItemGen) parts.push(generateItemGenerationPrompt());
+
+  return parts.join("\n\n");
+}
+
+// =============================================================================
+// TYPE EXPORTS FOR NEW CONSTANTS
+// =============================================================================
+
+export type EnemyRank = keyof typeof ENEMY_RANK_MODIFIERS;
+export type BondTier = keyof typeof BOND_TIER_EFFECTS;
+export type ChaosSeverity = (typeof CHAOS_SEVERITY_LEVELS)[number];
+export type ChaosEventType = (typeof CHAOS_EVENT_TYPES)[number];
+export type SkillDifficulty = keyof typeof SKILL_DIFFICULTY_THRESHOLDS;
