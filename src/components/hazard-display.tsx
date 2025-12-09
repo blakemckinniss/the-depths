@@ -9,15 +9,15 @@ interface HazardDisplayProps {
 }
 
 const hazardColors: Record<EnvironmentalHazard["type"], string> = {
-  fire: "text-orange-400 bg-orange-500/10 border-orange-500/30",
-  ice: "text-cyan-400 bg-cyan-500/10 border-cyan-500/30",
-  poison: "text-green-400 bg-green-500/10 border-green-500/30",
-  darkness: "text-purple-400 bg-purple-500/10 border-purple-500/30",
-  holy: "text-yellow-400 bg-yellow-500/10 border-yellow-500/30",
-  arcane: "text-blue-400 bg-blue-500/10 border-blue-500/30",
-  flooding: "text-blue-300 bg-blue-400/10 border-blue-400/30",
-  crumbling: "text-stone-400 bg-stone-500/10 border-stone-500/30",
-  haunted: "text-violet-400 bg-violet-500/10 border-violet-500/30",
+  fire: "text-orange-400 border-l-orange-500/70",
+  ice: "text-cyan-400 border-l-cyan-500/70",
+  poison: "text-green-400 border-l-green-500/70",
+  darkness: "text-purple-400 border-l-purple-500/70",
+  holy: "text-yellow-400 border-l-yellow-500/70",
+  arcane: "text-blue-400 border-l-blue-500/70",
+  flooding: "text-blue-300 border-l-blue-400/70",
+  crumbling: "text-stone-400 border-l-stone-500/70",
+  haunted: "text-violet-400 border-l-violet-500/70",
 }
 
 const hazardIcons: Record<EnvironmentalHazard["type"], string> = {
@@ -34,7 +34,7 @@ const hazardIcons: Record<EnvironmentalHazard["type"], string> = {
 
 export function HazardDisplay({ hazard, isMitigated }: HazardDisplayProps) {
   return (
-    <div className={cn("p-2 rounded border text-sm", hazardColors[hazard.type])}>
+    <div className={cn("pl-3 py-2 border-l-2 text-sm", hazardColors[hazard.type])}>
       <div className="flex items-center gap-2">
         <span className="text-lg">{hazardIcons[hazard.type]}</span>
         <div className="flex-1">

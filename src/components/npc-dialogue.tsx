@@ -21,7 +21,7 @@ interface NPCDialogueProps {
 
 export function NPCDialogue({ npc, player: _player, dialogue, options, onChoice, isProcessing }: NPCDialogueProps) {
   return (
-    <div className="my-4 p-4 bg-amber-500/5 rounded-lg space-y-3">
+    <div className="my-4 pl-4 py-3 border-l-2 border-l-amber-500/50 space-y-3">
       <div className="flex items-center gap-2">
         <EntityText type="npc" entity={npc}>{npc.name}</EntityText>
         <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-700/50 text-zinc-400">{npc.role}</span>
@@ -44,7 +44,7 @@ export function NPCDialogue({ npc, player: _player, dialogue, options, onChoice,
             onClick={() => onChoice(option.id)}
             disabled={isProcessing || option.disabled}
             className={cn(
-              "px-3 py-1.5 text-sm rounded transition-colors",
+              "px-3 py-1.5 text-sm transition-colors",
               option.action === "attack" && "bg-red-500/20 text-red-400 hover:bg-red-500/30",
               option.action === "trade" && "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30",
               option.action === "help" && "bg-teal-500/20 text-teal-300 hover:bg-teal-500/30",

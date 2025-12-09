@@ -15,7 +15,7 @@ export function TrapInteraction({ trap, player, onAction, disabled }: TrapIntera
   const disarmChance = calculateDisarmChance(player, trap)
 
   return (
-    <div className="p-4 bg-stone-900/50 rounded space-y-4">
+    <div className="my-4 pl-4 py-3 border-l-2 border-l-red-500/50 space-y-4">
       <div className="text-center">
         <EntityText type="trap" className="text-lg">
           {trap.name}
@@ -37,7 +37,7 @@ export function TrapInteraction({ trap, player, onAction, disabled }: TrapIntera
         <button
           onClick={() => onAction("disarm")}
           disabled={disabled}
-          className="px-4 py-2 bg-cyan-900/40 hover:bg-cyan-800/50 text-cyan-300 rounded transition-colors disabled:opacity-50"
+          className="px-4 py-2 bg-cyan-900/40 hover:bg-cyan-800/50 text-cyan-300 transition-colors disabled:opacity-50"
         >
           Attempt Disarm <span className="text-cyan-500/70">({Math.floor(disarmChance)}%)</span>
         </button>
@@ -45,7 +45,7 @@ export function TrapInteraction({ trap, player, onAction, disabled }: TrapIntera
         <button
           onClick={() => onAction("avoid")}
           disabled={disabled}
-          className="px-4 py-2 bg-stone-800/50 hover:bg-stone-700/50 text-stone-300 rounded transition-colors disabled:opacity-50"
+          className="px-4 py-2 bg-stone-800/50 hover:bg-stone-700/50 text-stone-300 transition-colors disabled:opacity-50"
         >
           Carefully Avoid <span className="text-stone-500">(50%, reduced damage)</span>
         </button>
@@ -53,7 +53,7 @@ export function TrapInteraction({ trap, player, onAction, disabled }: TrapIntera
         <button
           onClick={() => onAction("trigger")}
           disabled={disabled}
-          className="px-4 py-2 bg-red-900/30 hover:bg-red-800/40 text-red-400 rounded transition-colors disabled:opacity-50"
+          className="px-4 py-2 bg-red-900/30 hover:bg-red-800/40 text-red-400 transition-colors disabled:opacity-50"
         >
           Trigger It <span className="text-red-500/70">(guaranteed damage)</span>
         </button>

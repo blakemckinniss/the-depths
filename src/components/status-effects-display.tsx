@@ -50,12 +50,7 @@ export function StatusEffectsDisplay({ effects, compact = false }: StatusEffects
       {effects.map((effect) => (
         <div
           key={effect.id}
-          className={cn(
-            "flex items-center justify-between text-sm px-2 py-1 rounded",
-            effect.effectType === "buff" && "bg-sky-500/10",
-            effect.effectType === "debuff" && "bg-purple-500/10",
-            effect.effectType === "neutral" && "bg-zinc-500/10",
-          )}
+          className="flex items-center justify-between text-sm py-0.5"
         >
           <EntityText type={effect.effectType === "debuff" ? "curse" : "blessing"} entity={effect}>{effect.name}</EntityText>
           <span className="text-xs text-muted-foreground">{effect.duration === -1 ? "∞" : `${effect.duration}t`}</span>

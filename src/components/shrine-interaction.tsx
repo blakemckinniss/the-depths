@@ -17,7 +17,7 @@ export function ShrineInteraction({ shrine, player, onInteract, isProcessing, ai
   const canAffordHealth = !shrine.cost?.health || player.stats.health > shrine.cost.health
 
   return (
-    <div className="my-4 p-4 bg-violet-500/5 rounded-lg space-y-3">
+    <div className="my-4 pl-4 py-3 border-l-2 border-l-violet-500/50 space-y-3">
       <div className="flex items-center gap-2">
         <EntityText type="shrine">{shrine.name}</EntityText>
         <span
@@ -53,7 +53,7 @@ export function ShrineInteraction({ shrine, player, onInteract, isProcessing, ai
           onClick={() => onInteract("accept")}
           disabled={isProcessing || !canAffordGold || !canAffordHealth}
           className={cn(
-            "px-3 py-1.5 text-sm rounded transition-colors",
+            "px-3 py-1.5 text-sm transition-colors",
             canAffordGold && canAffordHealth
               ? "bg-violet-500/20 text-violet-300 hover:bg-violet-500/30"
               : "bg-zinc-800/50 text-zinc-600 cursor-not-allowed",
@@ -66,7 +66,7 @@ export function ShrineInteraction({ shrine, player, onInteract, isProcessing, ai
           <button
             onClick={() => onInteract("desecrate")}
             disabled={isProcessing}
-            className="px-3 py-1.5 text-sm rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+            className="px-3 py-1.5 text-sm bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
           >
             Desecrate
           </button>
@@ -75,7 +75,7 @@ export function ShrineInteraction({ shrine, player, onInteract, isProcessing, ai
         <button
           onClick={() => onInteract("decline")}
           disabled={isProcessing}
-          className="px-3 py-1.5 text-sm rounded bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 transition-colors"
+          className="px-3 py-1.5 text-sm bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 transition-colors"
         >
           Leave
         </button>

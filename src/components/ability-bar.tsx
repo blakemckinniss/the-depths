@@ -91,7 +91,7 @@ export function AbilityBar({ player, currentEnemy: _currentEnemy, onUseAbility, 
 
       {/* Ability Tooltip */}
       {hoveredAbility && (
-        <div className="bg-stone-800/90 rounded p-3 text-sm space-y-2 mt-2">
+        <div className="bg-stone-800/90 p-3 text-sm space-y-2 mt-2">
           <div className="flex items-center justify-between">
             <span className="font-medium text-amber-200">{hoveredAbility.name}</span>
             <div className="flex items-center gap-2 text-xs">
