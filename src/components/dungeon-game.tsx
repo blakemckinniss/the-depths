@@ -85,7 +85,24 @@ import {
 import { GameMenu } from "./game-menu"
 import { createWorldStateManager, type WorldState } from "@/lib/world-state"
 import { DevPanel } from "./dev-panel"
-import { SidebarStats } from "./sidebar-stats" // Import SidebarStats
+import { SidebarStats } from "./sidebar-stats"
+import {
+  createInitialParty,
+  getMaxActiveCompanions,
+  addCompanionToParty,
+  removeCompanionFromParty,
+  swapCompanion,
+  companionDeath,
+  modifyBond,
+  selectCompanionAction,
+  calculateCompanionDamage,
+  processCompanionCooldowns,
+  useCompanionAbility,
+  canTameEnemy,
+  canRescueNPC,
+  createBasicCompanionFromEnemy,
+  createBasicCompanionFromNPC,
+} from "@/lib/companion-system"
 
 // ... existing code (response interfaces) ...
 interface RoomResponse {

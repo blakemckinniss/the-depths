@@ -250,6 +250,8 @@ export interface Companion extends GameEntity {
     attack: number
     defense: number
     speed: number // turn order modifier
+    level?: number // companion level for scaling
+    experience?: number // accumulated XP
   }
 
   // AI-generated abilities (1-4)
@@ -285,6 +287,31 @@ export interface Companion extends GameEntity {
 
   // Special flags for unique companions
   flags: string[] // ["cannot_die", "betrayal_chance", "evolving", "temporary", "summon"]
+
+  // === PLAYER-EQUIVALENT FIELDS (for future playable companions) ===
+  // Equipment - companions can equip gear
+  equipment?: {
+    weapon: Item | null
+    armor: Item | null
+    accessory?: Item | null // companions get 1 accessory slot
+  }
+
+  // Inventory - companions can carry items
+  inventory?: Item[]
+
+  // Active status effects
+  activeEffects?: StatusEffect[]
+
+  // Resource system (mana/stamina equivalent)
+  resources?: {
+    current: number
+    max: number
+    type: string // "mana", "rage", "focus", etc.
+    regenPerTurn: number
+  }
+
+  // Ability cooldowns (redundant with CompanionAbility.currentCooldown but useful for uniformity)
+  abilityCooldowns?: Record<string, number>
 }
 
 export interface CompanionAbility {

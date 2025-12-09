@@ -35,13 +35,13 @@ export function SidebarInventory({ player, onEquipItem, onUseItem, onDropItem, i
       ) : (
         <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin">
           {inventory.map((item) => (
-            <div key={item.id} className="group py-2 px-2 -mx-2 rounded hover:bg-foreground/5 transition-colors">
+            <div key={item.id} className="group py-1.5">
               <div className="flex items-start gap-2">
                 <span className="text-sm opacity-60">
                   {item.type === "weapon" ? "⚔" : item.type === "armor" ? "🛡" : item.type === "potion" ? "◉" : "◆"}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <EntityText type={item.rarity} entity={item}>{item.name}</EntityText>
+                  <EntityText type={item.rarity} entity={item} className="block truncate">{item.name}</EntityText>
                   <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-x-2">
                     {item.stats?.attack && <span className="text-entity-damage">+{item.stats.attack}</span>}
                     {item.stats?.defense && <span className="text-entity-armor">+{item.stats.defense}</span>}
