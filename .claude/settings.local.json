@@ -1,13 +1,11 @@
 {
+  "_comment": "Copy this to settings.json and customize for your local setup",
   "permissions": {
     "allow": [
       "Bash(npm run:*)",
       "Bash(npm install:*)",
       "Bash(npx:*)",
-      "Bash(git status:*)",
-      "Bash(git diff:*)",
-      "Bash(git log:*)",
-      "Bash(git add:*)",
+      "Bash(git:*)",
       "Bash(grep:*)",
       "Bash(ls:*)",
       "Read(*)",
@@ -17,5 +15,8 @@
       "Grep(*)"
     ],
     "deny": []
+  },
+  "hooks": {
+    "preCommit": ".claude/hooks/pre-commit.sh"
   }
 }
