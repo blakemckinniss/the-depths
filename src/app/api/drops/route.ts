@@ -8,14 +8,24 @@
  * - Dungeon-themed loot
  */
 
-import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai-utils"
-import { generateMechanicsPrompt, getDamageTypes } from "@/lib/game-mechanics-ledger"
-import { z } from "zod"
-import { NextResponse } from "next/server"
+import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai-utils";
+import {
+  generateMechanicsPrompt,
+  generateEconomyPrompt,
+  generateProgressionPrompt,
+  getDamageTypes,
+  GOLD_RANGES,
+  getFloorStatRange,
+  getFloorRarityDistribution,
+  CONTAINER_TRAP_CHANCE,
+} from "@/lib/game-mechanics-ledger";
+import { z } from "zod";
+import { NextResponse } from "next/server";
 
 // Get mechanics prompt once at module load
-const MECHANICS_PROMPT = generateMechanicsPrompt()
-const DAMAGE_TYPES = getDamageTypes()
+const MECHANICS_PROMPT = generateMechanicsPrompt();
+const ECONOMY_PROMPT = generateEconomyPrompt();
+const DAMAGE_TYPES = getDamageTypes();
 
 // =============================================================================
 // SCHEMAS
@@ -28,31 +38,81 @@ const MonsterLoreSchema = z.object({
     nature: z.string().describe("What drives this creature (1 sentence)"),
     weakness_hint: z.string().describe("Cryptic hint about weakness"),
   }),
-  lastWords: z.string().describe("What the monster says/does when dying (brief, atmospheric)"),
-  specialDrop: z.object({
-    name: z.string().describe("Unique item name themed to this monster"),
-    type: z.enum(["weapon", "armor", "trinket", "consumable", "material"]),
-    rarity: z.enum(["common", "uncommon", "rare", "legendary"]),
-    description: z.string().describe("Brief item description focusing on appearance and damage type, NOT on-hit effects"),
-    damageType: z.enum(["physical", "fire", "ice", "lightning", "shadow", "holy", "poison", "arcane"]).nullish().describe("Weapon damage type - only for weapons"),
-  }).nullish().describe("Only for rare/elite monsters"),
-})
+  lastWords: z
+    .string()
+    .describe("What the monster says/does when dying (brief, atmospheric)"),
+  specialDrop: z
+    .object({
+      name: z.string().describe("Unique item name themed to this monster"),
+      type: z.enum(["weapon", "armor", "trinket", "consumable", "material"]),
+      rarity: z.enum(["common", "uncommon", "rare", "legendary"]),
+      description: z
+        .string()
+        .describe(
+          "Brief item description focusing on appearance and damage type, NOT on-hit effects",
+        ),
+      damageType: z
+        .enum([
+          "physical",
+          "fire",
+          "ice",
+          "lightning",
+          "shadow",
+          "holy",
+          "poison",
+          "arcane",
+        ])
+        .nullish()
+        .describe("Weapon damage type - only for weapons"),
+    })
+    .nullish()
+    .describe("Only for rare/elite monsters"),
+});
 
 // Treasure Contents - What's inside a chest
 const TreasureContentsSchema = z.object({
-  containerDescription: z.string().describe("Brief description of the container"),
-  contents: z.array(z.object({
-    name: z.string(),
-    type: z.enum(["weapon", "armor", "trinket", "consumable", "material", "gold", "key"]),
-    rarity: z.enum(["common", "uncommon", "rare", "legendary"]).nullish(),
-    description: z.string().describe("Appearance description - do NOT claim on-hit effects"),
-    quantity: z.number().nullish(),
-    damageType: z.enum(["physical", "fire", "ice", "lightning", "shadow", "holy", "poison", "arcane"]).nullish().describe("Weapon damage type - only for weapons"),
-  })),
+  containerDescription: z
+    .string()
+    .describe("Brief description of the container"),
+  contents: z.array(
+    z.object({
+      name: z.string(),
+      type: z.enum([
+        "weapon",
+        "armor",
+        "trinket",
+        "consumable",
+        "material",
+        "gold",
+        "key",
+      ]),
+      rarity: z.enum(["common", "uncommon", "rare", "legendary"]).nullish(),
+      description: z
+        .string()
+        .describe("Appearance description - do NOT claim on-hit effects"),
+      quantity: z.number().nullish(),
+      damageType: z
+        .enum([
+          "physical",
+          "fire",
+          "ice",
+          "lightning",
+          "shadow",
+          "holy",
+          "poison",
+          "arcane",
+        ])
+        .nullish()
+        .describe("Weapon damage type - only for weapons"),
+    }),
+  ),
   trapped: z.boolean().describe("Is the container trapped?"),
-  trapDescription: z.string().nullish().describe("Description of trap if trapped"),
+  trapDescription: z
+    .string()
+    .nullish()
+    .describe("Description of trap if trapped"),
   lore: z.string().nullish().describe("Any inscription or clue found"),
-})
+});
 
 // Boss Reward - Special boss loot
 const BossRewardSchema = z.object({
@@ -66,73 +126,122 @@ const BossRewardSchema = z.object({
     type: z.enum(["weapon", "armor"]),
     subtype: z.string(),
     rarity: z.enum(["rare", "legendary"]),
-    description: z.string().describe("Description focusing on appearance and damage type, NOT on-hit effects"),
+    description: z
+      .string()
+      .describe(
+        "Description focusing on appearance and damage type, NOT on-hit effects",
+      ),
     stats: z.object({
       attack: z.number().nullish(),
       defense: z.number().nullish(),
       health: z.number().nullish(),
     }),
-    damageType: z.enum(["physical", "fire", "ice", "lightning", "shadow", "holy", "poison", "arcane"]).nullish().describe("Weapon damage type - affects effectiveness vs enemy weaknesses"),
+    damageType: z
+      .enum([
+        "physical",
+        "fire",
+        "ice",
+        "lightning",
+        "shadow",
+        "holy",
+        "poison",
+        "arcane",
+      ])
+      .nullish()
+      .describe(
+        "Weapon damage type - affects effectiveness vs enemy weaknesses",
+      ),
   }),
   lore: z.string().describe("Brief lore about the boss's defeat"),
-})
+});
 
 // Dungeon Themed Loot - Floor-specific rewards
 const DungeonThemedLootSchema = z.object({
-  items: z.array(z.object({
-    name: z.string(),
-    type: z.enum(["weapon", "armor", "trinket", "consumable", "material"]),
-    rarity: z.enum(["common", "uncommon", "rare", "legendary"]),
-    description: z.string().describe("Appearance description - do NOT claim on-hit effects"),
-    themeConnection: z.string().describe("How it relates to the dungeon theme"),
-    stats: z.object({
-      attack: z.number().nullish(),
-      defense: z.number().nullish(),
-      health: z.number().nullish(),
-    }).nullish(),
-    damageType: z.enum(["physical", "fire", "ice", "lightning", "shadow", "holy", "poison", "arcane"]).nullish().describe("Weapon damage type - only for weapons"),
-  })),
-  setBonus: z.object({
-    name: z.string(),
-    pieces: z.array(z.string()),
-    bonus: z.string().describe("Stat bonuses only - no proc effects"),
-  }).nullish().describe("If items form a set"),
-})
+  items: z.array(
+    z.object({
+      name: z.string(),
+      type: z.enum(["weapon", "armor", "trinket", "consumable", "material"]),
+      rarity: z.enum(["common", "uncommon", "rare", "legendary"]),
+      description: z
+        .string()
+        .describe("Appearance description - do NOT claim on-hit effects"),
+      themeConnection: z
+        .string()
+        .describe("How it relates to the dungeon theme"),
+      stats: z
+        .object({
+          attack: z.number().nullish(),
+          defense: z.number().nullish(),
+          health: z.number().nullish(),
+        })
+        .nullish(),
+      damageType: z
+        .enum([
+          "physical",
+          "fire",
+          "ice",
+          "lightning",
+          "shadow",
+          "holy",
+          "poison",
+          "arcane",
+        ])
+        .nullish()
+        .describe("Weapon damage type - only for weapons"),
+    }),
+  ),
+  setBonus: z
+    .object({
+      name: z.string(),
+      pieces: z.array(z.string()),
+      bonus: z.string().describe("Stat bonuses only - no proc effects"),
+    })
+    .nullish()
+    .describe("If items form a set"),
+});
 
 // Request body schema
 const RequestSchema = z.object({
   action: z.enum(["monster_lore", "treasure", "boss_reward", "dungeon_loot"]),
   // For monster_lore
-  monster: z.object({
-    name: z.string(),
-    tier: z.number().optional(),
-    isElite: z.boolean().optional(),
-    isBoss: z.boolean().optional(),
-    weakness: z.string().optional(),
-    resistance: z.string().optional(),
-  }).optional(),
+  monster: z
+    .object({
+      name: z.string(),
+      tier: z.number().optional(),
+      isElite: z.boolean().optional(),
+      isBoss: z.boolean().optional(),
+      weakness: z.string().optional(),
+      resistance: z.string().optional(),
+    })
+    .optional(),
   // For treasure
-  treasure: z.object({
-    type: z.enum(["chest", "sarcophagus", "vault", "hidden_cache", "altar"]),
-    quality: z.enum(["common", "rare", "legendary"]).optional(),
-    locked: z.boolean().optional(),
-  }).optional(),
+  treasure: z
+    .object({
+      type: z.enum(["chest", "sarcophagus", "vault", "hidden_cache", "altar"]),
+      quality: z.enum(["common", "rare", "legendary"]).optional(),
+      locked: z.boolean().optional(),
+    })
+    .optional(),
   // For boss_reward
-  boss: z.object({
-    name: z.string(),
-    title: z.string().optional(),
-    abilities: z.array(z.string()).optional(),
-  }).optional(),
+  boss: z
+    .object({
+      name: z.string(),
+      title: z.string().optional(),
+      abilities: z.array(z.string()).optional(),
+    })
+    .optional(),
   // For dungeon_loot
-  dungeon: z.object({
-    name: z.string(),
-    theme: z.string(),
-    floor: z.number(),
-  }).optional(),
+  dungeon: z
+    .object({
+      name: z.string(),
+      theme: z.string(),
+      floor: z.number(),
+    })
+    .optional(),
   // Context
   playerClass: z.string().optional(),
   floor: z.number().optional(),
-})
+});
 
 // =============================================================================
 // SYSTEM PROMPTS
@@ -149,7 +258,7 @@ RULES:
 - Dark fantasy tone - no humor or modern references
 - Weakness hints should be cryptic, not obvious
 
-${MECHANICS_PROMPT}`
+${MECHANICS_PROMPT}`;
 
 const TREASURE_SYSTEM = `You are a dungeon treasure generator for a dark fantasy game.
 Determine what treasures are found in containers.
@@ -160,9 +269,10 @@ RULES:
 - Mix item types for variety
 - Trapped containers should have better rewards
 - Inscriptions/lore should hint at dungeon history
-- Gold amounts: common=10-50, rare=50-200, legendary=200-500
 
-${MECHANICS_PROMPT}`
+${ECONOMY_PROMPT}
+
+${MECHANICS_PROMPT}`;
 
 const BOSS_REWARD_SYSTEM = `You are a boss reward generator for a dark fantasy dungeon crawler.
 Create unique, memorable boss loot.
@@ -174,7 +284,7 @@ RULES:
 - Lore should reference the battle
 - Names should be evocative and memorable
 
-${MECHANICS_PROMPT}`
+${MECHANICS_PROMPT}`;
 
 const DUNGEON_THEME_SYSTEM = `You are a themed loot generator for a dark fantasy dungeon crawler.
 Create items that match the dungeon's theme and atmosphere.
@@ -187,7 +297,7 @@ RULES:
 - Higher floors = better rarity distribution
 - Items should feel like they belong in this specific dungeon
 
-${MECHANICS_PROMPT}`
+${MECHANICS_PROMPT}`;
 
 // =============================================================================
 // HANDLERS
@@ -195,11 +305,16 @@ ${MECHANICS_PROMPT}`
 
 async function handleMonsterLore(
   monster: NonNullable<z.infer<typeof RequestSchema>["monster"]>,
-  floor = 1
+  floor = 1,
 ) {
-  const cacheKey = entityCache.generateKey("monster_lore", monster.name, monster.tier, floor)
-  const cached = entityCache.get(cacheKey)
-  if (cached) return cached
+  const cacheKey = entityCache.generateKey(
+    "monster_lore",
+    monster.name,
+    monster.tier,
+    floor,
+  );
+  const cached = entityCache.get(cacheKey);
+  if (cached) return cached;
 
   const prompt = `Generate lore for this monster:
 
@@ -212,7 +327,7 @@ ${monster.weakness ? `Weakness: ${monster.weakness}` : ""}
 ${monster.resistance ? `Resistance: ${monster.resistance}` : ""}
 
 Create brief, atmospheric lore and dying words.
-${(monster.isElite || monster.isBoss) ? "Include a unique special drop themed to this creature." : "Do NOT include a special drop for this common enemy."}`
+${monster.isElite || monster.isBoss ? "Include a unique special drop themed to this creature." : "Do NOT include a special drop for this common enemy."}`;
 
   const result = await generateWithAI({
     schema: MonsterLoreSchema,
@@ -220,19 +335,24 @@ ${(monster.isElite || monster.isBoss) ? "Include a unique special drop themed to
     system: MONSTER_LORE_SYSTEM,
     temperature: AI_CONFIG.temperature.creative,
     maxTokens: 400,
-  })
+  });
 
-  entityCache.set(cacheKey, result)
-  return result
+  entityCache.set(cacheKey, result);
+  return result;
 }
 
 async function handleTreasure(
   treasure: NonNullable<z.infer<typeof RequestSchema>["treasure"]>,
-  floor = 1
+  floor = 1,
 ) {
-  const cacheKey = entityCache.generateKey("treasure", treasure.type, treasure.quality, floor)
-  const cached = entityCache.get(cacheKey)
-  if (cached) return cached
+  const cacheKey = entityCache.generateKey(
+    "treasure",
+    treasure.type,
+    treasure.quality,
+    floor,
+  );
+  const cached = entityCache.get(cacheKey);
+  if (cached) return cached;
 
   const prompt = `Generate contents for this container:
 
@@ -246,9 +366,9 @@ Consider:
 - ${treasure.type === "sarcophagus" ? "This is a tomb - include cursed or ancient items" : ""}
 - ${treasure.type === "altar" ? "This is an altar - include religious/magical items" : ""}
 - Higher quality = better and more items
-- 30% chance of being trapped
+- ${CONTAINER_TRAP_CHANCE}% chance of being trapped
 
-Generate 2-5 items appropriate to the container.`
+Generate 2-5 items appropriate to the container.`;
 
   const result = await generateWithAI({
     schema: TreasureContentsSchema,
@@ -256,20 +376,20 @@ Generate 2-5 items appropriate to the container.`
     system: TREASURE_SYSTEM,
     temperature: AI_CONFIG.temperature.creative,
     maxTokens: 600,
-  })
+  });
 
-  entityCache.set(cacheKey, result)
-  return result
+  entityCache.set(cacheKey, result);
+  return result;
 }
 
 async function handleBossReward(
   boss: NonNullable<z.infer<typeof RequestSchema>["boss"]>,
   floor = 1,
-  playerClass?: string
+  playerClass?: string,
 ) {
-  const cacheKey = entityCache.generateKey("boss_reward", boss.name, floor)
-  const cached = entityCache.get(cacheKey)
-  if (cached) return cached
+  const cacheKey = entityCache.generateKey("boss_reward", boss.name, floor);
+  const cached = entityCache.get(cacheKey);
+  if (cached) return cached;
 
   const prompt = `Generate rewards for defeating this boss:
 
@@ -284,10 +404,7 @@ Create:
 2. A powerful equipment piece (rare or legendary)
 3. Brief victory lore
 
-The equipment should be floor-appropriate:
-- Floor 1-3: +5-10 stats
-- Floor 4-6: +10-15 stats
-- Floor 7+: +15-25 stats`
+${generateProgressionPrompt(floor)}`;
 
   const result = await generateWithAI({
     schema: BossRewardSchema,
@@ -295,19 +412,24 @@ The equipment should be floor-appropriate:
     system: BOSS_REWARD_SYSTEM,
     temperature: AI_CONFIG.temperature.creative,
     maxTokens: 500,
-  })
+  });
 
-  entityCache.set(cacheKey, result)
-  return result
+  entityCache.set(cacheKey, result);
+  return result;
 }
 
 async function handleDungeonLoot(
   dungeon: NonNullable<z.infer<typeof RequestSchema>["dungeon"]>,
-  playerClass?: string
+  playerClass?: string,
 ) {
-  const cacheKey = entityCache.generateKey("dungeon_loot", dungeon.name, dungeon.theme, dungeon.floor)
-  const cached = entityCache.get(cacheKey)
-  if (cached) return cached
+  const cacheKey = entityCache.generateKey(
+    "dungeon_loot",
+    dungeon.name,
+    dungeon.theme,
+    dungeon.floor,
+  );
+  const cached = entityCache.get(cacheKey);
+  if (cached) return cached;
 
   const prompt = `Generate themed loot for this dungeon:
 
@@ -322,13 +444,9 @@ Create 3-5 items that:
 - Scale to the floor level
 - Include variety (weapons, armor, consumables)
 
-Rarity distribution for floor ${dungeon.floor}:
-- Common: ${Math.max(0, 60 - dungeon.floor * 5)}%
-- Uncommon: ${30 + dungeon.floor * 2}%
-- Rare: ${Math.min(25, 5 + dungeon.floor * 2)}%
-- Legendary: ${Math.min(10, dungeon.floor)}%
+${generateProgressionPrompt(dungeon.floor)}
 
-Optionally create a set bonus if items share a theme.`
+Optionally create a set bonus if items share a theme.`;
 
   const result = await generateWithAI({
     schema: DungeonThemedLootSchema,
@@ -336,10 +454,10 @@ Optionally create a set bonus if items share a theme.`
     system: DUNGEON_THEME_SYSTEM,
     temperature: AI_CONFIG.temperature.creative,
     maxTokens: 700,
-  })
+  });
 
-  entityCache.set(cacheKey, result)
-  return result
+  entityCache.set(cacheKey, result);
+  return result;
 }
 
 // =============================================================================
@@ -348,73 +466,74 @@ Optionally create a set bonus if items share a theme.`
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const parsed = RequestSchema.parse(body)
+    const body = await request.json();
+    const parsed = RequestSchema.parse(body);
 
-    let result: unknown
+    let result: unknown;
 
     switch (parsed.action) {
       case "monster_lore":
         if (!parsed.monster) {
           return NextResponse.json(
             { error: "Monster data required for lore generation" },
-            { status: 400 }
-          )
+            { status: 400 },
+          );
         }
-        result = await handleMonsterLore(parsed.monster, parsed.floor)
-        break
+        result = await handleMonsterLore(parsed.monster, parsed.floor);
+        break;
 
       case "treasure":
         if (!parsed.treasure) {
           return NextResponse.json(
             { error: "Treasure data required for content generation" },
-            { status: 400 }
-          )
+            { status: 400 },
+          );
         }
-        result = await handleTreasure(parsed.treasure, parsed.floor)
-        break
+        result = await handleTreasure(parsed.treasure, parsed.floor);
+        break;
 
       case "boss_reward":
         if (!parsed.boss) {
           return NextResponse.json(
             { error: "Boss data required for reward generation" },
-            { status: 400 }
-          )
+            { status: 400 },
+          );
         }
-        result = await handleBossReward(parsed.boss, parsed.floor, parsed.playerClass)
-        break
+        result = await handleBossReward(
+          parsed.boss,
+          parsed.floor,
+          parsed.playerClass,
+        );
+        break;
 
       case "dungeon_loot":
         if (!parsed.dungeon) {
           return NextResponse.json(
             { error: "Dungeon data required for themed loot" },
-            { status: 400 }
-          )
+            { status: 400 },
+          );
         }
-        result = await handleDungeonLoot(parsed.dungeon, parsed.playerClass)
-        break
+        result = await handleDungeonLoot(parsed.dungeon, parsed.playerClass);
+        break;
 
       default:
-        return NextResponse.json(
-          { error: "Invalid action" },
-          { status: 400 }
-        )
+        return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
 
-    return NextResponse.json(result)
+    return NextResponse.json(result);
   } catch (error) {
-    console.error("Drops API error:", error)
+    console.error("Drops API error:", error);
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Invalid request format", details: error.errors },
-        { status: 400 }
-      )
+        { status: 400 },
+      );
     }
 
     return NextResponse.json(
       { error: "Loot generation failed - the spirits are silent" },
-      { status: 500 }
-    )
+      { status: 500 },
+    );
   }
 }
