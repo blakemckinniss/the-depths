@@ -29,6 +29,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/no-console.sh",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -44,6 +54,21 @@
             "type": "command",
             "command": ".claude/hooks/lint-check.sh",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/typecheck.sh",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/state-mutation-guard.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/validate-ai-schemas.sh",
+            "timeout": 5
           },
           {
             "type": "command",
@@ -91,6 +116,11 @@
           },
           {
             "type": "command",
+            "command": ".claude/hooks/build-check.sh",
+            "timeout": 60
+          },
+          {
+            "type": "command",
             "command": ".claude/hooks/session-summary.sh",
             "timeout": 10
           }
@@ -114,6 +144,16 @@
           {
             "type": "command",
             "command": ".claude/hooks/new-feature-reminder.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/groq-context.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/shadcn-helper.sh",
             "timeout": 5
           }
         ]
