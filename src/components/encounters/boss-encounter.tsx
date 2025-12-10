@@ -7,14 +7,17 @@ import { cn } from "@/lib/core/utils"
 
 interface BossEncounterProps {
   boss: Boss
-  onAction: (choice: "attack" | "defend" | "flee") => void
+  onAction: (choice: "attack" | "defend" | "flee" | "parley") => void
   isProcessing?: boolean
   currentPhaseNarration?: string
+  onCreativeEvent?: () => void // Trigger DM creative event
 }
 
-export function BossEncounter({ boss, onAction, isProcessing, currentPhaseNarration }: BossEncounterProps) {
+export function BossEncounter({ boss, onAction, isProcessing, currentPhaseNarration, onCreativeEvent }: BossEncounterProps) {
   const currentPhase = boss.phases[boss.currentPhase]
   const healthPercent = (boss.health / boss.maxHealth) * 100
+  // Show parley option at half health or if boss has dialogue
+  const canParley = healthPercent <= 50 || boss.dialogue?.intro
 
   return (
     <div className="my-4 p-4 bg-red-500/5 border border-red-900/30 rounded-lg space-y-3">
@@ -85,6 +88,17 @@ export function BossEncounter({ boss, onAction, isProcessing, currentPhaseNarrat
         >
           Flee
         </button>
+
+        {canParley && (
+          <button
+            onClick={() => onCreativeEvent ? onCreativeEvent() : onAction("parley")}
+            disabled={isProcessing}
+            className="px-3 py-2 text-sm rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors border border-amber-500/30"
+            title="Attempt to negotiate with the boss..."
+          >
+            Parley
+          </button>
+        )}
       </div>
     </div>
   )

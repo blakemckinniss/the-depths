@@ -67,6 +67,16 @@ import {
 import { getXpModifier } from "@/lib/mechanics/game-mechanics-ledger";
 import type { GameLogger, LogCategory } from "@/lib/ai/game-log-system";
 import { EntityText } from "@/components/narrative/entity-text";
+import {
+  processEntityDeath,
+  processDamageSharing,
+  processTurnEnd,
+  processCombatEnd,
+  getCombatModifiers,
+  hasDeathtouch,
+  hasRegenerate,
+  useModifier,
+} from "@/lib/ai/dm-combat-integration";
 
 // ============================================================================
 // TYPES
@@ -327,6 +337,24 @@ export function useCombat({
 
       logger.enemySlain(enemy, goldGain, expGain);
 
+      // Process DM death triggers (soul bonds, phylacteries, etc.)
+      const deathTriggers = processEntityDeath(enemy.id);
+      for (const narrative of deathTriggers.narrative) {
+        addLog(
+          <span className="text-purple-400 italic">{narrative}</span>,
+          "effect",
+        );
+      }
+
+      // Process end of combat modifiers
+      const expiredModifiers = processCombatEnd(player.id);
+      for (const expiredMsg of expiredModifiers) {
+        addLog(
+          <span className="text-stone-400 text-sm">{expiredMsg}</span>,
+          "effect",
+        );
+      }
+
       if (enemy.loot) {
         dispatch({ type: "ADD_ITEM", payload: enemy.loot });
         dispatch({
@@ -340,7 +368,7 @@ export function useCombat({
 
       checkLevelUp();
     },
-    [state.runStats, dispatch, logger, updateRunStats, checkLevelUp],
+    [state.runStats, dispatch, logger, updateRunStats, checkLevelUp, addLog],
   );
 
   // Apply effect to player
@@ -503,6 +531,15 @@ export function useCombat({
       updateRunStats({
         damageTaken: state.runStats.damageTaken + finalDamage,
       });
+
+      // Process DM damage sharing for life-linked entities
+      const damageShares = processDamageSharing(player.id, finalDamage);
+      for (const narrative of damageShares.narrative) {
+        addLog(
+          <span className="text-purple-400 italic">{narrative}</span>,
+          "effect",
+        );
+      }
 
       const newHealth = player.stats.health - finalDamage;
 

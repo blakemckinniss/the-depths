@@ -135,7 +135,7 @@ export function SidebarStats({ player }: SidebarStatsProps) {
       <div className="space-y-1.5">
         <h3 className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Combat</h3>
         <div className="flex justify-between items-center">
-          <span className="text-muted-foreground text-xs">Attack</span>
+          <span className="text-orange-400/80 text-xs">Attack</span>
           <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground">{stats.attack}</span>
             {totalAttackBonus > 0 && <span className="text-xs text-entity-weapon">+{totalAttackBonus}</span>}
@@ -153,7 +153,7 @@ export function SidebarStats({ player }: SidebarStatsProps) {
           </div>
         </div>
         <div className="flex justify-between items-center">
-          <span className="text-muted-foreground text-xs">Defense</span>
+          <span className="text-blue-400/80 text-xs">Defense</span>
           <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground">{stats.defense}</span>
             {totalDefenseBonus > 0 && <span className="text-xs text-entity-armor">+{totalDefenseBonus}</span>}
@@ -170,28 +170,28 @@ export function SidebarStats({ player }: SidebarStatsProps) {
             </span>
           </div>
         </div>
-        <StatLine label="Speed" value={stats.speed} color="text-cyan-400" />
+        <StatLine label="Speed" value={stats.speed} labelColor="text-cyan-400/80" color="text-cyan-400" />
       </div>
 
       {/* Offensive Stats */}
       {(stats.critChance > 0 || stats.critDamage > 1.5 || stats.vampirism > 0) && (
         <div className="space-y-1.5">
-          <h3 className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Offense</h3>
+          <h3 className="text-xs text-orange-500/60 uppercase tracking-wider mb-2">Offense</h3>
           {stats.critChance > 0 && (
             <div className="flex justify-between items-center">
-              <span className="text-muted-foreground text-xs">Crit Chance</span>
+              <span className="text-orange-400/70 text-xs">Crit Chance</span>
               <span className="text-orange-400 text-xs">{Math.floor(stats.critChance * 100)}%</span>
             </div>
           )}
           {stats.critDamage > 1.5 && (
             <div className="flex justify-between items-center">
-              <span className="text-muted-foreground text-xs">Crit Damage</span>
+              <span className="text-orange-300/70 text-xs">Crit Damage</span>
               <span className="text-orange-300 text-xs">{Math.floor(stats.critDamage * 100)}%</span>
             </div>
           )}
           {stats.vampirism > 0 && (
             <div className="flex justify-between items-center">
-              <span className="text-muted-foreground text-xs">Vampirism</span>
+              <span className="text-red-400/70 text-xs">Vampirism</span>
               <span className="text-red-400 text-xs">{Math.floor(stats.vampirism * 100)}%</span>
             </div>
           )}
@@ -201,22 +201,22 @@ export function SidebarStats({ player }: SidebarStatsProps) {
       {/* Defensive Stats */}
       {(stats.dodgeChance > 0 || stats.blockChance > 0 || stats.thorns > 0) && (
         <div className="space-y-1.5">
-          <h3 className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Defense</h3>
+          <h3 className="text-xs text-blue-500/60 uppercase tracking-wider mb-2">Defense</h3>
           {stats.dodgeChance > 0 && (
             <div className="flex justify-between items-center">
-              <span className="text-muted-foreground text-xs">Dodge</span>
+              <span className="text-cyan-400/70 text-xs">Dodge</span>
               <span className="text-cyan-400 text-xs">{Math.floor(stats.dodgeChance * 100)}%</span>
             </div>
           )}
           {stats.blockChance > 0 && (
             <div className="flex justify-between items-center">
-              <span className="text-muted-foreground text-xs">Block</span>
+              <span className="text-blue-400/70 text-xs">Block</span>
               <span className="text-blue-400 text-xs">{Math.floor(stats.blockChance * 100)}%</span>
             </div>
           )}
           {stats.thorns > 0 && (
             <div className="flex justify-between items-center">
-              <span className="text-muted-foreground text-xs">Thorns</span>
+              <span className="text-amber-500/70 text-xs">Thorns</span>
               <span className="text-amber-500 text-xs">{stats.thorns}</span>
             </div>
           )}
@@ -226,22 +226,22 @@ export function SidebarStats({ player }: SidebarStatsProps) {
       {/* Utility Stats */}
       {(stats.luck > 0 || stats.magicFind > 0 || stats.expBonus > 0 || stats.healthRegen > 0 || stats.resourceRegen > 0) && (
         <div className="space-y-1.5">
-          <h3 className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Utility</h3>
-          {stats.luck > 0 && <StatLine label="Luck" value={stats.luck} color="text-green-400" />}
+          <h3 className="text-xs text-emerald-500/60 uppercase tracking-wider mb-2">Utility</h3>
+          {stats.luck > 0 && <StatLine label="Luck" value={stats.luck} labelColor="text-green-400/70" color="text-green-400" />}
           {stats.magicFind > 0 && (
             <div className="flex justify-between items-center">
-              <span className="text-muted-foreground text-xs">Magic Find</span>
+              <span className="text-purple-400/70 text-xs">Magic Find</span>
               <span className="text-purple-400 text-xs">+{Math.floor(stats.magicFind * 100)}%</span>
             </div>
           )}
           {stats.expBonus > 0 && (
             <div className="flex justify-between items-center">
-              <span className="text-muted-foreground text-xs">Exp Bonus</span>
+              <span className="text-yellow-400/70 text-xs">Exp Bonus</span>
               <span className="text-yellow-400 text-xs">+{Math.floor(stats.expBonus * 100)}%</span>
             </div>
           )}
-          {stats.healthRegen > 0 && <StatLine label="HP Regen" value={stats.healthRegen} color="text-entity-heal" suffix="/turn" />}
-          {stats.resourceRegen > 0 && <StatLine label="Resource Regen" value={stats.resourceRegen} color="text-blue-400" suffix="/turn" />}
+          {stats.healthRegen > 0 && <StatLine label="HP Regen" value={stats.healthRegen} labelColor="text-emerald-400/70" color="text-entity-heal" suffix="/turn" />}
+          {stats.resourceRegen > 0 && <StatLine label="Resource Regen" value={stats.resourceRegen} labelColor="text-blue-400/70" color="text-blue-400" suffix="/turn" />}
         </div>
       )}
 

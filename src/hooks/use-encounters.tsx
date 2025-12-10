@@ -451,7 +451,7 @@ export function useEncounters({
   );
 
   const handleShrineAction = useCallback(
-    async (action: "accept" | "decline" | "desecrate") => {
+    async (action: "accept" | "decline" | "desecrate" | "seek_blessing") => {
       if (!state.activeShrine || isProcessing) return;
       setIsProcessing(true);
 
@@ -465,6 +465,67 @@ export function useEncounters({
           </span>,
           "narrative",
         );
+        dispatch({ type: "SET_PHASE", payload: "dungeon" });
+        dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
+        setIsProcessing(false);
+        return;
+      }
+
+      if (action === "seek_blessing") {
+        // Trigger DM creative event for shrine communion
+        addLog(
+          <span className="text-amber-300 italic">
+            You reach out to commune with the <EntityText type="shrine">{shrine.name}</EntityText>...
+          </span>,
+          "narrative",
+        );
+        try {
+          const response = await fetch("/api/dm-operations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              operationType: "creative_event",
+              context: {
+                narrativeContext: `The player communes with ${shrine.name}, a ${shrine.shrineType} shrine. ${shrine.description}`,
+                entities: [
+                  { id: shrine.id, type: "shrine", name: shrine.name, description: shrine.description },
+                  { id: state.player.id, type: "player", name: state.player.name || "The Adventurer" },
+                ],
+                recentEvents: [], // Log entries managed separately
+                playerClass: state.player.class,
+                playerLevel: state.player.stats.level,
+                playerHealth: state.player.stats.health,
+                maxHealth: state.player.stats.maxHealth,
+                dungeonTheme: "dark fantasy",
+                floor: 1,
+              },
+            }),
+          });
+          const result = await response.json();
+          if (result.narrative) {
+            addLog(
+              <span className="text-violet-300">{result.narrative}</span>,
+              "narrative",
+            );
+          }
+          if (result.effectGranted) {
+            const blessingEffect = STATUS_EFFECTS.blessed();
+            dispatch({ type: "ADD_EFFECT", payload: blessingEffect });
+            addLog(
+              <span>
+                The shrine grants you <EntityText type="blessing">{blessingEffect.name}</EntityText>!
+              </span>,
+              "effect",
+            );
+          }
+        } catch (error) {
+          addLog(
+            <span className="text-muted-foreground">
+              The shrine remains silent...
+            </span>,
+            "narrative",
+          );
+        }
         dispatch({ type: "SET_PHASE", payload: "dungeon" });
         dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
         setIsProcessing(false);

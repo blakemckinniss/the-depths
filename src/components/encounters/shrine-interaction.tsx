@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import type { Shrine, Player } from "@/lib/core/game-types"
 import { EntityText } from "@/components/narrative/entity-text"
 import { cn } from "@/lib/core/utils"
@@ -7,14 +8,17 @@ import { cn } from "@/lib/core/utils"
 interface ShrineInteractionProps {
   shrine: Shrine
   player: Player
-  onInteract: (choice: "accept" | "decline" | "desecrate") => void
+  onInteract: (choice: "accept" | "decline" | "desecrate" | "seek_blessing") => void
   isProcessing?: boolean
   aiDescription?: string
+  onCreativeEvent?: () => void // Trigger DM creative event
 }
 
-export function ShrineInteraction({ shrine, player, onInteract, isProcessing, aiDescription }: ShrineInteractionProps) {
+export function ShrineInteraction({ shrine, player, onInteract, isProcessing, aiDescription, onCreativeEvent }: ShrineInteractionProps) {
   const canAffordGold = !shrine.cost?.gold || player.stats.gold >= shrine.cost.gold
   const canAffordHealth = !shrine.cost?.health || player.stats.health > shrine.cost.health
+  // Show creative option for unknown or dark shrines (mysterious enough for communion)
+  const showCreativeOption = shrine.shrineType === "unknown" || shrine.shrineType === "dark"
 
   return (
     <div className="my-4 pl-4 py-3 border-l-2 border-l-violet-500/50 space-y-3">
@@ -69,6 +73,16 @@ export function ShrineInteraction({ shrine, player, onInteract, isProcessing, ai
             className="px-3 py-1.5 text-sm bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
           >
             Desecrate
+          </button>
+        )}
+
+        {(showCreativeOption || onCreativeEvent) && (
+          <button
+            onClick={() => onCreativeEvent ? onCreativeEvent() : onInteract("seek_blessing")}
+            disabled={isProcessing}
+            className="px-3 py-1.5 text-sm bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors border border-amber-500/30"
+          >
+            Commune
           </button>
         )}
 
