@@ -31,6 +31,14 @@ import {
   generateNPCDialogue,
 } from "@/lib/ai/ai-drops-system";
 import { EntityText, ItemText } from "@/components/narrative/entity-text";
+import {
+  orchestrateEvent,
+  updateEventMemory,
+  EVENT_MODIFIERS,
+  EVENT_TWISTS,
+  type EventType,
+  type EventMemory,
+} from "@/lib/mechanics/game-mechanics-ledger";
 
 // ============================================================================
 // TYPES
@@ -215,6 +223,162 @@ export function useNavigation({
       const newRoom = state.currentRoom + 1;
       const dungeonTheme = state.currentDungeon?.theme || "ancient dungeon";
 
+      // ========================================================================
+      // EVENT ORCHESTRATION
+      // Use the orchestrator to add variety via modifiers/twists
+      // Path hints remain respected, but surprises happen
+      // ========================================================================
+      const playerHealthPercent = Math.round(
+        (state.player.stats.health / state.player.stats.maxHealth) * 100
+      );
+
+      // Map path.roomType to EventType for orchestration
+      const pathToEventType = (roomType: string | undefined): EventType | undefined => {
+        if (!roomType) return undefined;
+        const mapping: Record<string, EventType> = {
+          enemy: "combat",
+          combat: "combat",
+          treasure: "treasure",
+          trap: "trap",
+          shrine: "shrine",
+          npc: "npc",
+          rest: "rest",
+          boss: "boss",
+          // mystery has no forced type - orchestrator picks freely
+        };
+        return mapping[roomType];
+      };
+
+      // Cast eventMemory to ledger's EventMemory type (compatible structure)
+      const eventMemory: EventMemory = {
+        history: state.eventMemory.history.map((h) => ({
+          type: h.type as EventType,
+          room: h.room,
+          floor: h.floor,
+        })),
+        typeLastSeen: state.eventMemory.typeLastSeen as Map<EventType, number>,
+        combatStreak: state.eventMemory.combatStreak,
+        roomsSinceReward: state.eventMemory.roomsSinceReward,
+      };
+
+      const orchestrated = orchestrateEvent({
+        floor: state.floor,
+        room: newRoom,
+        playerHealthPercent,
+        playerGold: state.player.stats.gold,
+        hasWeapon: state.player.equipment.weapon !== null,
+        hasArmor: state.player.equipment.armor !== null,
+        dungeonTheme,
+        memory: eventMemory,
+        forcedType: pathToEventType(path.roomType),
+      });
+
+      // Determine final event type - twists can transform the event
+      let finalEventType: EventType = orchestrated.type;
+
+      // Handle transformative twists (twist is a key like "mimic", "ambush", etc.)
+      if (orchestrated.twist) {
+        const twistKey = orchestrated.twist;
+        const twistData = EVENT_TWISTS[twistKey];
+
+        // Only some twists have transformsTo - check the specific ones
+        if ("transformsTo" in twistData && twistData.transformsTo) {
+          // Mimic transforms treasure to combat, betrayal transforms npc to combat, etc.
+          finalEventType = twistData.transformsTo as EventType;
+
+          // Log the twist narratively
+          if (twistKey === "mimic") {
+            addLog(
+              <span className="text-amber-400">
+                Something feels wrong about this treasure...
+              </span>,
+              "narrative"
+            );
+          } else if (twistKey === "ambush") {
+            addLog(
+              <span className="text-red-400">
+                Shadows move! You've walked into an ambush!
+              </span>,
+              "combat"
+            );
+          } else if (twistKey === "betrayal") {
+            addLog(
+              <span className="text-red-500">
+                Their eyes flash with malice. It was a trap all along!
+              </span>,
+              "combat"
+            );
+          }
+        }
+
+        // Handle non-transformative twists
+        if (twistKey === "bonanza") {
+          addLog(
+            <span className="text-yellow-400">
+              Fortune smiles upon you today!
+            </span>,
+            "loot"
+          );
+        } else if (twistKey === "revelation") {
+          addLog(
+            <span className="text-purple-400">
+              A hidden truth reveals itself...
+            </span>,
+            "narrative"
+          );
+        }
+      }
+
+      // Log modifiers narratively (modifier is a key like "guarded", "trapped", etc.)
+      if (orchestrated.modifier) {
+        const modKey = orchestrated.modifier;
+        if (modKey === "guarded") {
+          addLog(
+            <span className="text-orange-400">
+              Something guards this place...
+            </span>,
+            "narrative"
+          );
+        } else if (modKey === "trapped") {
+          addLog(
+            <span className="text-yellow-600">
+              You sense danger lurking in the shadows.
+            </span>,
+            "narrative"
+          );
+        } else if (modKey === "cursed") {
+          addLog(
+            <span className="text-purple-600">
+              A dark aura permeates this chamber.
+            </span>,
+            "effect"
+          );
+        } else if (modKey === "blessed") {
+          addLog(
+            <span className="text-cyan-400">
+              Divine light flickers at the edges of your vision.
+            </span>,
+            "effect"
+          );
+        } else if (modKey === "mysterious") {
+          addLog(
+            <span className="text-indigo-400">
+              Reality seems uncertain here...
+            </span>,
+            "narrative"
+          );
+        }
+      }
+
+      // Update event memory with this event
+      const updatedMemory = updateEventMemory(
+        eventMemory,
+        finalEventType,
+        newRoom,
+        state.floor
+      );
+      dispatch({ type: "UPDATE_EVENT_MEMORY", payload: updatedMemory });
+
       let newHazard = state.currentHazard;
       if (
         (path.danger === "dangerous" || path.danger === "unknown") &&
@@ -231,11 +395,24 @@ export function useNavigation({
         );
       }
 
-      // AI HINT: To add new room types, add case below AND update PathOption.roomType in game-types.ts
-      if (
-        path.roomType === "enemy" ||
-        (path.roomType === "mystery" && Math.random() < 0.5)
-      ) {
+      // Apply trapped modifier - add trap damage before primary event
+      if (orchestrated.modifier === "trapped" && finalEventType !== "trap") {
+        const trapDamage = Math.floor(5 + state.floor * 2 + Math.random() * 5);
+        dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: -trapDamage });
+        addLog(
+          <span>
+            <EntityText type="damage">
+              A hidden trap springs! You take {trapDamage} damage!
+            </EntityText>
+          </span>,
+          "combat"
+        );
+      }
+
+      // ========================================================================
+      // EVENT HANDLING (uses finalEventType from orchestrator)
+      // ========================================================================
+      if (finalEventType === "combat") {
         const enemy = generateEnemy(state.floor);
         if (state.floor >= 2 && Math.random() < 0.5) {
           enemy.abilities = [generateEnemyAbility(enemy.name, state.floor)];
@@ -261,7 +438,7 @@ export function useNavigation({
         dispatch({ type: "SET_ROOM", payload: newRoom });
         dispatch({ type: "SET_HAZARD", payload: newHazard });
         dispatch({ type: "START_COMBAT", payload: buffedEnemy });
-      } else if (path.roomType === "treasure") {
+      } else if (finalEventType === "treasure") {
         // Generate AI loot container for gacha experience
         const isRare = path.danger === "dangerous" || state.floor > 3;
         const guaranteedRarity = isRare
@@ -321,21 +498,21 @@ export function useNavigation({
             },
           });
         }
-      } else if (path.roomType === "trap") {
+      } else if (finalEventType === "trap") {
         const trap = generateTrap(state.floor);
         logger.trapEncounter(trap);
         dispatch({ type: "SET_ROOM", payload: newRoom });
         dispatch({ type: "SET_HAZARD", payload: newHazard });
         dispatch({ type: "SET_PHASE", payload: "trap_encounter" });
         dispatch({ type: "SET_ACTIVE_TRAP", payload: trap });
-      } else if (path.roomType === "shrine") {
+      } else if (finalEventType === "shrine") {
         const shrine = generateShrine(state.floor);
         logger.shrineEncounter(shrine);
         dispatch({ type: "SET_ROOM", payload: newRoom });
         dispatch({ type: "SET_HAZARD", payload: newHazard });
         dispatch({ type: "SET_PHASE", payload: "shrine_choice" });
         dispatch({ type: "SET_ACTIVE_SHRINE", payload: shrine });
-      } else if (path.roomType === "npc") {
+      } else if (finalEventType === "npc") {
         const npc = generateNPC(state.floor);
         setNpcDialogue(npc.dialogue?.[0] || "...");
         logger.npcEncounter(npc);
@@ -376,7 +553,96 @@ export function useNavigation({
           .catch(() => {
             // Silent fail - fallback dialogue already set
           });
+      } else if (finalEventType === "rest") {
+        // Rest room - heal and recover
+        const healAmount = Math.floor(state.player.stats.maxHealth * 0.25);
+        dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: healAmount });
+        addLog(
+          <span className="text-green-400">
+            You find a quiet alcove to rest. You recover{" "}
+            <EntityText type="heal">{healAmount} health</EntityText>.
+          </span>,
+          "effect"
+        );
+        dispatch({ type: "SET_ROOM", payload: newRoom });
+        dispatch({ type: "SET_HAZARD", payload: newHazard });
+      } else if (finalEventType === "boss") {
+        // Boss encounter - stronger enemy
+        const boss = generateEnemy(state.floor + 2); // Boss is tougher
+        boss.name = `${dungeonTheme} Guardian`;
+        boss.maxHealth = Math.floor(boss.maxHealth * 1.5);
+        boss.health = boss.maxHealth;
+        boss.attack = Math.floor(boss.attack * 1.3);
+        boss.expReward = Math.floor(boss.expReward * 2);
+        boss.goldReward = Math.floor(boss.goldReward * 2);
+        boss.abilities = [generateEnemyAbility(boss.name, state.floor + 1)];
+
+        enhanceEnemyWithLore(boss, state.floor).then((enhanced: Enemy) => {
+          dispatch({ type: "UPDATE_ENEMY", payload: enhanced });
+        });
+
+        const buffedBoss = newHazard ? applyHazardToEnemy(boss, newHazard) : boss;
+
+        addLog(
+          <span className="text-red-500 font-bold">
+            A powerful guardian blocks your path!
+          </span>,
+          "combat"
+        );
+        logger.enemyEncounter(boss);
+
+        dispatch({ type: "SET_ROOM", payload: newRoom });
+        dispatch({ type: "SET_HAZARD", payload: newHazard });
+        dispatch({ type: "START_COMBAT", payload: buffedBoss });
+      } else if (finalEventType === "mystery") {
+        // Mystery event - random outcome
+        const mysteryRoll = Math.random();
+        if (mysteryRoll < 0.3) {
+          // Good outcome - treasure
+          const goldFound = Math.floor(20 + state.floor * 10 + Math.random() * 30);
+          dispatch({ type: "MODIFY_PLAYER_GOLD", payload: goldFound });
+          addLog(
+            <span className="text-yellow-400">
+              The mystery reveals a hidden cache!{" "}
+              <EntityText type="gold">{goldFound} gold</EntityText> found!
+            </span>,
+            "loot"
+          );
+        } else if (mysteryRoll < 0.5) {
+          // Healing outcome
+          const healAmount = Math.floor(state.player.stats.maxHealth * 0.3);
+          dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: healAmount });
+          addLog(
+            <span className="text-cyan-400">
+              Mystical energies restore you.{" "}
+              <EntityText type="heal">{healAmount} health</EntityText> recovered.
+            </span>,
+            "effect"
+          );
+        } else if (mysteryRoll < 0.7) {
+          // Nothing happens
+          addLog(
+            <span className="text-indigo-400">
+              The mystery fades, leaving only silence...
+            </span>,
+            "narrative"
+          );
+        } else {
+          // Bad outcome - damage
+          const damage = Math.floor(5 + state.floor * 3);
+          dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: -damage });
+          addLog(
+            <span className="text-purple-500">
+              Dark energies lash out!{" "}
+              <EntityText type="damage">You take {damage} damage!</EntityText>
+            </span>,
+            "combat"
+          );
+        }
+        dispatch({ type: "SET_ROOM", payload: newRoom });
+        dispatch({ type: "SET_HAZARD", payload: newHazard });
       } else {
+        // Fallback - empty room
         addLog(
           <span className="text-stone-500">
             The path leads to an empty chamber. You may continue.
