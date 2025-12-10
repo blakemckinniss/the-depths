@@ -15,6 +15,7 @@ import type {
   RunSummary,
   EnvironmentalEntity,
   ParsedNarrative,
+  Boss,
 } from "@/lib/core/game-types";
 import type { ChaosEvent } from "@/lib/world/chaos-system";
 import {
@@ -79,6 +80,7 @@ import {
 import { GameLog } from "./game-log";
 import { ChoiceButtons } from "@/components/narrative/choice-buttons";
 import { CombatDisplay } from "@/components/combat/combat-display";
+import { BossEncounter } from "@/components/encounters/boss-encounter";
 import { SidebarInventory } from "@/components/inventory/sidebar-inventory";
 import { DungeonSelect } from "@/components/world/dungeon-select";
 import { SidebarKeys } from "@/components/inventory/sidebar-keys";
@@ -426,6 +428,60 @@ export function DungeonGame() {
       log.stanceChange(stanceNames[stance]);
     },
     [log, dispatch],
+  );
+
+  // Boss encounter action handler
+  const handleBossAction = useCallback(
+    async (action: "attack" | "defend" | "flee" | "parley") => {
+      if (isProcessing || !gameState.currentEnemy || gameState.currentEnemy.entityType !== "boss") return;
+
+      switch (action) {
+        case "attack":
+          // Use existing attack flow
+          await playerAttack();
+          break;
+        case "defend":
+          // Set defensive stance and skip attack
+          dispatch({ type: "SET_STANCE", payload: "defensive" });
+          log.stanceChange("Defensive");
+          addLog(
+            <span className="text-blue-400">
+              You brace yourself for the boss&apos;s attack...
+            </span>,
+            "combat",
+          );
+          // Enemy still attacks
+          if (gameState.currentEnemy) {
+            await enemyAttack(gameState.currentEnemy, gameState.player);
+          }
+          break;
+        case "flee":
+          // Use existing flee logic but make it harder for bosses
+          await handleFlee();
+          break;
+        case "parley":
+          // Attempt to negotiate with the boss
+          const boss = gameState.currentEnemy as Boss;
+          if (boss.dialogue?.lowHealth && boss.health <= boss.maxHealth * 0.5) {
+            addLog(
+              <span className="text-amber-400 italic">
+                &quot;{boss.dialogue.lowHealth}&quot;
+              </span>,
+              "dialogue",
+            );
+          } else if (boss.dialogue?.intro) {
+            addLog(
+              <span className="text-amber-400 italic">
+                The {boss.name} considers your words...
+              </span>,
+              "dialogue",
+            );
+          }
+          // Parley could lead to alternative outcomes - for now just narrative
+          break;
+      }
+    },
+    [isProcessing, gameState.currentEnemy, gameState.player, playerAttack, enemyAttack, dispatch, log, addLog],
   );
 
   const handleEnvironmentalInteraction = useCallback(
@@ -2189,14 +2245,23 @@ export function DungeonGame() {
             )}
 
             {gameState.inCombat && gameState.currentEnemy && (
-              <CombatDisplay
-                enemy={gameState.currentEnemy}
-                player={gameState.player}
-                hazard={gameState.currentHazard}
-                onChangeStance={handleChangeStance}
-                combatRound={gameState.combatRound}
-                disabled={isProcessing}
-              />
+              gameState.currentEnemy.entityType === "boss" ? (
+                <BossEncounter
+                  boss={gameState.currentEnemy as Boss}
+                  onAction={handleBossAction}
+                  isProcessing={isProcessing}
+                  currentPhaseNarration={undefined}
+                />
+              ) : (
+                <CombatDisplay
+                  enemy={gameState.currentEnemy}
+                  player={gameState.player}
+                  hazard={gameState.currentHazard}
+                  onChangeStance={handleChangeStance}
+                  combatRound={gameState.combatRound}
+                  disabled={isProcessing}
+                />
+              )
             )}
 
             {gameState.inCombat &&
