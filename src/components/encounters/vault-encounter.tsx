@@ -49,7 +49,7 @@ export function VaultEncounter({ vault, onAction, isProcessing, hasKey, keyType 
     <div className="my-4 p-4 bg-purple-500/5 border border-purple-900/30 rounded-lg space-y-3">
       {/* Header */}
       <div className="text-center space-y-1">
-        <EntityText type="special" className="text-lg">
+        <EntityText type="legendary" className="text-lg">
           {definition.name}
         </EntityText>
         <p className="text-sm text-purple-300/80">{definition.description}</p>
@@ -78,7 +78,7 @@ export function VaultEncounter({ vault, onAction, isProcessing, hasKey, keyType 
             label="Time"
             current={turnsRemaining}
             max={definition.timeLimit || turnsRemaining}
-            color="mana"
+            color="exp"
             compact
           />
         </div>

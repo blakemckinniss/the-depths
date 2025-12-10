@@ -88,6 +88,7 @@ import { GameLog } from "./game-log";
 import { ChoiceButtons } from "@/components/narrative/choice-buttons";
 import { CombatDisplay } from "@/components/combat/combat-display";
 import { BossEncounter } from "@/components/encounters/boss-encounter";
+import { VaultEncounter, type VaultAction } from "@/components/encounters/vault-encounter";
 import { SidebarInventory } from "@/components/inventory/sidebar-inventory";
 import { DungeonSelect } from "@/components/world/dungeon-select";
 import { SidebarKeys } from "@/components/inventory/sidebar-keys";
@@ -1645,6 +1646,132 @@ export function DungeonGame() {
     [isProcessing, gameState.currentEnemy, gameState.player, playerAttack, enemyAttack, attemptFlee, dispatch, log, addLog],
   );
 
+  // Vault encounter action handler
+  const handleVaultAction = useCallback(
+    (action: VaultAction) => {
+      if (isProcessing || !gameState.activeVault) return;
+
+      const vault = gameState.activeVault;
+
+      switch (action.type) {
+        case "unlock":
+          // Remove key from inventory and unlock vault
+          const keyItem = gameState.player.inventory.find(
+            (item) => item.type === "key" && item.name.toLowerCase().includes(action.keyType.replace("key_", ""))
+          );
+          if (keyItem) {
+            dispatch({ type: "REMOVE_ITEM", payload: keyItem.id });
+            dispatch({ type: "SET_ACTIVE_VAULT", payload: { ...vault, state: "active" } });
+            addLog(
+              <span className="text-amber-400">
+                You use the key to unlock the {vault.definition.name}...
+              </span>,
+              "narrative"
+            );
+          }
+          break;
+
+        case "enter":
+          dispatch({ type: "SET_ACTIVE_VAULT", payload: { ...vault, state: "active" } });
+          addLog(
+            <span className="text-purple-400">
+              You enter the {vault.definition.name}...
+            </span>,
+            "narrative"
+          );
+          break;
+
+        case "loot":
+          const item = vault.availableLoot[action.itemIndex];
+          if (item) {
+            dispatch({ type: "ADD_ITEM", payload: item });
+            const newAvailableLoot = [...vault.availableLoot];
+            newAvailableLoot.splice(action.itemIndex, 1);
+            const newCollectedLoot = [...vault.collectedLoot, item];
+            dispatch({
+              type: "SET_ACTIVE_VAULT",
+              payload: { ...vault, availableLoot: newAvailableLoot, collectedLoot: newCollectedLoot }
+            });
+            addLog(
+              <span>
+                You take <EntityText type="item">{item.name}</EntityText> from the vault.
+              </span>,
+              "loot"
+            );
+          }
+          break;
+
+        case "loot_gold":
+          dispatch({ type: "MODIFY_PLAYER_GOLD", payload: action.amount });
+          dispatch({
+            type: "SET_ACTIVE_VAULT",
+            payload: { ...vault, collectedGold: vault.collectedGold + action.amount }
+          });
+          addLog(
+            <span className="text-amber-400">
+              You collect {action.amount} gold from the vault!
+            </span>,
+            "loot"
+          );
+          break;
+
+        case "fight_guardian":
+          if (vault.guardian) {
+            // Start combat with guardian
+            dispatch({ type: "START_COMBAT", payload: vault.guardian as never });
+            addLog(
+              <span className="text-red-400">
+                The guardian attacks! Prepare for battle!
+              </span>,
+              "combat"
+            );
+          }
+          break;
+
+        case "advance_wave":
+          if (vault.waves && vault.currentWave !== undefined) {
+            const nextWave = vault.currentWave + 1;
+            dispatch({
+              type: "SET_ACTIVE_VAULT",
+              payload: { ...vault, currentWave: nextWave }
+            });
+            addLog(
+              <span className="text-red-400">
+                Wave {nextWave + 1} begins!
+              </span>,
+              "combat"
+            );
+          }
+          break;
+
+        case "leave":
+          dispatch({ type: "SET_ACTIVE_VAULT", payload: null });
+          addLog(
+            <span className="text-zinc-400">
+              You leave the vault behind.
+            </span>,
+            "narrative"
+          );
+          break;
+
+        case "complete":
+          dispatch({ type: "SET_ACTIVE_VAULT", payload: { ...vault, state: "completed" } });
+          addLog(
+            <span className="text-green-400">
+              You have cleared the {vault.definition.name}!
+            </span>,
+            "narrative"
+          );
+          // Clear vault after a moment
+          setTimeout(() => {
+            dispatch({ type: "SET_ACTIVE_VAULT", payload: null });
+          }, 1500);
+          break;
+      }
+    },
+    [isProcessing, gameState.activeVault, gameState.player.inventory, dispatch, addLog]
+  );
+
   const consumePotion = useCallback(
     (potion: Item) => {
       if (potion.type !== "potion" || !potion.stats?.health) return;
@@ -2367,7 +2494,23 @@ export function DungeonGame() {
               </div>
             )}
 
-            {gameState.pathOptions && gameState.pathOptions.length > 0 && (
+            {/* Vault Encounter - shown when activeVault is set */}
+            {gameState.activeVault && !gameState.inCombat && (
+              <VaultEncounter
+                vault={gameState.activeVault}
+                onAction={handleVaultAction}
+                isProcessing={isProcessing}
+                hasKey={gameState.player.inventory.some(
+                  (item) => item.type === "key" &&
+                    item.name.toLowerCase().includes(
+                      (gameState.activeVault?.definition.keyType || "").replace("key_", "")
+                    )
+                )}
+                keyType={gameState.activeVault.definition.keyType}
+              />
+            )}
+
+            {gameState.pathOptions && gameState.pathOptions.length > 0 && !gameState.activeVault && (
               <PathSelect
                 paths={gameState.pathOptions}
                 onSelectPath={handleSelectPath}

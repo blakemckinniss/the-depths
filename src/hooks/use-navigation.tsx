@@ -249,10 +249,32 @@ export function useNavigation({
           npc: "npc",
           rest: "rest",
           boss: "boss",
+          // vault is handled separately before orchestration
           // mystery has no forced type - orchestrator picks freely
         };
         return mapping[roomType];
       };
+
+      // Handle vault paths specially - they bypass orchestration
+      if (path.roomType === "vault" && path.vault) {
+        dispatch({ type: "SET_ROOM", payload: newRoom });
+        dispatch({ type: "SET_PATH_OPTIONS", payload: null });
+        dispatch({ type: "SET_ACTIVE_VAULT", payload: path.vault });
+        addLog(
+          <span className="text-purple-400">
+            You discover a <EntityText type="legendary">{path.vault.definition.name}</EntityText>...
+          </span>,
+          "narrative"
+        );
+        addLog(
+          <span className="text-purple-300/80 text-sm">
+            {path.vault.definition.description}
+          </span>,
+          "narrative"
+        );
+        setIsProcessing(false);
+        return;
+      }
 
       // Cast eventMemory to ledger's EventMemory type (compatible structure)
       const eventMemory: EventMemory = {
