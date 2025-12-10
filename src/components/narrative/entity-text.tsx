@@ -4,6 +4,7 @@ import type {
   EntityType,
   ItemRarity,
   Enemy,
+  Combatant,
   Item,
   NPC,
   Trap,
@@ -313,7 +314,7 @@ export function EnemyText({
   className,
   animation,
   noAnimation,
-}: EntityComponentProps & { enemy: Enemy }) {
+}: EntityComponentProps & { enemy: Combatant }) {
   return (
     <EntityText
       type="enemy"

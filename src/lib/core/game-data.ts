@@ -572,7 +572,10 @@ export const createInitialPlayer = (): Player => ({
   },
   class: null,
   className: null,
+  race: null,
+  raceName: null,
   abilities: [],
+  racialAbilities: [],
   resources: {
     type: "energy",
     current: 0,

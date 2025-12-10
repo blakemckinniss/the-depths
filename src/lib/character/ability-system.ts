@@ -4,6 +4,7 @@ import type {
   ClassDefinition,
   Player,
   Enemy,
+  Combatant,
   StatusEffect,
   ResourceType,
 } from "@/lib/core/game-types"
@@ -844,7 +845,7 @@ export function canUseAbility(player: Player, ability: Ability): { canUse: boole
 export function calculateAbilityDamage(
   player: Player,
   ability: Ability,
-  target: Enemy,
+  target: Combatant,
 ): { damage: number; isCritical: boolean } {
   if (!ability.baseDamage && !ability.damageScaling) {
     return { damage: 0, isCritical: false }
@@ -907,7 +908,7 @@ export function calculateAbilityHealing(player: Player, ability: Ability): numbe
   return Math.min(healing, maxHeal)
 }
 
-export function executeAbility(player: Player, ability: Ability, target?: Enemy): AbilityResult {
+export function executeAbility(player: Player, ability: Ability, target?: Combatant): AbilityResult {
   const canUse = canUseAbility(player, ability)
   if (!canUse.canUse) {
     return {

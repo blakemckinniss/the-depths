@@ -11,11 +11,13 @@ import type {
   DungeonCard,
   DungeonKey,
   PlayerClass,
+  PlayerRace,
   CombatStance,
   RunSummary,
   EnvironmentalEntity,
   ParsedNarrative,
   Boss,
+  Combatant,
 } from "@/lib/core/game-types";
 import type { ChaosEvent } from "@/lib/world/chaos-system";
 import {
@@ -44,6 +46,10 @@ import {
   getClassAbilitiesForLevel,
   CLASSES,
 } from "@/lib/character/ability-system";
+import {
+  initializePlayerRace,
+  RACE_DEFINITIONS,
+} from "@/lib/character/race-system";
 import {
   generatePathOptions,
   getPathRewardMultiplier,
@@ -85,6 +91,7 @@ import { SidebarInventory } from "@/components/inventory/sidebar-inventory";
 import { DungeonSelect } from "@/components/world/dungeon-select";
 import { SidebarKeys } from "@/components/inventory/sidebar-keys";
 import { ClassSelect } from "@/components/character/class-select";
+import { RaceSelect } from "@/components/character/race-select";
 import { AbilityBar } from "@/components/combat/ability-bar";
 import { SpellBar } from "@/components/combat/spell-bar";
 import { PathSelect } from "@/components/world/path-select";
@@ -227,6 +234,7 @@ export function DungeonGame() {
     showMenu,
     showDevPanel,
     showClassSelect,
+    showRaceSelect,
     activeLootContainer,
     npcDialogue,
     currentNarrative,
@@ -237,6 +245,8 @@ export function DungeonGame() {
     closeMenu: setShowMenuFalse,
     openClassSelect,
     closeClassSelect,
+    openRaceSelect,
+    closeRaceSelect,
     setActiveLootContainer,
     setNpcDialogue,
     setCurrentNarrative,
@@ -251,6 +261,7 @@ export function DungeonGame() {
   );
   const [chaosEvents, setChaosEvents] = useState<ChaosEvent[]>([]);
   const [hasExistingSaves, setHasExistingSaves] = useState(false); // Client-side only to avoid hydration mismatch
+  const [selectedRace, setSelectedRace] = useState<PlayerRace | null>(null); // Store selected race before class selection
 
   const { autoSave, hasSaves, load, deserializeWorldState, deserializeGameState } = useSaveSystem();
   const { generate: generateNarrative, isGenerating: isAiGenerating } =
@@ -428,60 +439,6 @@ export function DungeonGame() {
       log.stanceChange(stanceNames[stance]);
     },
     [log, dispatch],
-  );
-
-  // Boss encounter action handler
-  const handleBossAction = useCallback(
-    async (action: "attack" | "defend" | "flee" | "parley") => {
-      if (isProcessing || !gameState.currentEnemy || gameState.currentEnemy.entityType !== "boss") return;
-
-      switch (action) {
-        case "attack":
-          // Use existing attack flow
-          await playerAttack();
-          break;
-        case "defend":
-          // Set defensive stance and skip attack
-          dispatch({ type: "SET_STANCE", payload: "defensive" });
-          log.stanceChange("Defensive");
-          addLog(
-            <span className="text-blue-400">
-              You brace yourself for the boss&apos;s attack...
-            </span>,
-            "combat",
-          );
-          // Enemy still attacks
-          if (gameState.currentEnemy) {
-            await enemyAttack(gameState.currentEnemy, gameState.player);
-          }
-          break;
-        case "flee":
-          // Use existing flee logic but make it harder for bosses
-          await handleFlee();
-          break;
-        case "parley":
-          // Attempt to negotiate with the boss
-          const boss = gameState.currentEnemy as Boss;
-          if (boss.dialogue?.lowHealth && boss.health <= boss.maxHealth * 0.5) {
-            addLog(
-              <span className="text-amber-400 italic">
-                &quot;{boss.dialogue.lowHealth}&quot;
-              </span>,
-              "dialogue",
-            );
-          } else if (boss.dialogue?.intro) {
-            addLog(
-              <span className="text-amber-400 italic">
-                The {boss.name} considers your words...
-              </span>,
-              "dialogue",
-            );
-          }
-          // Parley could lead to alternative outcomes - for now just narrative
-          break;
-      }
-    },
-    [isProcessing, gameState.currentEnemy, gameState.player, playerAttack, enemyAttack, dispatch, log, addLog],
   );
 
   const handleEnvironmentalInteraction = useCallback(
@@ -712,12 +669,36 @@ export function DungeonGame() {
   );
 
 
+  // Handle race selection - store race and proceed to class select
+  const handleSelectRace = useCallback(
+    (raceId: PlayerRace) => {
+      const raceDef = RACE_DEFINITIONS[raceId];
+      setSelectedRace(raceId);
+      closeRaceSelect();
+      openClassSelect();
+      addLog(
+        <span>
+          You are a <EntityText type="uncommon">{raceDef.name}</EntityText>.{" "}
+          {raceDef.description}
+        </span>,
+        "system",
+      );
+    },
+    [addLog, closeRaceSelect, openClassSelect],
+  );
+
   const handleSelectClass = useCallback(
     (classId: PlayerClass) => {
       const classDef = CLASSES[classId];
+      // Apply race first if selected
+      if (selectedRace) {
+        const racedPlayer = initializePlayerRace(gameState.player, selectedRace);
+        dispatch({ type: "UPDATE_PLAYER", payload: racedPlayer });
+      }
       // Use hook for state updates
       gameFlow.selectClass(classId);
       closeClassSelect();
+      setSelectedRace(null); // Clear race selection after use
       // Custom JSX logging (richer than hook's plain text)
       addLog(
         <span>
@@ -734,7 +715,7 @@ export function DungeonGame() {
         "system",
       );
     },
-    [addLog, closeClassSelect, gameFlow],
+    [addLog, closeClassSelect, gameFlow, selectedRace, gameState.player, dispatch],
   );
 
   // ... existing code (enterDungeonSelect, selectDungeon, calculateDamage) ...
@@ -1087,7 +1068,7 @@ export function DungeonGame() {
   const processSustainedAbilities = useCallback(
     (
       player: Player,
-      enemy: Enemy | null,
+      enemy: Combatant | null,
     ): { player: Player; enemyDamage: number } => {
       let updatedPlayer = { ...player };
       let totalEnemyDamage = 0;
@@ -1609,6 +1590,59 @@ export function DungeonGame() {
     dispatch,
   ]);
 
+  // Boss encounter action handler
+  const handleBossAction = useCallback(
+    async (action: "attack" | "defend" | "flee" | "parley") => {
+      if (isProcessing || !gameState.currentEnemy || gameState.currentEnemy.entityType !== "boss") return;
+
+      switch (action) {
+        case "attack":
+          // Use existing attack flow
+          await playerAttack();
+          break;
+        case "defend":
+          // Set defensive stance and skip attack
+          dispatch({ type: "SET_STANCE", payload: "defensive" });
+          log.stanceChange("Defensive");
+          addLog(
+            <span className="text-blue-400">
+              You brace yourself for the boss&apos;s attack...
+            </span>,
+            "combat",
+          );
+          // Enemy still attacks
+          if (gameState.currentEnemy) {
+            await enemyAttack(gameState.currentEnemy, gameState.player);
+          }
+          break;
+        case "flee":
+          // Use existing flee logic
+          await attemptFlee();
+          break;
+        case "parley":
+          // Attempt to negotiate with the boss
+          const boss = gameState.currentEnemy as Boss;
+          if (boss.dialogue?.lowHealth && boss.health <= boss.maxHealth * 0.5) {
+            addLog(
+              <span className="text-amber-400 italic">
+                &quot;{boss.dialogue.lowHealth}&quot;
+              </span>,
+              "dialogue",
+            );
+          } else if (boss.dialogue?.intro) {
+            addLog(
+              <span className="text-amber-400 italic">
+                The {boss.name} considers your words...
+              </span>,
+              "dialogue",
+            );
+          }
+          break;
+      }
+    },
+    [isProcessing, gameState.currentEnemy, gameState.player, playerAttack, enemyAttack, attemptFlee, dispatch, log, addLog],
+  );
+
   const consumePotion = useCallback(
     (potion: Item) => {
       if (potion.type !== "potion" || !potion.stats?.health) return;
@@ -2030,7 +2064,7 @@ export function DungeonGame() {
   ]);
 
   // Fixed return statement and JSX structure for title screen
-  if (gameState.phase === "title" && !showClassSelect) {
+  if (gameState.phase === "title" && !showRaceSelect && !showClassSelect) {
     return (
       <div className="min-h-screen bg-stone-950 flex items-center justify-center">
         <div className="text-center space-y-8">
@@ -2061,7 +2095,7 @@ export function DungeonGame() {
             )}
 
             <button
-              onClick={openClassSelect}
+              onClick={openRaceSelect}
               className="block w-48 mx-auto px-6 py-3 bg-amber-900/50 hover:bg-amber-800/50 text-amber-200 transition-colors"
             >
               New Game
@@ -2145,8 +2179,10 @@ export function DungeonGame() {
           onReturnToTitle={handleReturnToTitle}
         />
 
-        {/* Class select */}
-        {showClassSelect ? (
+        {/* Race/Class select */}
+        {showRaceSelect ? (
+          <RaceSelect onSelectRace={handleSelectRace} />
+        ) : showClassSelect ? (
           <ClassSelect onSelectClass={handleSelectClass} />
         ) : gameState.phase === "tavern" ? (
           <Tavern

@@ -1,4 +1,4 @@
-import type { StatusEffect, Player, Enemy } from "@/lib/core/game-types"
+import type { StatusEffect, Player, Combatant } from "@/lib/core/game-types"
 import { generateEntityId } from "@/lib/entity/entity-system"
 
 // Duration types for flexible timing
@@ -236,7 +236,7 @@ export function processEffectTrigger(
   trigger: EffectTrigger,
   context: {
     player: Player
-    enemy?: Enemy
+    enemy?: Combatant | null
     damageDealt?: number
     damageTaken?: number
     healAmount?: number
@@ -839,7 +839,7 @@ export function processTrigger(
   player: Player,
   trigger: EffectTrigger,
   context: {
-    enemy?: Enemy
+    enemy?: Combatant | null
     damageDealt?: number
     damageTaken?: number
     healAmount?: number
@@ -1057,25 +1057,25 @@ export function processTrigger(
 }
 
 // Convenience functions for common triggers
-export const triggerOnAttack = (player: Player, context: { damageDealt: number; isCritical?: boolean; enemy?: Enemy }) =>
+export const triggerOnAttack = (player: Player, context: { damageDealt: number; isCritical?: boolean; enemy?: Combatant | null }) =>
   processTrigger(player, "on_attack", context)
 
-export const triggerOnDamageDealt = (player: Player, context: { damageDealt: number; isCritical?: boolean; enemy?: Enemy }) =>
+export const triggerOnDamageDealt = (player: Player, context: { damageDealt: number; isCritical?: boolean; enemy?: Combatant | null }) =>
   processTrigger(player, "on_damage_dealt", context)
 
-export const triggerOnCriticalHit = (player: Player, context: { damageDealt: number; enemy?: Enemy }) =>
+export const triggerOnCriticalHit = (player: Player, context: { damageDealt: number; enemy?: Combatant | null }) =>
   processTrigger(player, "on_critical_hit", { ...context, isCritical: true })
 
-export const triggerOnDamageTaken = (player: Player, context: { damageTaken: number; enemy?: Enemy }) =>
+export const triggerOnDamageTaken = (player: Player, context: { damageTaken: number; enemy?: Combatant | null }) =>
   processTrigger(player, "on_damage_taken", context)
 
-export const triggerOnKill = (player: Player, context: { enemy?: Enemy }) =>
+export const triggerOnKill = (player: Player, context: { enemy?: Combatant | null }) =>
   processTrigger(player, "on_kill", context)
 
 export const triggerTurnEnd = (player: Player) =>
   processTrigger(player, "turn_end", {})
 
-export const triggerCombatStart = (player: Player, context: { enemy?: Enemy }) =>
+export const triggerCombatStart = (player: Player, context: { enemy?: Combatant | null }) =>
   processTrigger(player, "on_combat_start", context)
 
 export const triggerCombatEnd = (player: Player) =>

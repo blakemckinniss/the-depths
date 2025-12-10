@@ -14,6 +14,7 @@
 import type { ReactNode } from "react";
 import type {
   Enemy,
+  Combatant,
   Item,
   NPC,
   Trap,
@@ -51,16 +52,16 @@ export type GameLogEvent =
   // Combat
   | {
       event: "attack";
-      attacker: "player" | Enemy;
-      target: "player" | Enemy;
+      attacker: "player" | Combatant;
+      target: "player" | Combatant;
       damage: number;
       isCrit?: boolean;
       effectiveness?: "effective" | "resisted" | "normal";
     }
-  | { event: "enemy_slain"; enemy: Enemy; gold: number; exp: number }
+  | { event: "enemy_slain"; enemy: Combatant; gold: number; exp: number }
   | {
       event: "player_attack";
-      enemy: Enemy;
+      enemy: Combatant;
       damage: number;
       isCrit?: boolean;
       effectiveness?: "effective" | "resisted" | "normal";
@@ -68,14 +69,14 @@ export type GameLogEvent =
     }
   | {
       event: "enemy_attack";
-      enemy: Enemy;
+      enemy: Combatant;
       damage: number;
       ability?: string;
       narration?: string;
     }
-  | { event: "dodge"; enemy: Enemy }
-  | { event: "flee_success"; enemy: Enemy }
-  | { event: "flee_fail"; enemy: Enemy; damage: number }
+  | { event: "dodge"; enemy: Combatant }
+  | { event: "flee_success"; enemy: Combatant }
+  | { event: "flee_fail"; enemy: Combatant; damage: number }
 
   // Loot
   | { event: "item_found"; item: Item }
@@ -84,7 +85,7 @@ export type GameLogEvent =
   | { event: "loot_container_discovered"; name: string; rarity: string }
 
   // Effects
-  | { event: "effect_applied"; effect: StatusEffect; target: "player" | Enemy }
+  | { event: "effect_applied"; effect: StatusEffect; target: "player" | Combatant }
   | { event: "effect_expired"; effect: StatusEffect }
   | { event: "heal"; amount: number; source?: string }
   | { event: "damage_taken"; amount: number; source?: string }
@@ -749,7 +750,7 @@ export class GameLogger {
 
   // Combat
   playerAttack(
-    enemy: Enemy,
+    enemy: Combatant,
     damage: number,
     opts?: {
       isCrit?: boolean;
@@ -760,22 +761,22 @@ export class GameLogger {
     this.log({ event: "player_attack", enemy, damage, ...opts });
   }
   enemyAttack(
-    enemy: Enemy,
+    enemy: Combatant,
     damage: number,
     opts?: { ability?: string; narration?: string },
   ) {
     this.log({ event: "enemy_attack", enemy, damage, ...opts });
   }
-  dodge(enemy: Enemy) {
+  dodge(enemy: Combatant) {
     this.log({ event: "dodge", enemy });
   }
-  enemySlain(enemy: Enemy, gold: number, exp: number) {
+  enemySlain(enemy: Combatant, gold: number, exp: number) {
     this.log({ event: "enemy_slain", enemy, gold, exp });
   }
-  fleeSuccess(enemy: Enemy) {
+  fleeSuccess(enemy: Combatant) {
     this.log({ event: "flee_success", enemy });
   }
-  fleeFail(enemy: Enemy, damage: number) {
+  fleeFail(enemy: Combatant, damage: number) {
     this.log({ event: "flee_fail", enemy, damage });
   }
 
@@ -794,7 +795,7 @@ export class GameLogger {
   }
 
   // Effects
-  effectApplied(effect: StatusEffect, target: "player" | Enemy) {
+  effectApplied(effect: StatusEffect, target: "player" | Combatant) {
     this.log({ event: "effect_applied", effect, target });
   }
   effectExpired(effect: StatusEffect) {

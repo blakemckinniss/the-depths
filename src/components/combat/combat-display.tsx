@@ -1,6 +1,6 @@
 "use client"
 
-import type { Enemy, Player, EnvironmentalHazard } from "@/lib/core/game-types"
+import type { Combatant, Player, EnvironmentalHazard } from "@/lib/core/game-types"
 import { getLevelDiffColor } from "@/lib/mechanics/game-mechanics-ledger"
 import { EntityText } from "@/components/narrative/entity-text"
 import { StatBar } from "@/components/character/stat-bar"
@@ -12,7 +12,7 @@ import { HazardDisplay } from "@/components/world/hazard-display"
 import { getRankColor, getRankDisplayName, type RankedEnemy } from "@/lib/entity/enemy-rank-system"
 
 interface CombatDisplayProps {
-  enemy: Enemy
+  enemy: Combatant
   player: Player
   hazard?: EnvironmentalHazard | null
   onChangeStance?: (stance: "balanced" | "aggressive" | "defensive") => void
@@ -78,7 +78,7 @@ export function CombatDisplay({
           <span>
             DEF <span className="text-stone-400">{enemy.defense}</span>
           </span>
-          {enemy.stance && (
+          {'stance' in enemy && enemy.stance && (
             <span className="text-amber-400/70">
               {enemy.stance === "aggressive" ? "Enraged" : enemy.stance === "defensive" ? "Guarding" : "Berserk"}
             </span>

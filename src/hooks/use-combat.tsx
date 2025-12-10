@@ -5,6 +5,8 @@ import type {
   GameState,
   Player,
   Enemy,
+  Boss,
+  Combatant,
   Ability,
   CombatStance,
   StatusEffect,
@@ -308,7 +310,7 @@ export function useCombat({
 
   // Handle enemy victory (reward processing)
   const handleEnemyDefeat = useCallback(
-    (enemy: Enemy, player: Player) => {
+    (enemy: Combatant, player: Player) => {
       const effectiveStats = calculateEffectiveStats(player);
       const levelXpMod = getXpModifier(player.stats.level, enemy.level);
       const expGain = Math.floor(
@@ -390,7 +392,7 @@ export function useCombat({
     (
       baseDamage: number,
       damageType: DamageType | undefined,
-      target: Enemy,
+      target: Combatant,
       attacker: Player,
     ): DamageResult => {
       const { damage, effectiveness } = calculateDamageWithType(
@@ -418,7 +420,7 @@ export function useCombat({
 
   // Select best enemy ability
   const selectBestEnemyAbility = useCallback(
-    (enemy: Enemy) => {
+    (enemy: Combatant) => {
       return selectEnemyAbility(
         enemy,
         state.player.stats.health,
@@ -865,10 +867,10 @@ export function useCombat({
   // Process companion turns - returns updated enemy (or null if killed) and updated party
   const processCompanionTurns = useCallback(
     async (
-      enemy: Enemy,
+      enemy: Combatant,
       player: Player,
     ): Promise<{
-      enemy: Enemy | null;
+      enemy: Combatant | null;
       party: typeof player.party;
       playerHealed: number;
     }> => {
@@ -877,7 +879,7 @@ export function useCombat({
         return { enemy, party: player.party, playerHealed: 0 };
       }
 
-      let currentEnemy: Enemy | null = enemy;
+      let currentEnemy: Combatant | null = enemy;
       let updatedParty = player.party;
       let totalPlayerHealed = 0;
 

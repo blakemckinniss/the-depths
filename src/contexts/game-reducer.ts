@@ -3,6 +3,7 @@ import type {
   Player,
   PlayerStats,
   Enemy,
+  Combatant,
   Item,
   StatusEffect,
   NPC,
@@ -72,9 +73,9 @@ type AbilityAction =
 
 // Combat actions
 type CombatAction =
-  | { type: "START_COMBAT"; payload: Enemy }
+  | { type: "START_COMBAT"; payload: Combatant }
   | { type: "END_COMBAT" }
-  | { type: "UPDATE_ENEMY"; payload: Partial<Enemy> | null }
+  | { type: "UPDATE_ENEMY"; payload: Partial<Combatant> | null }
   | { type: "SET_ENEMY_HEALTH"; payload: number }
   | { type: "DAMAGE_ENEMY"; payload: number }
   | { type: "SET_STANCE"; payload: CombatStance }
@@ -490,7 +491,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return {
         ...state,
         currentEnemy: state.currentEnemy
-          ? { ...state.currentEnemy, ...action.payload }
+          ? ({ ...state.currentEnemy, ...action.payload } as Combatant)
           : null,
       };
 
@@ -881,12 +882,12 @@ export const gameActions = {
   tickEffects: (): GameAction => ({ type: "TICK_EFFECTS" }),
 
   // Combat
-  startCombat: (enemy: Enemy): GameAction => ({
+  startCombat: (enemy: Combatant): GameAction => ({
     type: "START_COMBAT",
     payload: enemy,
   }),
   endCombat: (): GameAction => ({ type: "END_COMBAT" }),
-  updateEnemy: (payload: Partial<Enemy> | null): GameAction => ({
+  updateEnemy: (payload: Partial<Combatant> | null): GameAction => ({
     type: "UPDATE_ENEMY",
     payload,
   }),

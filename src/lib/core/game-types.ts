@@ -361,9 +361,10 @@ export interface PartyState {
   graveyard: Companion[] // fallen companions (for necromancer resurrection, memories, etc.)
 }
 
-// Boss entity with phases
+// Boss entity with phases - extends Enemy properties for compatibility
 export interface Boss extends GameEntity {
   entityType: "boss"
+  level: number // Boss level for scaling
   health: number
   maxHealth: number
   attack: number
@@ -373,10 +374,19 @@ export interface Boss extends GameEntity {
   expReward: number
   goldReward: number
   guaranteedLoot: Item[]
+  loot?: Item // Optional additional loot
+  materialDrops?: Item[] // Materials dropped on death (from material-system)
+  abilities?: EnemyAbility[] // Boss can use abilities like enemies
+  weakness?: DamageType
+  resistance?: DamageType
+  stance?: CombatStance // Combat stance for compatibility
+  aiPattern?: "random" | "smart" | "ability_focused" | "defensive_until_low"
+  lastWords?: string // Final words on death
   dialogue?: {
     intro: string
     phase_transitions: string[]
     death: string
+    lowHealth?: string
   }
 }
 
@@ -543,13 +553,45 @@ export interface Player extends GameEntity {
   party: PartyState // replaced single companion with party system
   class: PlayerClass | null
   className: string | null
+  race: PlayerRace | null // Player race for stat bonuses and racial abilities
+  raceName: string | null
   abilities: Ability[]
+  racialAbilities: RacialAbilityInstance[] // Racial abilities (passive and active)
   resources: PlayerResources
   abilityCooldowns: Record<string, number> // abilityId -> turns remaining
   stance: CombatStance
   combo: ComboTracker
   sustainedAbilities: SustainedAbility[] // Toggle abilities that reserve resources while active
   spellBook: SpellBook // Learned spells from tomes, events, etc.
+}
+
+// Player race type - matches race-system.ts
+export type PlayerRace =
+  | "human"
+  | "elf"
+  | "dark_elf"
+  | "dwarf"
+  | "orc"
+  | "halfling"
+  | "demon"
+  | "angel"
+  | "undead"
+  | "dragonborn"
+  | "tiefling"
+  | "gnome"
+  | "half_giant"
+  | "vampire"
+  | "werewolf"
+
+// Instance of a racial ability on the player
+export interface RacialAbilityInstance {
+  id: string
+  name: string
+  description: string
+  isPassive: boolean
+  cooldown?: number
+  currentCooldown?: number
+  unlockLevel: number
 }
 
 // Spell Book - player's collection of learned spells
@@ -716,6 +758,8 @@ export interface LogEntry {
 
 export type GamePhase =
   | "title"
+  | "race_select"
+  | "class_select"
   | "tavern"
   | "dungeon_select"
   | "dungeon"
@@ -741,7 +785,7 @@ export interface GameState {
   currentRoom: number
   floor: number
   inCombat: boolean
-  currentEnemy: Enemy | null
+  currentEnemy: Enemy | Boss | null
   gameStarted: boolean
   gameOver: boolean
   phase: GamePhase
@@ -789,6 +833,9 @@ export interface Enemy extends GameEntity {
   aiPattern?: "random" | "smart" | "ability_focused" | "defensive_until_low"
   monsterTier?: number // For material drop scaling
 }
+
+// Union type for any entity the player can fight
+export type Combatant = Enemy | Boss
 
 export interface EnemyAbility {
   id: string

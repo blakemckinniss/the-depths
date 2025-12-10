@@ -1,4 +1,4 @@
-import type { Companion, CompanionAbility, PartyState, Player, Enemy, NPC } from "@/lib/core/game-types"
+import type { Companion, CompanionAbility, PartyState, Player, Enemy, NPC, Combatant } from "@/lib/core/game-types"
 import { generateEntityId } from "./entity-system"
 
 // ============================================================================
@@ -136,7 +136,7 @@ export function calculateCompanionDefense(companion: Companion): number {
 export function selectCompanionAction(
   companion: Companion,
   player: Player,
-  enemy: Enemy | null,
+  enemy: Combatant | null,
 ): { action: "attack" | "ability" | "defend" | "flee" | "betray"; ability?: CompanionAbility } {
   const bondEffects = getBondEffects(companion.bond.level)
 
@@ -223,7 +223,7 @@ export function useCompanionAbility(companion: Companion, abilityId: string): Co
 // TAMING / RECRUITMENT
 // ============================================================================
 
-export function canTameEnemy(enemy: Enemy, player: Player): { canTame: boolean; chance: number; reason?: string } {
+export function canTameEnemy(enemy: Combatant, player: Player): { canTame: boolean; chance: number; reason?: string } {
   // Must be below 25% HP
   const hpPercent = enemy.health / enemy.maxHealth
   if (hpPercent > 0.25) {
@@ -257,7 +257,7 @@ export function canRescueNPC(npc: NPC): boolean {
 // FALLBACK GENERATION (when AI is unavailable)
 // ============================================================================
 
-export function createBasicCompanionFromEnemy(enemy: Enemy, method: string): Companion {
+export function createBasicCompanionFromEnemy(enemy: Combatant, method: string): Companion {
   return {
     id: generateEntityId("companion"),
     entityType: "companion",

@@ -10,29 +10,16 @@ import type {
   DamageType,
   ResourceType,
   PlayerClass,
+  PlayerRace,
   Ability,
 } from "@/lib/core/game-types"
+
+// Re-export PlayerRace for convenience
+export type { PlayerRace }
 
 // =============================================================================
 // RACE TYPES
 // =============================================================================
-
-export type PlayerRace =
-  | "human"
-  | "elf"
-  | "dark_elf"
-  | "dwarf"
-  | "orc"
-  | "halfling"
-  | "demon"
-  | "angel"
-  | "undead"
-  | "dragonborn"
-  | "tiefling"
-  | "gnome"
-  | "half_giant"
-  | "vampire"
-  | "werewolf"
 
 export type RaceCategory = "mortal" | "celestial" | "infernal" | "undead" | "beastkin" | "elemental"
 
@@ -1170,4 +1157,51 @@ export function calculateRaceDamageModifier(
   // Resistance reduces damage (0.7 = 30% reduction)
   // Weakness increases damage (1.3 = 30% increase)
   return 1 - resistance / 100 + weakness / 100
+}
+
+/**
+ * Initialize player with race - applies stat bonuses and racial abilities
+ */
+export function initializePlayerRace(
+  player: import("@/lib/core/game-types").Player,
+  raceId: PlayerRace
+): import("@/lib/core/game-types").Player {
+  const raceDef = RACE_DEFINITIONS[raceId]
+  const bonuses = raceDef.statBonuses
+
+  // Convert racial abilities to RacialAbilityInstance format
+  const racialAbilities = raceDef.abilities
+    .filter(a => a.unlockLevel <= 1) // Start with level 1 abilities
+    .map(a => ({
+      id: a.id,
+      name: a.name,
+      description: a.description,
+      isPassive: a.isPassive,
+      cooldown: a.cooldown,
+      currentCooldown: 0,
+      unlockLevel: a.unlockLevel,
+    }))
+
+  return {
+    ...player,
+    race: raceId,
+    raceName: raceDef.name,
+    racialAbilities,
+    stats: {
+      ...player.stats,
+      maxHealth: player.stats.maxHealth + (bonuses.health || 0),
+      health: player.stats.health + (bonuses.health || 0),
+      attack: player.stats.attack + (bonuses.attack || 0),
+      defense: player.stats.defense + (bonuses.defense || 0),
+      strength: player.stats.strength + (bonuses.strength || 0),
+      intelligence: player.stats.intelligence + (bonuses.intelligence || 0),
+      dexterity: player.stats.dexterity + (bonuses.dexterity || 0),
+      critChance: player.stats.critChance + ((bonuses.critChance || 0) / 100),
+    },
+    resources: {
+      ...player.resources,
+      max: player.resources.max + (raceDef.resourceModifiers?.bonus || 0),
+      current: player.resources.current + (raceDef.resourceModifiers?.bonus || 0),
+    },
+  }
 }

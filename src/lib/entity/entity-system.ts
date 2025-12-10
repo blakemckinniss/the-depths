@@ -136,6 +136,7 @@ export function createBoss(
   return {
     id: generateEntityId("boss"),
     entityType: "boss",
+    level: partial.level ?? 1,
     maxHealth: partial.maxHealth ?? partial.health,
     currentPhase: 0,
     phases: partial.phases ?? [

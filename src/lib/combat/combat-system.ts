@@ -1,7 +1,8 @@
-import type { Player, Enemy, CombatStance, DamageType, EnemyAbility, ComboTracker, StatusEffect } from "@/lib/core/game-types"
+import type { Player, Enemy, Combatant, CombatStance, DamageType, EnemyAbility, ComboTracker, StatusEffect } from "@/lib/core/game-types"
 import { calculateEffectiveStats, STATUS_EFFECTS, createStatusEffect } from "@/lib/entity/entity-system"
 import { generateId } from "@/lib/core/utils"
 import { getLevelDamageModifier } from "@/lib/mechanics/game-mechanics-ledger"
+import { calculateRaceDamageModifier } from "@/lib/character/race-system"
 
 // Stance modifiers
 export const STANCE_MODIFIERS: Record<CombatStance, { attack: number; defense: number; resourceCost: number }> = {
@@ -64,7 +65,7 @@ interface ComboEffect {
 export function calculateDamageWithType(
   baseDamage: number,
   damageType: DamageType | undefined,
-  enemy: Enemy,
+  enemy: Combatant,
   player: Player,
 ): { damage: number; effectiveness: "normal" | "effective" | "resisted"; levelModifier: number } {
   let damage = baseDamage
@@ -156,8 +157,11 @@ export function tickCombo(combo: ComboTracker): ComboTracker {
   }
 }
 
-export function selectEnemyAbility(enemy: Enemy, playerHealth: number, playerMaxHealth: number): EnemyAbility | null {
+export function selectEnemyAbility(enemy: Combatant, playerHealth: number, playerMaxHealth: number): EnemyAbility | null {
   if (!enemy.abilities || enemy.abilities.length === 0) return null
+
+  // Get aiPattern if it exists (only on Enemy type, not Boss)
+  const aiPattern = 'aiPattern' in enemy ? enemy.aiPattern : undefined
 
   const availableAbilities = enemy.abilities.filter((a) => a.currentCooldown === 0)
   if (availableAbilities.length === 0) return null
@@ -166,7 +170,7 @@ export function selectEnemyAbility(enemy: Enemy, playerHealth: number, playerMax
   const enemyHealthPercent = enemy.health / enemy.maxHealth
 
   // AI patterns for ability selection
-  switch (enemy.aiPattern) {
+  switch (aiPattern) {
     case "ability_focused":
       // Always use ability if available
       return availableAbilities[Math.floor(Math.random() * availableAbilities.length)]
@@ -199,7 +203,7 @@ export function selectEnemyAbility(enemy: Enemy, playerHealth: number, playerMax
   }
 }
 
-export function tickEnemyAbilities(enemy: Enemy): Enemy {
+export function tickEnemyAbilities(enemy: Combatant): Combatant {
   if (!enemy.abilities) return enemy
 
   return {
@@ -216,13 +220,20 @@ export function calculateIncomingDamage(
   damageType: DamageType | undefined,
   player: Player,
   enemyLevel?: number,
-): { damage: number; levelModifier: number } {
+): { damage: number; levelModifier: number; racialModifier?: number } {
   const effectiveStats = calculateEffectiveStats(player)
   const stanceMod = STANCE_MODIFIERS[player.stance]
 
   // Apply level scaling if enemy level provided (enemy attacking player)
   const levelModifier = enemyLevel ? getLevelDamageModifier(enemyLevel, player.stats.level) : 1.0
   let damage = Math.floor(baseDamage * levelModifier)
+
+  // Apply racial resistance/weakness modifier
+  let racialModifier: number | undefined
+  if (player.race && damageType) {
+    racialModifier = calculateRaceDamageModifier(player.race, damageType)
+    damage = Math.floor(damage * racialModifier)
+  }
 
   // Base reduction from defense
   damage = Math.max(1, damage - Math.floor(effectiveStats.defense * 0.5 * stanceMod.defense))
@@ -231,11 +242,11 @@ export function calculateIncomingDamage(
   if (player.combo.activeCombo) {
     const comboDef = Object.values(COMBO_DEFINITIONS).find((c) => c.name === player.combo.activeCombo?.name)
     if (comboDef?.effect.blockNextAttack) {
-      return { damage: 0, levelModifier }
+      return { damage: 0, levelModifier, racialModifier }
     }
   }
 
-  return { damage, levelModifier }
+  return { damage, levelModifier, racialModifier }
 }
 
 // Effect factories for enemy abilities based on damage type

@@ -7,7 +7,7 @@
  * - Targeted (item transmutation, NPC charm, etc.)
  */
 
-import type { Player, Enemy, Item, NPC, StatusEffect, DamageType } from "@/lib/core/game-types"
+import type { Player, Enemy, Combatant, Item, NPC, StatusEffect, DamageType } from "@/lib/core/game-types"
 import type { Spell, SpellBook, SpellCastResult } from "./spell-system"
 import { canCastSpell, calculateSpellDamage, calculateSpellHealing } from "./spell-system"
 import { createStatusEffect } from "@/lib/entity/entity-system"
@@ -22,7 +22,7 @@ export interface CastContext {
   spellBook: SpellBook
   target?: {
     type: "enemy" | "ally" | "item" | "npc" | "environment" | "self"
-    entity?: Enemy | Item | NPC
+    entity?: Combatant | Item | NPC
   }
   room?: {
     hasTraps?: boolean
@@ -600,11 +600,11 @@ export function applySpellCast(
  * Apply spell damage to enemy
  */
 export function applySpellDamageToEnemy(
-  enemy: Enemy,
+  enemy: Combatant,
   damage: number,
   damageType: DamageType,
   effectsApplied?: StatusEffect[]
-): { enemy: Enemy; narratives: string[]; debuffsToApply?: StatusEffect[] } {
+): { enemy: Combatant; narratives: string[]; debuffsToApply?: StatusEffect[] } {
   const narratives: string[] = []
 
   // Check weakness/resistance

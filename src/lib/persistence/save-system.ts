@@ -62,7 +62,7 @@ export interface SerializedGameState {
   currentRoom: number
   floor: number
   inCombat: boolean
-  currentEnemy: Enemy | null
+  currentEnemy: Enemy | Boss | null
   gameStarted: boolean
   gameOver: boolean
   phase: string

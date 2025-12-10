@@ -19,6 +19,7 @@ interface UIState {
   showMenu: boolean;
   showDevPanel: boolean;
   showClassSelect: boolean;
+  showRaceSelect: boolean;
 
   // Encounter UI states
   activeLootContainer: LootContainer | null;
@@ -46,6 +47,10 @@ interface UIContextValue extends UIState {
   // Class select
   openClassSelect: () => void;
   closeClassSelect: () => void;
+
+  // Race select
+  openRaceSelect: () => void;
+  closeRaceSelect: () => void;
 
   // Loot container
   setActiveLootContainer: (container: LootContainer | null) => void;
@@ -84,6 +89,7 @@ export function UIProvider({ children }: UIProviderProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [showDevPanel, setShowDevPanel] = useState(false);
   const [showClassSelect, setShowClassSelect] = useState(false);
+  const [showRaceSelect, setShowRaceSelect] = useState(false);
 
   // Encounter UI states
   const [activeLootContainer, setActiveLootContainer] =
@@ -117,6 +123,10 @@ export function UIProvider({ children }: UIProviderProps) {
   const openClassSelect = useCallback(() => setShowClassSelect(true), []);
   const closeClassSelect = useCallback(() => setShowClassSelect(false), []);
 
+  // Race select handlers
+  const openRaceSelect = useCallback(() => setShowRaceSelect(true), []);
+  const closeRaceSelect = useCallback(() => setShowRaceSelect(false), []);
+
   // AI narration handlers
   const setAiNarration = useCallback((key: string, value: string) => {
     setAiNarrationState((prev) => ({ ...prev, [key]: value }));
@@ -136,6 +146,7 @@ export function UIProvider({ children }: UIProviderProps) {
     showMenu,
     showDevPanel,
     showClassSelect,
+    showRaceSelect,
     activeLootContainer,
     npcDialogue,
     currentNarrative,
@@ -155,6 +166,10 @@ export function UIProvider({ children }: UIProviderProps) {
     // Class select
     openClassSelect,
     closeClassSelect,
+
+    // Race select
+    openRaceSelect,
+    closeRaceSelect,
 
     // Loot container
     setActiveLootContainer,

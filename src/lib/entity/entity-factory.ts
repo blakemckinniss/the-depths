@@ -406,6 +406,7 @@ export function createBossFromAI(
   return {
     id: generateEntityId("boss"),
     entityType: "boss",
+    level: floor,
     name: entrance.bossName,
     description: entrance.bossDescription,
     health: Math.floor(base.health * floorScale),

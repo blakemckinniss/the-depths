@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import type { Player, Enemy, Spell, SpellBook, SpellSchool } from "@/lib/core/game-types"
+import type { Player, Combatant, Spell, SpellBook, SpellSchool } from "@/lib/core/game-types"
 import { canCastSpell } from "@/lib/magic/spell-system"
 import { cn } from "@/lib/core/utils"
 
@@ -11,7 +11,7 @@ interface SpellBarProps {
   onCastSpell: (spell: Spell) => void
   inCombat: boolean
   disabled?: boolean
-  currentEnemy?: Enemy | null
+  currentEnemy?: Combatant | null
 }
 
 const SCHOOL_COLORS: Record<SpellSchool, string> = {
