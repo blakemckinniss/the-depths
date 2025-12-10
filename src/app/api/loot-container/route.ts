@@ -73,6 +73,94 @@ const ExamineResultSchema = z.object({
   anticipationText: z.string().describe("Text that builds excitement/dread"),
 });
 
+// =============================================================================
+// LOOT ITEM SCHEMA - TCG Card Style with REQUIRED Mechanics
+// =============================================================================
+
+// Base loot item fields
+const BaseLootItemSchema = z.object({
+  name: z.string().describe("Evocative fantasy item name"),
+  rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]),
+  description: z.string().describe("Appearance description - NO claiming on-hit effects"),
+  lore: z.string().nullish().describe("Brief backstory hint"),
+  isJackpot: z.boolean().nullish().describe("True for exceptional finds"),
+})
+
+// Weapon - REQUIRES attack stat
+const WeaponLootSchema = BaseLootItemSchema.extend({
+  type: z.literal("weapon"),
+  attack: z.number().min(1).describe("REQUIRED: Base damage (3-20 based on rarity)"),
+  damageType: z.enum([
+    "physical", "fire", "ice", "lightning", "shadow", "holy", "poison", "arcane"
+  ]).default("physical").describe("Element type"),
+})
+
+// Armor - REQUIRES defense stat
+const ArmorLootSchema = BaseLootItemSchema.extend({
+  type: z.literal("armor"),
+  defense: z.number().min(1).describe("REQUIRED: Damage reduction (2-15 based on rarity)"),
+  slot: z.enum(["head", "body", "hands", "feet", "shield"]).default("body"),
+})
+
+// Accessory - REQUIRES stat modifier
+const AccessoryLootSchema = BaseLootItemSchema.extend({
+  type: z.literal("trinket"),
+  modifiers: z.object({
+    attack: z.number().nullish(),
+    defense: z.number().nullish(),
+    maxHealth: z.number().nullish(),
+  }).describe("REQUIRED: At least one modifier"),
+})
+
+// Consumable - REQUIRES effect
+const ConsumableLootSchema = BaseLootItemSchema.extend({
+  type: z.literal("consumable"),
+  healing: z.number().nullish().describe("HP restored when used"),
+  statusEffect: z.object({
+    name: z.string(),
+    effectType: z.enum(["buff", "debuff"]),
+    duration: z.number(),
+  }).nullish().describe("Effect applied when used"),
+})
+
+// Material - crafting component
+const MaterialLootSchema = BaseLootItemSchema.extend({
+  type: z.literal("material"),
+  materialType: z.string().describe("What kind of material (gem, ore, essence, etc)"),
+})
+
+// Artifact - special/legendary items
+const ArtifactLootSchema = BaseLootItemSchema.extend({
+  type: z.literal("artifact"),
+  power: z.string().describe("What makes this artifact special"),
+  attack: z.number().nullish(),
+  defense: z.number().nullish(),
+  modifiers: z.object({
+    attack: z.number().nullish(),
+    defense: z.number().nullish(),
+    maxHealth: z.number().nullish(),
+  }).nullish(),
+})
+
+// Cursed items - have drawbacks
+const CursedLootSchema = BaseLootItemSchema.extend({
+  type: z.literal("cursed"),
+  curse: z.string().describe("What the curse does"),
+  attack: z.number().nullish(),
+  defense: z.number().nullish(),
+})
+
+// Union of all loot types - AI must pick one
+const LootItemSchema = z.discriminatedUnion("type", [
+  WeaponLootSchema,
+  ArmorLootSchema,
+  AccessoryLootSchema,
+  ConsumableLootSchema,
+  MaterialLootSchema,
+  ArtifactLootSchema,
+  CursedLootSchema,
+])
+
 // Opening result - the big reveal
 const OpeningResultSchema = z.object({
   openingNarrative: z
@@ -81,43 +169,10 @@ const OpeningResultSchema = z.object({
   revealMoment: z
     .string()
     .describe("The instant contents are revealed - build suspense"),
-  contents: z.array(
-    z.object({
-      name: z.string(),
-      type: z.enum([
-        "weapon",
-        "armor",
-        "trinket",
-        "consumable",
-        "material",
-        "gold",
-        "gem",
-        "artifact",
-        "cursed",
-      ]),
-      rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]),
-      description: z
-        .string()
-        .describe(
-          "Appearance description - do NOT claim on-hit effects or procs",
-        ),
-      value: z.number(),
-      damageType: z
-        .enum([
-          "physical",
-          "fire",
-          "ice",
-          "lightning",
-          "shadow",
-          "holy",
-          "poison",
-          "arcane",
-        ])
-        .nullish()
-        .describe("Weapon damage type - only for weapons"),
-      isJackpot: z.boolean().nullish().describe("True for exceptional finds"),
-    }),
-  ),
+  // Gold is SEPARATE - not an item type
+  goldAmount: z.number().min(0).describe("Gold coins found (NOT an item - adds to player gold directly)"),
+  // Items have required mechanical fields
+  contents: z.array(LootItemSchema).describe("Actual items found (NOT gold - gold goes in goldAmount)"),
   jackpotMoment: z
     .string()
     .nullish()
@@ -193,15 +248,39 @@ RULES:
 - Afterglow text captures the emotional state
 
 LOOT DISTRIBUTION BY CONTAINER RARITY:
-- common: 1-2 items, mostly common/uncommon
-- uncommon: 2-3 items, better chance of rare
-- rare: 2-4 items, guaranteed at least one rare
-- epic: 3-5 items, guaranteed rare, chance of epic
-- legendary: 4-6 items, guaranteed epic, high legendary chance
+- common: 1-2 items + 5-20 gold, mostly common/uncommon
+- uncommon: 2-3 items + 15-40 gold, better chance of rare
+- rare: 2-4 items + 30-80 gold, guaranteed at least one rare
+- epic: 3-5 items + 60-150 gold, guaranteed rare, chance of epic
+- legendary: 4-6 items + 100-300 gold, guaranteed epic, high legendary chance
+
+CRITICAL - ITEM TYPE REQUIREMENTS (TCG Card Rules):
+Gold/coins go in goldAmount field - NOT as an item type!
+
+WEAPON items MUST include:
+- attack: number (3=common, 6=uncommon, 10=rare, 15=epic, 20=legendary)
+- damageType: physical/fire/ice/lightning/shadow/holy/poison/arcane
+
+ARMOR items MUST include:
+- defense: number (2=common, 5=uncommon, 9=rare, 12=epic, 15=legendary)
+- slot: head/body/hands/feet/shield
+
+CONSUMABLE items MUST include:
+- healing: number (15=common, 30=uncommon, 50=rare, 75=epic, 100=legendary)
+- OR statusEffect: { name, effectType: buff/debuff, duration }
+
+TRINKET (accessory) items MUST include:
+- modifiers: { attack?, defense?, maxHealth? } - at least one
+
+MATERIAL items need:
+- materialType: what kind of material (gem, ore, essence, etc)
+
+ARTIFACT items are special/legendary with unique powers.
+CURSED items have a curse drawback.
 
 ${MECHANICS_PROMPT}
 
-Make the reveal FEEL rewarding.`;
+Make the reveal FEEL rewarding. Generate real mechanical stats, not just names!`;
 
 // =============================================================================
 // HANDLERS
