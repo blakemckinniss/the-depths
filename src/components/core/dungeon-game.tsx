@@ -81,6 +81,7 @@ import {
 import {
   getInteractionsForEntity,
   getAvailableInteractions,
+  getAllInteractionsForEntity,
 } from "@/lib/world/environmental-system";
 import { executeItemUse } from "@/lib/items/item-execution";
 import type { EssenceCraftRecipe } from "@/lib/items/transmogrification-system";
@@ -2637,7 +2638,7 @@ export function DungeonGame() {
 
   // Extract player capabilities for utility bar (always-on spells like Teleport)
   const playerCapabilities = useMemo(() => {
-    if (!gameState.player) return { always: [], situational: [], utilityTypes: [], summary: "" };
+    if (!gameState.player) return { always: [], situational: [], all: [], utilityTypes: [], summary: "" };
     return extractPlayerCapabilities(gameState.player, { inCombat: gameState.inCombat });
   }, [gameState.player, gameState.inCombat]);
 
@@ -2819,71 +2820,122 @@ export function DungeonGame() {
       }
     };
 
+    // Color for capability source
+    const getCapabilityColor = (action: string) => {
+      if (action === "cast_spell") return "text-violet-400";
+      if (action === "use_item") return "text-amber-400";
+      if (action === "use_ability") return "text-cyan-400";
+      return "text-stone-300";
+    };
+
     return (
-      <div className="mt-2 space-y-1">
+      <div className="mt-2 space-y-2">
         <span className="text-xs text-muted-foreground uppercase tracking-wider">
           Nearby:
         </span>
-        <div className="flex flex-wrap gap-2">
+        <div className="space-y-2">
           {activeEntities.map((entity) => {
-            const interactions = getAvailableInteractions(
-              entity,
-              gameState.player,
+            // Get all interactions including capability-based ones (spells, items, abilities)
+            const allInteractions = getAllInteractionsForEntity(entity, playerCapabilities);
+
+            // Filter to available interactions
+            const templateInteractions = getAvailableInteractions(entity, gameState.player);
+            const availableTemplateIds = new Set(
+              templateInteractions.filter(i => i.available).map(i => i.interaction.id)
             );
-            const available = interactions.find((i) => i.available);
-            const hasAvailable = !!available;
 
-            // Calculate foresight for the available interaction
-            const foresight = available
-              ? calculateForesight(
-                  gameState.player,
-                  "environmental_interaction",
-                  available.interaction.action,
-                  entity.interactionTags || [],
-                )
-              : null;
+            // Combine: template interactions (filtered) + capability interactions (with availability)
+            const availableInteractions = allInteractions.filter(interaction => {
+              // Template interactions: check against filtered list
+              if (!interaction.requiresCapability) {
+                return availableTemplateIds.has(interaction.id);
+              }
+              // Capability interactions: check disabled flag
+              return !interaction.disabled;
+            });
 
-            // Build tooltip with foresight info
-            const baseTooltip = entity.description || entity.name;
-            const foresightHint = foresight?.outcomeHint;
-            const tooltip = foresightHint ? `${baseTooltip}\n\n${foresightHint}` : baseTooltip;
+            if (availableInteractions.length === 0) return null;
 
+            // If only one interaction, show compact view
+            if (availableInteractions.length === 1) {
+              const interaction = availableInteractions[0];
+              const foresight = calculateForesight(
+                gameState.player,
+                "environmental_interaction",
+                interaction.action,
+                entity.interactionTags || [],
+              );
+              const tooltip = interaction.hint || entity.description || entity.name;
+
+              return (
+                <button
+                  key={entity.id}
+                  onClick={() => handleEnvironmentalInteraction(entity.id, interaction.id)}
+                  disabled={isProcessing}
+                  className={`
+                    text-xs px-2 py-1 rounded transition-colors
+                    bg-secondary/30 hover:bg-secondary/50 text-foreground
+                    ${foresight?.riskLevel ? getRiskBorder(foresight.riskLevel) : ""}
+                  `}
+                  title={tooltip}
+                >
+                  <EntityText type="item" noAnimation>{entity.name}</EntityText>
+                  {interaction.requiresCapability && (
+                    <span className={`ml-1 ${getCapabilityColor(interaction.action)}`}>
+                      ({interaction.label})
+                    </span>
+                  )}
+                </button>
+              );
+            }
+
+            // Multiple interactions: show entity with expandable options
             return (
-              <button
-                key={entity.id}
-                onClick={() => {
-                  if (available) {
-                    handleEnvironmentalInteraction(
-                      entity.id,
-                      available.interaction.id,
+              <div key={entity.id} className="bg-stone-800/30 rounded p-2 space-y-1">
+                <div className="text-xs text-stone-400">
+                  <EntityText type="item" noAnimation>{entity.name}</EntityText>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {availableInteractions.map((interaction) => {
+                    const foresight = calculateForesight(
+                      gameState.player,
+                      "environmental_interaction",
+                      interaction.action,
+                      entity.interactionTags || [],
                     );
-                  }
-                }}
-                disabled={!hasAvailable || isProcessing}
-                className={`
-                  text-xs px-2 py-1 rounded transition-colors
-                  ${
-                    hasAvailable
-                      ? "bg-secondary/30 hover:bg-secondary/50 text-foreground"
-                      : "bg-secondary/10 text-muted-foreground cursor-not-allowed"
-                  }
-                  ${foresight?.riskLevel ? getRiskBorder(foresight.riskLevel) : ""}
-                `}
-                title={tooltip}
-              >
-                <EntityText type="item" noAnimation>
-                  {entity.name}
-                </EntityText>
-                {/* Foresight eye indicator */}
-                {foresight && foresight.level !== "hidden" && (
-                  <span className={`ml-1 inline-block w-2 h-2 rounded-full ${
-                    foresight.level === "full" ? "bg-emerald-400" :
-                    foresight.level === "partial" ? "bg-purple-400" :
-                    foresight.level === "type" ? "bg-blue-400" :
-                    "bg-yellow-400"
-                  }`} />
-                )}
-              </button>
+                    const isCapability = !!interaction.requiresCapability;
+
+                    return (
+                      <button
+                        key={interaction.id}
+                        onClick={() => handleEnvironmentalInteraction(entity.id, interaction.id)}
+                        disabled={isProcessing}
+                        className={`
+                          text-xs px-2 py-0.5 rounded transition-colors
+                          ${isCapability
+                            ? "bg-stone-700/50 hover:bg-stone-600/50 border border-stone-600/50"
+                            : "bg-secondary/30 hover:bg-secondary/50"
+                          }
+                          ${foresight?.riskLevel ? getRiskBorder(foresight.riskLevel) : ""}
+                        `}
+                        title={interaction.hint || interaction.label}
+                      >
+                        <span className={isCapability ? getCapabilityColor(interaction.action) : ""}>
+                          {interaction.label}
+                        </span>
+                        {foresight && foresight.level !== "hidden" && (
+                          <span className={`ml-1 inline-block w-1.5 h-1.5 rounded-full ${
+                            foresight.level === "full" ? "bg-emerald-400" :
+                            foresight.level === "partial" ? "bg-purple-400" :
+                            foresight.level === "type" ? "bg-blue-400" :
+                            "bg-yellow-400"
+                          }`} />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </div>
@@ -2892,6 +2944,7 @@ export function DungeonGame() {
   }, [
     gameState.roomEnvironmentalEntities,
     gameState.player,
+    playerCapabilities,
     handleEnvironmentalInteraction,
     isProcessing,
   ]);

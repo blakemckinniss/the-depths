@@ -609,4 +609,28 @@ export const DUNGEON_MODIFIERS: Record<string, DungeonModifier> = {
     description: "Enemies hit harder",
     effect: { enemyDamageMult: 1.3 },
   },
+  resilient: {
+    id: "resilient",
+    name: "Resilient Foes",
+    description: "Enemies have extra vitality",
+    effect: { enemyHealthMult: 1.4 },
+  },
+  treasureHoard: {
+    id: "treasureHoard",
+    name: "Treasure Hoard",
+    description: "Greater riches lie within",
+    effect: { lootRarityBonus: 2 },
+  },
+  corrupted: {
+    id: "corrupted",
+    name: "Corrupted",
+    description: "Dark energy empowers all within",
+    effect: { enemyDamageMult: 1.15, enemyHealthMult: 1.15 },
+  },
+  sanctuary: {
+    id: "sanctuary",
+    name: "Ancient Sanctuary",
+    description: "Blessed grounds with frequent shrines",
+    effect: { shrineFrequency: 3, trapFrequency: 0.5 },
+  },
 }
