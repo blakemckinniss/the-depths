@@ -4,6 +4,7 @@ import { useState, useCallback } from "react"
 import { debugLog } from "@/lib/debug/debug"
 import type { GameState, EnvironmentalInteractionResult, SkillType } from "@/lib/core/game-types"
 import type { EffectCategory, DurationType, EffectTrigger, StackBehavior } from "@/lib/combat/effect-system"
+import { extractPlayerCapabilities, buildCapabilityContextForAI } from "@/lib/mechanics/player-capabilities"
 
 // Event chain types that can be requested
 export type EventChainType =
@@ -232,12 +233,17 @@ function buildContext(state: GameState, extras: Record<string, unknown> = {}) {
       }
     : null
 
+  // Extract player capabilities for AI context
+  const capabilities = extractPlayerCapabilities(state.player, { inCombat: state.inCombat })
+  const playerCapabilities = buildCapabilityContextForAI(capabilities)
+
   return {
     playerLevel: state.player.stats.level,
     playerHealth: state.player.stats.health,
     maxHealth: state.player.stats.maxHealth,
     playerClass: state.player.className,
     playerInventory: state.player.inventory.map((i) => `${i.name} (${i.type})`).join(", ") || "basic gear",
+    playerCapabilities,
     floor: state.floor,
     room: state.currentRoom,
     dungeonName: state.currentDungeon?.name,

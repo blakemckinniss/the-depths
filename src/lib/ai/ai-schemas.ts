@@ -96,11 +96,24 @@ export const eventOutcomeSchema = z.object({
 // EVENT CHAIN SCHEMAS
 // ============================================
 
+// Utility types that player capabilities can provide
+const capabilityUtilityTypes = [
+  "light", "reveal_traps", "reveal_secrets", "teleport", "unlock", "identify",
+  "transmute_gold", "transmute_item", "charm", "dominate", "fear", "ward_area",
+  "summon_companion", "banish", "dispel", "scry", "restore_item", "traverse", "break", "navigate"
+] as const
+
 export const environmentalEntitySchema = z.object({
   name: z.string(),
   class: z.enum(["object", "substance", "creature", "mechanism", "magical", "corpse", "container"]),
   tags: z.array(z.string()),
   description: z.string().describe("Brief description for examine action"),
+  // Capability relevance - hint for what player abilities could interact with this
+  capabilityRelevance: z.object({
+    utilityType: z.enum(capabilityUtilityTypes).nullish().describe("What utility type could help (light, unlock, reveal_traps, etc.)"),
+    itemTag: z.string().nullish().describe("What item type could help (torch, lockpick, rope, etc.)"),
+    hint: z.string().nullish().describe("Brief hint of what could be done"),
+  }).nullish().describe("If a player capability could interact with this entity"),
 })
 
 export const roomEventEnemySchema = z.object({
@@ -156,6 +169,12 @@ export const roomEventSchema = z.object({
   shrine: roomEventShrineSchema.nullish(),
   npc: roomEventNPCSchema.nullish(),
   foreshadow: z.string().nullish().describe("Subtle hint at future danger or reward"),
+  // Capability opportunities - situations where player capabilities could help
+  capabilityOpportunities: z.array(z.object({
+    situation: z.string().describe("Brief description of the situation"),
+    utilityTypes: z.array(z.enum(capabilityUtilityTypes)).describe("What utility types could help"),
+    outcomeHint: z.string().describe("Brief hint of what could be achieved"),
+  })).nullish().describe("Opportunities for player spells/items/abilities to help"),
 })
 
 export const combatRoundSchema = z.object({

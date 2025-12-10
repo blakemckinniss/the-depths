@@ -18,6 +18,9 @@ import type {
   ParsedNarrative,
   Boss,
   Combatant,
+  MapItem,
+  MapTier,
+  CraftingCurrency,
 } from "@/lib/core/game-types";
 import type { ChaosEvent } from "@/lib/world/chaos-system";
 import {
@@ -25,7 +28,10 @@ import {
   generateDungeonSelection,
   createInitialPlayer,
   createInitialRunStats,
+  createDungeonFromMap,
 } from "@/lib/core/game-data";
+import { generateMap } from "@/lib/items/map-generator";
+import { createCurrency, applyCurrencyToMap } from "@/lib/items/currency-generator";
 import { calculateEffectiveStats, STATUS_EFFECTS } from "@/lib/entity/entity-system";
 import {
   triggerTurnEnd,
@@ -563,7 +569,95 @@ export function DungeonGame() {
         return;
       }
 
-      // Find if player has required item
+      // Handle capability-based interactions (spells, tool items, abilities)
+      if (interaction.requiresCapability) {
+        const capId = interaction.requiresCapability;
+
+        // Check if it's a spell
+        if (interaction.action === "cast_spell" && capId.startsWith("spell_")) {
+          const spellId = capId.replace("spell_", "");
+          const spell = gameState.player.spellBook?.spells.find(s => s.id === spellId);
+
+          if (spell) {
+            // Consume resources and set cooldown via UPDATE_PLAYER
+            const newResources = { ...gameState.player.resources };
+            newResources.current = Math.max(0, newResources.current - spell.resourceCost);
+
+            const newCooldowns = { ...gameState.player.spellBook?.cooldowns };
+            if (spell.cooldown > 0) {
+              newCooldowns[spell.id] = spell.cooldown;
+            }
+
+            dispatch({
+              type: "UPDATE_PLAYER",
+              payload: {
+                resources: newResources,
+                spellBook: {
+                  ...gameState.player.spellBook!,
+                  cooldowns: newCooldowns,
+                },
+              },
+            });
+
+            addLog(
+              <span className="text-violet-400">
+                You cast <EntityText type="rare">{spell.name}</EntityText> on the{" "}
+                <EntityText type="item">{entity.name}</EntityText>...
+              </span>,
+              "effect",
+            );
+          }
+        }
+
+        // Check if it's a tool item
+        if (interaction.action === "use_item" && capId.startsWith("item_")) {
+          const itemId = capId.replace("item_", "");
+          const item = gameState.player.inventory.find(i => i.id === itemId);
+
+          if (item) {
+            addLog(
+              <span className="text-amber-400">
+                You use your <EntityText type="uncommon">{item.name}</EntityText> on the{" "}
+                <EntityText type="item">{entity.name}</EntityText>...
+              </span>,
+              "narrative",
+            );
+
+            // Consume consumable tools (torches, etc.)
+            const consumableTools = ["torch", "holy_water"];
+            if (item.subtype && consumableTools.includes(item.subtype as string)) {
+              dispatch({ type: "REMOVE_ITEM", payload: item.id });
+              addLog(
+                <span className="text-stone-500 text-sm">
+                  {item.name} was consumed.
+                </span>,
+                "system",
+              );
+            }
+          }
+        }
+
+        // Check if it's an ability
+        if (interaction.action === "use_ability" && capId.startsWith("ability_")) {
+          const abilityId = capId.replace("ability_", "");
+          const ability = gameState.player.abilities.find(a => a.id === abilityId);
+
+          if (ability) {
+            // Use existing USE_ABILITY action for cooldown and resource
+            dispatch({ type: "USE_ABILITY", payload: ability.id });
+
+            addLog(
+              <span className="text-cyan-400">
+                You use <EntityText type="uncommon">{ability.name}</EntityText> on the{" "}
+                <EntityText type="item">{entity.name}</EntityText>...
+              </span>,
+              "effect",
+            );
+          }
+        }
+      }
+
+      // Find if player has required item (for non-capability interactions)
       let itemUsed: string | undefined;
       if (interaction.requiresItem) {
         const foundItem = gameState.player.inventory.find((item) =>
@@ -2061,6 +2155,131 @@ export function DungeonGame() {
       );
     },
     [tavern, addLog],
+  );
+
+  // === MAP SYSTEM HANDLERS ===
+
+  const handleBuyMap = useCallback(
+    (tier: MapTier, price: number) => {
+      if (gameState.player.stats.gold < price) return;
+
+      const map = generateMap({ tier, rarity: "common" });
+      dispatch({ type: "MODIFY_PLAYER_GOLD", payload: -price });
+      dispatch({ type: "ADD_ITEM", payload: map });
+      updateRunStats({ goldSpent: gameState.runStats.goldSpent + price });
+
+      addLog(
+        <span>
+          You purchase a <EntityText type="item">{map.name}</EntityText> from Theron the Cartographer.
+        </span>,
+        "system",
+      );
+    },
+    [gameState.player.stats.gold, gameState.runStats.goldSpent, dispatch, addLog, updateRunStats],
+  );
+
+  const handleBuyCurrency = useCallback(
+    (currencyId: string, price: number) => {
+      if (gameState.player.stats.gold < price) return;
+
+      const currency = createCurrency(currencyId);
+      if (!currency) return;
+
+      dispatch({ type: "MODIFY_PLAYER_GOLD", payload: -price });
+      dispatch({ type: "ADD_ITEM", payload: currency });
+      updateRunStats({ goldSpent: gameState.runStats.goldSpent + price });
+
+      addLog(
+        <span>
+          You purchase an <EntityText type="item">{currency.name}</EntityText> from Theron.
+        </span>,
+        "system",
+      );
+    },
+    [gameState.player.stats.gold, gameState.runStats.goldSpent, dispatch, addLog, updateRunStats],
+  );
+
+  const handleActivateMap = useCallback(
+    (map: MapItem) => {
+      // Create dungeon from map
+      const dungeon = createDungeonFromMap(map);
+
+      // Remove map from inventory (consumed)
+      dispatch({ type: "REMOVE_ITEM", payload: map.id });
+
+      // Initialize dungeon run
+      dispatch({
+        type: "LOAD_STATE",
+        payload: {
+          ...gameState,
+          phase: "exploring",
+          currentDungeon: dungeon,
+          floor: 1,
+          maxFloor: map.mapProps.floors,
+          player: {
+            ...gameState.player,
+            inventory: gameState.player.inventory.filter((i) => i.id !== map.id),
+          },
+        },
+      });
+
+      addLog(
+        <span>
+          You activate the <EntityText type="rare">{map.name}</EntityText>. The portal shimmers to life...
+        </span>,
+        "system",
+      );
+    },
+    [gameState, dispatch, addLog],
+  );
+
+  const handleApplyCurrency = useCallback(
+    (currency: CraftingCurrency, map: MapItem) => {
+      const result = applyCurrencyToMap(currency, map);
+
+      if (!result.success) {
+        addLog(<span className="text-red-400">{result.message}</span>, "system");
+        return;
+      }
+
+      // Remove one currency from stack (or remove item if stack=1)
+      if (currency.stackSize > 1) {
+        const updatedCurrency = { ...currency, stackSize: currency.stackSize - 1 };
+        dispatch({
+          type: "LOAD_STATE",
+          payload: {
+            ...gameState,
+            player: {
+              ...gameState.player,
+              inventory: gameState.player.inventory.map((i) =>
+                i.id === currency.id ? updatedCurrency : i.id === map.id ? result.map! : i
+              ),
+            },
+          },
+        });
+      } else {
+        dispatch({
+          type: "LOAD_STATE",
+          payload: {
+            ...gameState,
+            player: {
+              ...gameState.player,
+              inventory: gameState.player.inventory
+                .filter((i) => i.id !== currency.id)
+                .map((i) => (i.id === map.id ? result.map! : i)),
+            },
+          },
+        });
+      }
+
+      addLog(
+        <span>
+          <EntityText type="item">{currency.name}</EntityText> applied: {result.message}
+        </span>,
+        "system",
+      );
+    },
+    [gameState, dispatch, addLog],
   );
 
   const handleLevelUpAbility = useCallback(

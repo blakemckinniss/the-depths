@@ -7,6 +7,8 @@ import type {
   Player,
 } from "@/lib/core/game-types"
 import { canInteractionHaveImpact } from "@/lib/mechanics/game-mechanics-ledger"
+import type { PlayerCapabilities, PlayerCapability } from "@/lib/mechanics/player-capabilities"
+import { matchCapabilitiesToSituation } from "@/lib/mechanics/player-capabilities"
 
 // Generate a unique ID
 function genId(): string {
@@ -268,6 +270,115 @@ export function getInteractionsForEntity(entity: EnvironmentalEntity): Environme
   }
 
   return interactions
+}
+
+/**
+ * Generate capability-based interactions for an entity
+ * These are spell/item/ability options that match the situation
+ */
+export function getCapabilityInteractionsForEntity(
+  entity: EnvironmentalEntity,
+  capabilities: PlayerCapabilities
+): EnvironmentalInteraction[] {
+  const interactions: EnvironmentalInteraction[] = []
+
+  // Build situation tags from entity
+  const situationTags = [
+    entity.entityClass,
+    ...entity.interactionTags,
+    // Extract keywords from description
+    ...(entity.description?.toLowerCase().match(/\b(dark|locked|sealed|hidden|trapped|magical|cursed|broken|mysterious)\b/g) || [])
+  ]
+
+  // Find matching capabilities
+  const matchingCaps = matchCapabilitiesToSituation(capabilities.situational, situationTags)
+
+  for (const cap of matchingCaps) {
+    // Determine action type based on capability source
+    let action: string
+    let labelPrefix: string
+
+    switch (cap.source) {
+      case "spell":
+        action = "cast_spell"
+        labelPrefix = "Cast"
+        break
+      case "item":
+        action = "use_item"
+        labelPrefix = "Use"
+        break
+      case "ability":
+        action = "use_ability"
+        labelPrefix = "Use"
+        break
+      default:
+        action = "use_ability"
+        labelPrefix = "Use"
+    }
+
+    interactions.push({
+      id: `${entity.id}_cap_${cap.id}`,
+      action,
+      label: `${labelPrefix} ${cap.name}`,
+      requiresCapability: cap.id,
+      dangerLevel: "safe",
+      hint: cap.description || getCapabilityHint(cap, entity),
+      disabled: !cap.available,
+      disabledReason: cap.reason,
+    })
+  }
+
+  return interactions
+}
+
+/**
+ * Generate a contextual hint for using a capability on an entity
+ */
+function getCapabilityHint(cap: PlayerCapability, entity: EnvironmentalEntity): string {
+  switch (cap.utilityType) {
+    case "light":
+      return "Illuminate the area"
+    case "unlock":
+      return entity.entityClass === "mechanism" ? "Bypass the lock" : "Unlock it"
+    case "reveal_traps":
+      return "Check for traps"
+    case "reveal_secrets":
+      return "Search for hidden things"
+    case "identify":
+      return "Reveal its true nature"
+    case "dispel":
+      return "Remove magical effects"
+    case "traverse":
+      return "Cross safely"
+    case "charm":
+      return "Influence its behavior"
+    default:
+      return `Use ${cap.name}`
+  }
+}
+
+/**
+ * Get all interactions for an entity including capability-based ones
+ */
+export function getAllInteractionsForEntity(
+  entity: EnvironmentalEntity,
+  capabilities?: PlayerCapabilities
+): EnvironmentalInteraction[] {
+  // Get template-based interactions
+  const templateInteractions = getInteractionsForEntity(entity)
+
+  // Get capability-based interactions if capabilities provided
+  const capabilityInteractions = capabilities
+    ? getCapabilityInteractionsForEntity(entity, capabilities)
+    : []
+
+  // Combine and deduplicate by action type
+  const seenActions = new Set(templateInteractions.map(i => i.action))
+  const uniqueCapInteractions = capabilityInteractions.filter(
+    i => !seenActions.has(i.action) || i.action === "cast_spell" || i.action === "use_item"
+  )
+
+  return [...templateInteractions, ...uniqueCapInteractions]
 }
 
 // Filter interactions based on player capabilities

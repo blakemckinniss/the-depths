@@ -468,8 +468,9 @@ export interface DungeonCard {
   rewards: string[]
   floors: number
   isMystery: boolean
-  requiredKeyRarity: KeyRarity[]
+  requiredKeyRarity: KeyRarity[]  // Legacy - will be removed with key system
   modifiers?: DungeonModifier[]
+  mapMetadata?: MapMetadata       // Present when dungeon was created from a map
 }
 
 export interface DungeonModifier {
@@ -484,6 +485,80 @@ export interface DungeonModifier {
     shrineFrequency?: number
     npcFrequency?: number
   }
+}
+
+// =============================================================================
+// MAP SYSTEM (PoE-style dungeon maps)
+// =============================================================================
+
+/**
+ * Map tier determines base difficulty (T1-T10)
+ */
+export type MapTier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+
+/**
+ * Map-specific properties
+ */
+export interface MapProps {
+  tier: MapTier
+  theme: string                    // "Goblin Warrens", "Shadow Maze", etc.
+  biome: string                    // "underground", "void", "cursed", etc.
+  floors: number                   // 3-10 based on tier
+  modifiers: DungeonModifier[]     // Active modifiers on this map
+  modSlots: number                 // Max modifiers (determined by rarity)
+  quality: number                  // 0-20% bonus to loot/exp
+  identified: boolean              // Hide mods if unidentified
+}
+
+/**
+ * Map item - consumable dungeon portal
+ * Replaces the key system for dungeon entry
+ */
+export interface MapItem extends Item {
+  category: "consumable"
+  subtype: "map"
+  mapProps: MapProps
+  consumedOnUse: true
+}
+
+/**
+ * Currency effect types for map crafting
+ */
+export type CurrencyEffect =
+  | "transmute"        // Normal → Magic
+  | "alteration"       // Reroll magic mods
+  | "augmentation"     // Add 1 mod to magic
+  | "alchemy"          // Normal → Rare
+  | "chaos"            // Reroll rare mods
+  | "scouring"         // Strip all mods → Normal
+  | "blessed"          // Add quality
+  | "divine"           // Reroll mod values
+  | "exalted"          // Add high-tier mod to rare
+
+/**
+ * Currency item properties
+ */
+export interface CurrencyProps {
+  effect: CurrencyEffect
+  targetType: "map" | "equipment" | "any"
+  description: string
+}
+
+/**
+ * Crafting currency item for modifying maps
+ */
+export interface CraftingCurrency extends Item {
+  category: "currency"
+  currencyProps: CurrencyProps
+}
+
+/**
+ * Extended DungeonCard with map metadata
+ */
+export interface MapMetadata {
+  tier: MapTier
+  quality: number
+  sourceMapId?: string  // ID of the map item that created this dungeon
 }
 
 export interface PlayerStats {
@@ -963,14 +1038,17 @@ export interface EnvironmentalEntity {
 
 export interface EnvironmentalInteraction {
   id: string
-  action: string // "collect", "examine", "break", "read", "drink", "loot", "touch", "use_item"
+  action: string // "collect", "examine", "break", "read", "drink", "loot", "touch", "use_item", "cast_spell", "use_ability"
   label: string // display text for the interaction button
   requiresItem?: string[] // item tags that enable this interaction (e.g., ["container", "waterskin"])
   requiresAbility?: string[] // ability tags needed
   requiresClass?: PlayerClass[]
+  requiresCapability?: string // capability ID for spell/item/ability-based interactions
   consumesItem?: boolean // does the required item get used up
   dangerLevel: "safe" | "risky" | "dangerous"
   hint?: string // subtle hint about what might happen
+  disabled?: boolean // interaction visible but not usable
+  disabledReason?: string // why the interaction is disabled
 }
 
 export interface EnvironmentalInteractionResult {

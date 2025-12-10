@@ -264,6 +264,8 @@ PLAYER CONTEXT:
 - Has fire source: ${context.hasFireSource || "unknown"}
 - Has lockpicks: ${context.hasLockpicks || "unknown"}
 - Known abilities: ${context.playerAbilities || "basic"}
+
+${context.playerCapabilities || ""}
 ${spawnDist.hint}
 
 ${generateEntitySystemPrompt()}`,

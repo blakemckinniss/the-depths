@@ -12,6 +12,7 @@ import type {
   Companion,
   Player,
   RunSummary,
+  MapItem,
 } from "./game-types"
 import { createNPC, createCompanion, createBoss, TRAP_TEMPLATES, SHRINE_TEMPLATES } from "@/lib/entity/entity-system"
 import { calculateEntityLevel } from "@/lib/mechanics/game-mechanics-ledger"
@@ -25,6 +26,8 @@ import {
   type GenerateArmorOptions,
 } from "@/lib/items/item-generator"
 import { generateConsumable } from "@/lib/items/consumable-system"
+import { generateMap } from "@/lib/items/map-generator"
+import { createCurrency } from "@/lib/items/currency-generator"
 import { generateId } from "@/lib/core/utils"
 
 // Re-export rollRarity for backward compatibility
@@ -442,6 +445,50 @@ export function generateDungeonSelection(): DungeonCard[] {
   return dungeons.sort(() => Math.random() - 0.5)
 }
 
+/**
+ * Create a DungeonCard from a MapItem
+ * This is the primary entry point for map-based dungeon creation
+ */
+export function createDungeonFromMap(map: MapItem): DungeonCard {
+  const { tier, theme, floors, modifiers, quality } = map.mapProps
+
+  // Generate dangers based on modifiers
+  const dangers: string[] = ["Ancient guardians", "Deadly traps", "Dark magic"]
+  if (modifiers.some(m => m.id === "trapped")) dangers.push("Overwhelming trap density")
+  if (modifiers.some(m => m.effect.enemyDamageMult && m.effect.enemyDamageMult > 1)) dangers.push("Extremely powerful foes")
+  if (modifiers.some(m => m.effect.enemyHealthMult && m.effect.enemyHealthMult > 1)) dangers.push("Heavily armored enemies")
+
+  // Generate rewards based on tier and quality
+  const rewards: string[] = []
+  if (tier >= 7) rewards.push("Legendary artifacts")
+  else if (tier >= 4) rewards.push("Rare equipment")
+  else rewards.push("Quality equipment")
+
+  if (modifiers.some(m => m.effect.lootRarityBonus && m.effect.lootRarityBonus > 0)) {
+    rewards.push("Enhanced loot quality")
+  }
+  if (quality >= 10) rewards.push("Increased experience")
+  if (map.rarity === "rare" || map.rarity === "legendary") rewards.push("Abundant gold")
+
+  return {
+    id: generateId(),
+    name: theme,
+    rarity: map.rarity,
+    theme,
+    dangers: dangers.slice(0, 3),
+    rewards: rewards.slice(0, 2),
+    floors,
+    isMystery: !map.mapProps.identified,
+    requiredKeyRarity: [],  // Not used for map-based dungeons
+    modifiers,
+    mapMetadata: {
+      tier,
+      quality,
+      sourceMapId: map.id,
+    },
+  }
+}
+
 export const roomDescriptions = [
   "A damp corridor stretches before you, water dripping from the ceiling.",
   "Ancient runes glow faintly on the moss-covered walls.",
@@ -544,7 +591,15 @@ export const createInitialPlayer = (): Player => ({
     healthRegen: 0,
     resourceRegen: 0,
   },
-  inventory: [],
+  inventory: [
+    // Starter maps (3x T1 common)
+    generateMap({ tier: 1, rarity: "common" }),
+    generateMap({ tier: 1, rarity: "common" }),
+    generateMap({ tier: 1, rarity: "common" }),
+    // Starter currency
+    createCurrency("orb_transmutation", 2)!,
+    createCurrency("orb_alteration", 2)!,
+  ],
   equipment: {
     mainHand: null,
     offHand: null,
@@ -562,7 +617,8 @@ export const createInitialPlayer = (): Player => ({
     weapon: null,
     armor: null,
   },
-  keys: [createMasterKey(), createDungeonKey("uncommon"), createDungeonKey("uncommon"), createDungeonKey("uncommon")],
+  keys: [], // Deprecated - maps replace keys
+  // Starter maps and currency go in inventory
   activeEffects: [],
   party: {
     active: [],

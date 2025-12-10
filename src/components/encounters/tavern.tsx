@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import type { Player, Item } from "@/lib/core/game-types"
+import type { Player, Item, MapItem, CraftingCurrency, MapTier } from "@/lib/core/game-types"
 import type { AlchemyResult } from "@/lib/ai/ai-alchemy-system"
 import type { EssenceCraftRecipe } from "@/lib/items/transmogrification-system"
 import { EntityText } from "@/components/narrative/entity-text"
@@ -15,15 +15,30 @@ interface TavernProps {
   floor: number
   onEnterDungeons: () => void
   onRestoreHealth: (cost: number, amount: number) => void
-  onBuyKey: (keyRarity: "common" | "uncommon" | "rare") => void
+  onBuyKey: (keyRarity: "common" | "uncommon" | "rare") => void  // Legacy - will be removed
+  onBuyMap?: (tier: MapTier) => void
+  onBuyCurrency?: (currencyId: string) => void
+  onActivateMap?: (map: MapItem) => void
+  onApplyCurrency?: (currency: CraftingCurrency, map: MapItem) => void
   onLevelUpAbility?: (abilityId: string) => void
   onTransmogrify?: (itemIds: string[], narrations: string[]) => void
   onCraftFromEssence?: (recipe: EssenceCraftRecipe, result: Item | null) => void
   onAlchemyExperiment?: (result: AlchemyResult | null, materialsUsed: string[]) => void
 }
 
-export function Tavern({ player, floor, onEnterDungeons, onRestoreHealth, onBuyKey, onLevelUpAbility, onTransmogrify, onCraftFromEssence, onAlchemyExperiment }: TavernProps) {
-  const [activeTab, setActiveTab] = useState<"main" | "healer" | "keysmith" | "party" | "alchemist" | "transmog" | "trainer">("main")
+export function Tavern({ player, floor, onEnterDungeons, onRestoreHealth, onBuyKey, onBuyMap, onBuyCurrency, onActivateMap, onApplyCurrency, onLevelUpAbility, onTransmogrify, onCraftFromEssence, onAlchemyExperiment }: TavernProps) {
+  const [activeTab, setActiveTab] = useState<"main" | "healer" | "cartographer" | "map_device" | "party" | "alchemist" | "transmog" | "trainer">("main")
+  const [selectedMap, setSelectedMap] = useState<MapItem | null>(null)
+
+  // Get player's maps from inventory
+  const playerMaps = player.inventory.filter(
+    (item): item is MapItem => item.category === "consumable" && item.subtype === "map"
+  )
+
+  // Get player's crafting currencies
+  const playerCurrencies = player.inventory.filter(
+    (item): item is CraftingCurrency => item.category === "currency"
+  )
 
   const healthMissing = player.stats.maxHealth - player.stats.health
   const healCostPerHp = 1
@@ -70,7 +85,7 @@ export function Tavern({ player, floor, onEnterDungeons, onRestoreHealth, onBuyK
 
       {/* Navigation Tabs */}
       <div className="flex gap-2 mb-6 flex-wrap">
-        {["main", "healer", "keysmith", "trainer", "party", "alchemist", "transmog"].map((tab) => (
+        {["main", "healer", "cartographer", "map_device", "trainer", "party", "alchemist", "transmog"].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab as typeof activeTab)}
@@ -82,7 +97,8 @@ export function Tavern({ player, floor, onEnterDungeons, onRestoreHealth, onBuyK
           >
             {tab === "main" && "Hall"}
             {tab === "healer" && "Healer"}
-            {tab === "keysmith" && "Keysmith"}
+            {tab === "cartographer" && "Maps"}
+            {tab === "map_device" && "Portal"}
             {tab === "trainer" && "Trainer"}
             {tab === "party" && "Companions"}
             {tab === "alchemist" && "Alchemist"}
@@ -112,8 +128,8 @@ export function Tavern({ player, floor, onEnterDungeons, onRestoreHealth, onBuyK
             {/* Quick Stats */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-stone-800/30 p-3 rounded">
-                <div className="text-stone-500 text-xs uppercase">Keys Held</div>
-                <div className="text-lg text-cyan-400">{player.keys.length}</div>
+                <div className="text-stone-500 text-xs uppercase">Maps</div>
+                <div className="text-lg text-purple-400">{playerMaps.length}</div>
               </div>
               <div className="bg-stone-800/30 p-3 rounded">
                 <div className="text-stone-500 text-xs uppercase">Companions</div>
@@ -197,74 +213,210 @@ export function Tavern({ player, floor, onEnterDungeons, onRestoreHealth, onBuyK
           </div>
         )}
 
-        {activeTab === "keysmith" && (
+        {activeTab === "cartographer" && (
           <div className="space-y-4">
             <div className="bg-stone-900/50 rounded p-4">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-full bg-cyan-900/30 flex items-center justify-center text-2xl">🗝️</div>
+                <div className="w-12 h-12 rounded-full bg-purple-900/30 flex items-center justify-center text-2xl">🗺️</div>
                 <div>
-                  <EntityText type="npc">Korvin the Keysmith</EntityText>
-                  <p className="text-stone-500 text-sm">Master of Locks</p>
+                  <EntityText type="npc">Theron the Cartographer</EntityText>
+                  <p className="text-stone-500 text-sm">Map Dealer</p>
                 </div>
               </div>
               <p className="text-stone-400 text-sm italic mb-4">
-                &quot;Every door holds secrets. The right key reveals the right treasure...&quot;
+                &quot;Every map is a doorway to fortune... or ruin. Choose wisely, adventurer.&quot;
               </p>
             </div>
 
+            {/* Buy Maps */}
             <div className="space-y-3">
+              <div className="text-stone-500 text-xs uppercase">Purchase Maps</div>
               <button
-                onClick={() => onBuyKey("common")}
-                disabled={player.stats.gold < keyPrices.common}
+                onClick={() => onBuyMap?.(1)}
+                disabled={player.stats.gold < 20 || !onBuyMap}
                 className="w-full py-3 bg-stone-700/40 hover:bg-stone-600/50 text-stone-300 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-4"
               >
-                <span>Bronze Key</span>
-                <EntityText type="gold">{keyPrices.common}g</EntityText>
+                <span>Tier 1 Map <span className="text-stone-500 text-xs">(Normal)</span></span>
+                <EntityText type="gold">20g</EntityText>
               </button>
 
               <button
-                onClick={() => onBuyKey("uncommon")}
-                disabled={player.stats.gold < keyPrices.uncommon}
-                className="w-full py-3 bg-cyan-900/30 hover:bg-cyan-800/40 text-cyan-300 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-4"
+                onClick={() => onBuyMap?.(2)}
+                disabled={player.stats.gold < 50 || !onBuyMap}
+                className="w-full py-3 bg-stone-700/40 hover:bg-stone-600/50 text-stone-300 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-4"
               >
-                <span>Silver Key</span>
-                <EntityText type="gold">{keyPrices.uncommon}g</EntityText>
+                <span>Tier 2 Map <span className="text-stone-500 text-xs">(Normal)</span></span>
+                <EntityText type="gold">50g</EntityText>
               </button>
 
               <button
-                onClick={() => onBuyKey("rare")}
-                disabled={player.stats.gold < keyPrices.rare}
-                className="w-full py-3 bg-violet-900/30 hover:bg-violet-800/40 text-violet-300 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-4"
+                onClick={() => onBuyMap?.(3)}
+                disabled={player.stats.gold < 100 || !onBuyMap}
+                className="w-full py-3 bg-stone-700/40 hover:bg-stone-600/50 text-stone-300 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-4"
               >
-                <span>Golden Key</span>
-                <EntityText type="gold">{keyPrices.rare}g</EntityText>
+                <span>Tier 3 Map <span className="text-stone-500 text-xs">(Normal)</span></span>
+                <EntityText type="gold">100g</EntityText>
               </button>
             </div>
 
-            {/* Current Keys */}
-            <div className="bg-stone-800/30 rounded p-3 mt-4">
-              <div className="text-stone-500 text-xs uppercase mb-2">Your Keys</div>
-              <div className="flex flex-wrap gap-2">
-                {player.keys.map((key) => (
-                  <span
-                    key={key.id}
-                    className={`text-xs px-2 py-1 rounded ${
-                      key.rarity === "master"
-                        ? "bg-stone-700/50 text-stone-300"
-                        : key.rarity === "legendary"
-                          ? "bg-amber-900/40 text-amber-300"
-                          : key.rarity === "rare"
-                            ? "bg-violet-900/40 text-violet-300"
-                            : key.rarity === "uncommon"
-                              ? "bg-cyan-900/40 text-cyan-300"
-                              : "bg-stone-700/40 text-stone-400"
-                    }`}
-                  >
-                    {key.name}
-                  </span>
-                ))}
+            {/* Buy Currencies */}
+            <div className="space-y-3 mt-4">
+              <div className="text-stone-500 text-xs uppercase">Crafting Orbs</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => onBuyCurrency?.("orb_transmutation")}
+                  disabled={player.stats.gold < 5 || !onBuyCurrency}
+                  className="py-2 bg-stone-700/30 hover:bg-stone-600/40 text-stone-300 rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-3"
+                >
+                  <span>Transmute</span>
+                  <EntityText type="gold">5g</EntityText>
+                </button>
+                <button
+                  onClick={() => onBuyCurrency?.("orb_alteration")}
+                  disabled={player.stats.gold < 8 || !onBuyCurrency}
+                  className="py-2 bg-stone-700/30 hover:bg-stone-600/40 text-stone-300 rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-3"
+                >
+                  <span>Alteration</span>
+                  <EntityText type="gold">8g</EntityText>
+                </button>
+                <button
+                  onClick={() => onBuyCurrency?.("orb_alchemy")}
+                  disabled={player.stats.gold < 25 || !onBuyCurrency}
+                  className="py-2 bg-cyan-900/30 hover:bg-cyan-800/40 text-cyan-300 rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-3"
+                >
+                  <span>Alchemy</span>
+                  <EntityText type="gold">25g</EntityText>
+                </button>
+                <button
+                  onClick={() => onBuyCurrency?.("orb_chaos")}
+                  disabled={player.stats.gold < 50 || !onBuyCurrency}
+                  className="py-2 bg-purple-900/30 hover:bg-purple-800/40 text-purple-300 rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-3"
+                >
+                  <span>Chaos</span>
+                  <EntityText type="gold">50g</EntityText>
+                </button>
               </div>
             </div>
+
+            {/* Your Orbs */}
+            {playerCurrencies.length > 0 && (
+              <div className="bg-stone-800/30 rounded p-3 mt-4">
+                <div className="text-stone-500 text-xs uppercase mb-2">Your Orbs</div>
+                <div className="flex flex-wrap gap-2">
+                  {playerCurrencies.map((currency) => (
+                    <span
+                      key={currency.id}
+                      className="text-xs px-2 py-1 rounded bg-purple-900/30 text-purple-300"
+                    >
+                      {currency.name} x{currency.stackSize || 1}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "map_device" && (
+          <div className="space-y-4">
+            <div className="bg-stone-900/50 rounded p-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-full bg-amber-900/30 flex items-center justify-center text-2xl">⚡</div>
+                <div>
+                  <EntityText type="location">The Map Device</EntityText>
+                  <p className="text-stone-500 text-sm">Ancient Portal Generator</p>
+                </div>
+              </div>
+              <p className="text-stone-400 text-sm italic mb-4">
+                &quot;Place a map into the device to open a portal to its dungeon...&quot;
+              </p>
+            </div>
+
+            {/* Map Selection */}
+            {playerMaps.length > 0 ? (
+              <div className="space-y-3">
+                <div className="text-stone-500 text-xs uppercase">Your Maps ({playerMaps.length})</div>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {playerMaps.map((map) => (
+                    <button
+                      key={map.id}
+                      onClick={() => setSelectedMap(selectedMap?.id === map.id ? null : map)}
+                      className={`w-full p-3 rounded text-left transition-colors ${
+                        selectedMap?.id === map.id
+                          ? "bg-amber-900/40 border border-amber-600/50"
+                          : "bg-stone-800/30 hover:bg-stone-700/40 border border-transparent"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className={`font-medium ${
+                            map.rarity === "legendary" ? "text-amber-400" :
+                            map.rarity === "rare" ? "text-yellow-400" :
+                            map.rarity === "uncommon" ? "text-cyan-400" :
+                            "text-stone-300"
+                          }`}>
+                            {map.mapProps.identified ? map.mapProps.theme : "Unidentified"} Map
+                          </span>
+                          <span className="text-stone-500 text-xs ml-2">T{map.mapProps.tier}</span>
+                        </div>
+                        <span className="text-stone-500 text-xs">
+                          {map.mapProps.floors} floors
+                        </span>
+                      </div>
+                      {map.mapProps.identified && map.mapProps.modifiers.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {map.mapProps.modifiers.map((mod) => (
+                            <span
+                              key={mod.id}
+                              className="text-xs px-1.5 py-0.5 rounded bg-red-900/30 text-red-300"
+                              title={mod.description}
+                            >
+                              {mod.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {map.mapProps.quality > 0 && (
+                        <div className="text-xs text-cyan-400 mt-1">+{map.mapProps.quality}% quality</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Activate Button */}
+                {selectedMap && (
+                  <div className="bg-amber-900/20 border border-amber-900/50 rounded p-4 mt-4">
+                    <div className="text-amber-300 mb-2">Portal Ready</div>
+                    <div className="text-sm text-stone-400 mb-3">
+                      Entering will consume this map.
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          onActivateMap?.(selectedMap)
+                          setSelectedMap(null)
+                        }}
+                        disabled={!onActivateMap}
+                        className="flex-1 py-2 bg-amber-900/40 hover:bg-amber-800/50 text-amber-200 rounded transition-colors disabled:opacity-50"
+                      >
+                        Enter Dungeon
+                      </button>
+                      <button
+                        onClick={() => setSelectedMap(null)}
+                        className="px-4 py-2 bg-stone-700/40 hover:bg-stone-600/50 text-stone-300 rounded transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-stone-500">
+                <p className="mb-2">No maps in inventory.</p>
+                <p className="text-sm">Visit the Cartographer to purchase maps, or find them in dungeons.</p>
+              </div>
+            )}
           </div>
         )}
 
