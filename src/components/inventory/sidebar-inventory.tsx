@@ -101,7 +101,7 @@ export function SidebarInventory({ player, onEquipItem, onUseItem, onDropItem, o
   const { inventory, stats } = player
 
   return (
-    <div className="h-full flex flex-col py-6 px-4 text-sm">
+    <div className="h-full flex flex-col py-6 px-4 text-sm overflow-hidden">
       {/* Gold Display */}
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-border/50">
         <span className="text-muted-foreground text-xs">Gold</span>
@@ -116,67 +116,46 @@ export function SidebarInventory({ player, onEquipItem, onUseItem, onDropItem, o
       {inventory.length === 0 ? (
         <p className="text-muted-foreground/50 text-xs italic">Empty</p>
       ) : (
-        <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin">
           {inventory.map((item) => {
-            const slotHint = getSlotHint(item)
             const mapItem = isMapItem(item) ? item : null
             return (
-              <div key={item.id} className="group py-1.5">
-                <div className="flex items-start gap-2">
-                  <span className="text-sm opacity-60">{getItemIcon(item)}</span>
-                  <div className="flex-1 min-w-0">
-                    <EntityText type={item.rarity} entity={item} className="block truncate">{item.name}</EntityText>
-                    <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-x-2">
-                      {slotHint && <span className="text-stone-500">[{slotHint}]</span>}
-                      {mapItem && (
-                        <>
-                          <span className="text-purple-400">T{mapItem.mapProps.tier}</span>
-                          <span className="text-stone-500">{mapItem.mapProps.floors}F</span>
-                          {mapItem.mapProps.modifiers.length > 0 && (
-                            <span className="text-amber-400">{mapItem.mapProps.modifiers.length} mods</span>
-                          )}
-                        </>
+              <div key={item.id} className="group flex items-center gap-1.5 py-0.5 hover:bg-stone-800/30 px-1 -mx-1 rounded">
+                <span className="text-xs opacity-50 flex-shrink-0">{getItemIcon(item)}</span>
+                <EntityText type={item.rarity} entity={item} className="text-xs truncate flex-1 min-w-0">{item.name}</EntityText>
+                {/* Inline stats */}
+                <div className="flex items-center gap-1 text-[10px] flex-shrink-0">
+                  {mapItem ? (
+                    <>
+                      <span className="text-purple-400">T{mapItem.mapProps.tier}</span>
+                      {mapItem.mapProps.modifiers.length > 0 && (
+                        <span className="text-amber-400/70">{mapItem.mapProps.modifiers.length}m</span>
                       )}
-                      {!mapItem && item.stats?.attack && <span className="text-entity-damage">+{item.stats.attack}</span>}
-                      {!mapItem && item.stats?.defense && <span className="text-entity-armor">+{item.stats.defense}</span>}
-                      {!mapItem && item.stats?.health && <span className="text-entity-heal">+{item.stats.health}</span>}
-                      {!mapItem && <span className="text-entity-gold">{item.value}g</span>}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {mapItem && canActivateMap && onActivateMap && (
-                    <button
-                      onClick={() => onActivateMap(mapItem)}
-                      className="text-xs text-purple-400 hover:text-purple-300 hover:underline font-medium"
-                    >
-                      activate
-                    </button>
+                    </>
+                  ) : (
+                    <>
+                      {item.stats?.attack && <span className="text-entity-damage">+{item.stats.attack}</span>}
+                      {item.stats?.defense && <span className="text-entity-armor">+{item.stats.defense}</span>}
+                    </>
                   )}
-                  {mapItem && !canActivateMap && (
-                    <span className="text-xs text-muted-foreground/50 italic">tavern only</span>
+                </div>
+                {/* Hover actions */}
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 flex-shrink-0">
+                  {mapItem && canActivateMap && onActivateMap && (
+                    <button onClick={() => onActivateMap(mapItem)} className="text-[10px] text-purple-400 hover:underline">go</button>
                   )}
                   {item.type === "potion" && onUseItem && (
                     <button
                       onClick={() => onUseItem(item)}
                       disabled={player.stats.health >= player.stats.maxHealth}
-                      className="text-xs text-entity-heal hover:underline disabled:opacity-30 disabled:no-underline"
-                    >
-                      use
-                    </button>
+                      className="text-[10px] text-entity-heal hover:underline disabled:opacity-30"
+                    >use</button>
                   )}
                   {isEquippable(item) && !inCombat && (
-                    <button onClick={() => onEquipItem(item)} className="text-xs text-primary hover:underline">
-                      equip
-                    </button>
+                    <button onClick={() => onEquipItem(item)} className="text-[10px] text-primary hover:underline">eq</button>
                   )}
                   {!inCombat && onDropItem && !mapItem && (
-                    <button
-                      onClick={() => onDropItem(item)}
-                      className="text-xs text-destructive/70 hover:text-destructive hover:underline"
-                    >
-                      drop
-                    </button>
+                    <button onClick={() => onDropItem(item)} className="text-[10px] text-destructive/50 hover:text-destructive">x</button>
                   )}
                 </div>
               </div>

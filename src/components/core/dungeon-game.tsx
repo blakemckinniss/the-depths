@@ -104,7 +104,6 @@ import { BossEncounter } from "@/components/encounters/boss-encounter";
 import { VaultEncounter, type VaultAction } from "@/components/encounters/vault-encounter";
 import { SidebarInventory } from "@/components/inventory/sidebar-inventory";
 import { DungeonSelect } from "@/components/world/dungeon-select";
-import { SidebarKeys } from "@/components/inventory/sidebar-keys";
 import { ClassSelect } from "@/components/character/class-select";
 import { RaceSelect } from "@/components/character/race-select";
 import { DeathScreen } from "@/components/character/death-screen";
@@ -3305,7 +3304,6 @@ export function DungeonGame() {
               inCombat={gameState.inCombat}
               canActivateMap={gameState.phase === "tavern"}
             />
-            <SidebarKeys keys={gameState.player.keys} />
           </div>
         </div>
       )}
