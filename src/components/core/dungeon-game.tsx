@@ -95,7 +95,9 @@ import { DungeonSelect } from "@/components/world/dungeon-select";
 import { SidebarKeys } from "@/components/inventory/sidebar-keys";
 import { ClassSelect } from "@/components/character/class-select";
 import { RaceSelect } from "@/components/character/race-select";
+import { DeathScreen } from "@/components/character/death-screen";
 import { AbilityBar } from "@/components/combat/ability-bar";
+import { ComboDisplay } from "@/components/combat/combo-display";
 import { SpellBar } from "@/components/combat/spell-bar";
 import { PathSelect } from "@/components/world/path-select";
 import { HazardDisplay } from "@/components/world/hazard-display";
@@ -2169,6 +2171,29 @@ export function DungeonGame() {
     [gameState, dispatch, addLog],
   );
 
+  const handleDropItem = useCallback(
+    (item: Item) => {
+      dispatch({ type: "REMOVE_ITEM", payload: item.id });
+      addLog(
+        <span className="text-stone-500">
+          Dropped <EntityText type={item.rarity}>{item.name}</EntityText>.
+        </span>,
+        "system",
+      );
+    },
+    [dispatch, addLog],
+  );
+
+  const handleReturnToTavern = useCallback(() => {
+    dispatch({ type: "SET_GAME_OVER", payload: false });
+    dispatch({ type: "SET_PHASE", payload: "tavern" });
+    setCurrentNarrative(null);
+    addLog(
+      <span className="text-amber-400">You drag yourself back to the tavern...</span>,
+      "narrative",
+    );
+  }, [dispatch, addLog]);
+
   // === RENDER HELPERS ===
   const renderInteractiveEntities = useCallback(() => {
     const activeEntities = gameState.roomEnvironmentalEntities.filter(
@@ -2379,8 +2404,16 @@ export function DungeonGame() {
           onReturnToTitle={handleReturnToTitle}
         />
 
-        {/* Race/Class select */}
-        {showRaceSelect ? (
+        {/* Death Screen */}
+        {gameState.gameOver ? (
+          <DeathScreen
+            player={gameState.player}
+            runStats={gameState.runStats}
+            onRestart={handleReturnToTitle}
+            onReturnToTavern={handleReturnToTavern}
+          />
+        ) : /* Race/Class select */
+        showRaceSelect ? (
           <RaceSelect onSelectRace={handleSelectRace} />
         ) : showClassSelect ? (
           <ClassSelect onSelectClass={handleSelectClass} />
@@ -2500,6 +2533,13 @@ export function DungeonGame() {
               )
             )}
 
+            {/* Active Combo Display */}
+            {gameState.inCombat && gameState.player.combo?.activeCombo && (
+              <div className="mt-2">
+                <ComboDisplay combo={gameState.player.combo} />
+              </div>
+            )}
+
             {gameState.inCombat &&
               gameState.currentEnemy &&
               gameState.player.abilities.length > 0 && (
@@ -2577,6 +2617,7 @@ export function DungeonGame() {
               player={gameState.player}
               onEquipItem={handleEquipItem}
               onUseItem={handleUseItem}
+              onDropItem={handleDropItem}
               inCombat={gameState.inCombat}
             />
             <SidebarKeys keys={gameState.player.keys} />
