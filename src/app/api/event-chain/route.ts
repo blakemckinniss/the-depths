@@ -10,6 +10,9 @@ import {
   ENTITY_CLASSES,
   ENTITY_TAGS,
   generateImpactConstraintPrompt,
+  EVENT_COOLDOWNS,
+  EVENT_BASE_WEIGHTS,
+  type EventType,
 } from "@/lib/mechanics/game-mechanics-ledger";
 import {
   roomEventSchema,
@@ -29,6 +32,159 @@ import {
   effectComboSchema,
   ambientEffectSchema,
 } from "@/lib/ai/ai-schemas";
+
+// =============================================================================
+// SPAWN DISTRIBUTION VALIDATION
+// =============================================================================
+
+// Map AI schema entity types to ledger event types
+const ENTITY_TO_EVENT_TYPE: Record<string, EventType> = {
+  enemy: "combat",
+  treasure: "treasure",
+  trap: "trap",
+  shrine: "shrine",
+  npc: "npc",
+  empty: "rest",
+  boss: "boss",
+};
+
+const EVENT_TO_ENTITY_TYPE: Record<EventType, string> = {
+  combat: "enemy",
+  treasure: "treasure",
+  trap: "trap",
+  shrine: "shrine",
+  npc: "npc",
+  rest: "empty",
+  boss: "boss",
+  mystery: "empty", // Mystery maps to empty for now
+};
+
+interface SerializedEventMemory {
+  history: Array<{ type: string; room: number; floor: number }>;
+  typeLastSeen: Record<string, number>;
+  combatStreak: number;
+  roomsSinceReward: number;
+}
+
+/**
+ * Calculate which entity types are allowed based on cooldowns and recent spawns.
+ * Returns allowed types with weights and a hint string for the AI.
+ */
+function calculateAllowedEntityTypes(
+  eventMemory: SerializedEventMemory | null,
+  currentRoom: number,
+  currentFloor: number
+): {
+  allowed: string[];
+  weights: Record<string, number>;
+  hint: string;
+} {
+  // Default: all types allowed
+  if (!eventMemory) {
+    return {
+      allowed: ["enemy", "treasure", "trap", "shrine", "npc", "empty"],
+      weights: { enemy: 35, treasure: 20, trap: 15, shrine: 10, npc: 10, empty: 10 },
+      hint: "",
+    };
+  }
+
+  const allowed: string[] = [];
+  const weights: Record<string, number> = {};
+  const onCooldown: string[] = [];
+  const typeLastSeen = eventMemory.typeLastSeen || {};
+
+  // Check each entity type against cooldowns
+  for (const [entityType, eventType] of Object.entries(ENTITY_TO_EVENT_TYPE)) {
+    if (entityType === "boss") continue; // Boss is scripted
+
+    const lastSeen = typeLastSeen[eventType];
+    const cooldown = EVENT_COOLDOWNS[eventType] || 0;
+
+    // Calculate if on cooldown (same floor only)
+    const isOnCooldown = lastSeen !== undefined && currentRoom - lastSeen < cooldown;
+
+    if (isOnCooldown) {
+      onCooldown.push(entityType);
+      weights[entityType] = 0;
+    } else {
+      allowed.push(entityType);
+      // Apply base weight with streak penalty
+      let weight = EVENT_BASE_WEIGHTS[eventType] || 10;
+
+      // Reduce weight if seen recently (soft variety boost)
+      const recentCount = eventMemory.history.filter(
+        (h) => h.type === eventType && currentRoom - h.room <= 5
+      ).length;
+      weight = Math.max(5, weight - recentCount * 5);
+
+      weights[entityType] = weight;
+    }
+  }
+
+  // Ensure at least one type is available
+  if (allowed.length === 0) {
+    allowed.push("enemy", "empty");
+    weights.enemy = 35;
+    weights.empty = 10;
+  }
+
+  // Build hint for AI
+  const hintParts: string[] = [];
+  if (onCooldown.length > 0) {
+    hintParts.push(`AVOID (recently seen): ${onCooldown.join(", ")}`);
+  }
+  if (eventMemory.combatStreak >= 2) {
+    hintParts.push(`Combat streak: ${eventMemory.combatStreak} - consider variety`);
+  }
+  if (eventMemory.roomsSinceReward >= 4) {
+    hintParts.push(`${eventMemory.roomsSinceReward} rooms since reward - consider treasure/shrine`);
+  }
+
+  const hint = hintParts.length > 0
+    ? `\nSPAWN DISTRIBUTION: ${hintParts.join(". ")}.`
+    : "";
+
+  return { allowed, weights, hint };
+}
+
+/**
+ * Validate AI's entity type choice. If invalid, select a weighted alternative.
+ */
+function validateEntityType(
+  aiChoice: string,
+  allowed: string[],
+  weights: Record<string, number>
+): { type: string; wasRedirected: boolean; reason?: string } {
+  if (allowed.includes(aiChoice)) {
+    return { type: aiChoice, wasRedirected: false };
+  }
+
+  // Select weighted random from allowed types
+  const totalWeight = allowed.reduce((sum, t) => sum + (weights[t] || 10), 0);
+  let roll = Math.random() * totalWeight;
+
+  for (const type of allowed) {
+    roll -= weights[type] || 10;
+    if (roll <= 0) {
+      return {
+        type,
+        wasRedirected: true,
+        reason: `${aiChoice} on cooldown, redirected to ${type}`,
+      };
+    }
+  }
+
+  // Fallback
+  return {
+    type: allowed[0] || "enemy",
+    wasRedirected: true,
+    reason: `${aiChoice} unavailable, using ${allowed[0]}`,
+  };
+}
+
+// =============================================================================
+// API HANDLER
+// =============================================================================
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -76,6 +232,13 @@ export async function POST(req: Request) {
 
   switch (eventType) {
     case "room_event": {
+      // Calculate spawn distribution based on event memory
+      const spawnDist = calculateAllowedEntityTypes(
+        context.eventMemory as SerializedEventMemory | null,
+        context.room || 0,
+        context.floor || 1
+      );
+
       const cacheKey =
         context.roomTypeHint === "empty"
           ? entityCache.generateKey(
@@ -86,10 +249,10 @@ export async function POST(req: Request) {
             )
           : undefined; // Don't cache non-empty rooms - they need variety
 
-      return Response.json(
-        await generateWithAI({
-          schema: roomEventSchema,
-          prompt: `Generate a room event for floor ${context.floor}, room ${context.room}.
+      // Generate room event with spawn hints
+      const aiResult = await generateWithAI({
+        schema: roomEventSchema,
+        prompt: `Generate a room event for floor ${context.floor}, room ${context.room}.
 Dungeon theme: ${context.dungeonTheme || "dark fantasy"}.
 Room type preference: ${context.roomTypeHint || "any"}.
 Recent rooms: ${context.recentRooms || "none"}.
@@ -101,14 +264,34 @@ PLAYER CONTEXT:
 - Has fire source: ${context.hasFireSource || "unknown"}
 - Has lockpicks: ${context.hasLockpicks || "unknown"}
 - Known abilities: ${context.playerAbilities || "basic"}
+${spawnDist.hint}
 
 ${generateEntitySystemPrompt()}`,
-          system,
-          temperature: AI_CONFIG.temperature.creative,
-          maxTokens: 800,
-          cacheKey,
-        }),
-      );
+        system,
+        temperature: AI_CONFIG.temperature.creative,
+        maxTokens: 800,
+        cacheKey,
+      });
+
+      // Validate AI's entity type choice against cooldowns
+      if (aiResult && aiResult.entityType) {
+        const validation = validateEntityType(
+          aiResult.entityType,
+          spawnDist.allowed,
+          spawnDist.weights
+        );
+
+        if (validation.wasRedirected) {
+          // AI chose a type on cooldown - redirect to allowed type
+          // Note: We keep the AI's generated content but change the entity type
+          // This means the content may not perfectly match, but variety is enforced
+          aiResult.entityType = validation.type as typeof aiResult.entityType;
+          // Log redirect for debugging (validation.reason contains details)
+          console.log(`[SpawnDistribution] ${validation.reason}`);
+        }
+      }
+
+      return Response.json(aiResult);
     }
 
     case "combat_round": {

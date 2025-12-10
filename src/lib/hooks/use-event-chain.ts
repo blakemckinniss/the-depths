@@ -221,6 +221,17 @@ export interface CompanionMomentResponse {
 // Build context from game state for AI
 function buildContext(state: GameState, extras: Record<string, unknown> = {}) {
   const activeCompanions = state.player.party?.active || []
+
+  // Serialize eventMemory for API (Map -> Object)
+  const eventMemorySerialized = state.eventMemory
+    ? {
+        history: state.eventMemory.history,
+        typeLastSeen: Object.fromEntries(state.eventMemory.typeLastSeen),
+        combatStreak: state.eventMemory.combatStreak,
+        roomsSinceReward: state.eventMemory.roomsSinceReward,
+      }
+    : null
+
   return {
     playerLevel: state.player.stats.level,
     playerHealth: state.player.stats.health,
@@ -238,6 +249,7 @@ function buildContext(state: GameState, extras: Record<string, unknown> = {}) {
     companionName: activeCompanions[0]?.name,
     existingCompanions: activeCompanions.length + (state.player.party?.reserve.length || 0),
     turnCount: state.turnCount,
+    eventMemory: eventMemorySerialized,
     ...extras,
   }
 }
