@@ -1810,8 +1810,8 @@ export function DungeonGame() {
 
         case "fight_guardian":
           if (vault.guardian) {
-            // Start combat with guardian
-            dispatch({ type: "START_COMBAT", payload: vault.guardian as never });
+            // Start combat with guardian (RankedEnemy extends Enemy, cast is safe)
+            dispatch({ type: "START_COMBAT", payload: vault.guardian as Enemy });
             addLog(
               <span className="text-red-400">
                 The guardian attacks! Prepare for battle!
