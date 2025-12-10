@@ -511,6 +511,31 @@ export const emptyRoomSchema = z.object({
 })
 
 // ============================================
+// EXPLORATION CHOICES SCHEMA
+// Dynamic AI-generated choices based on room context
+// ============================================
+
+const explorationChoiceSchema = z.object({
+  id: z.string().describe("Unique choice ID (snake_case, e.g. 'search_corpse', 'listen_carefully')"),
+  text: z.string().describe("Action text shown to player, 2-5 words (e.g. 'Search the corpse', 'Listen at the door')"),
+  type: z.enum(["explore", "interact", "investigate", "rest", "special"])
+    .describe("Category: explore=progress, interact=entity, investigate=examine, rest=recover, special=unique"),
+  riskLevel: z.enum(["safe", "risky", "dangerous"])
+    .describe("How dangerous this choice might be"),
+  entityTarget: z.string().nullish()
+    .describe("If interacting with entity, which one (entity name or id)"),
+  hint: z.string().nullish()
+    .describe("Subtle hint about outcome, 3-8 words"),
+})
+
+export const explorationChoicesSchema = z.object({
+  choices: z.array(explorationChoiceSchema).min(2).max(5)
+    .describe("2-5 contextual choices based on room, entities, and player state"),
+  atmosphere: z.string()
+    .describe("Brief atmospheric prompt, 1 sentence (e.g. 'The shadows seem to beckon...')"),
+})
+
+// ============================================
 // DM OPERATIONS SCHEMAS
 // TCG-style creative operations for AI Dungeon Master
 // ============================================

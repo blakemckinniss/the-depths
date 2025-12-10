@@ -269,6 +269,19 @@ export function DungeonGame() {
   const [hasExistingSaves, setHasExistingSaves] = useState(false); // Client-side only to avoid hydration mismatch
   const [selectedRace, setSelectedRace] = useState<PlayerRace | null>(null); // Store selected race before class selection
 
+  // Dynamic AI-generated exploration choices
+  interface DynamicChoice {
+    id: string;
+    text: string;
+    type: "explore" | "interact" | "investigate" | "rest" | "special";
+    riskLevel: "safe" | "risky" | "dangerous";
+    entityTarget?: string | null;
+    hint?: string | null;
+  }
+  const [dynamicChoices, setDynamicChoices] = useState<DynamicChoice[]>([]);
+  const [choiceAtmosphere, setChoiceAtmosphere] = useState<string | null>(null);
+  const [lastChoiceFetchRoom, setLastChoiceFetchRoom] = useState<string | null>(null);
+
   const { autoSave, hasSaves, load, deserializeWorldState, deserializeGameState } = useSaveSystem();
   const { generate: generateNarrative, isGenerating: isAiGenerating } =
     useDungeonMaster();
@@ -424,6 +437,83 @@ export function DungeonGame() {
     closeClassSelect();
     setShowMenuFalse();
   }, [gameFlow, closeClassSelect, setShowMenuFalse]);
+
+  // Fetch dynamic exploration choices from AI
+  const fetchDynamicChoices = useCallback(async () => {
+    const roomKey = `${gameState.floor}-${gameState.currentRoom}`;
+    // Don't re-fetch for same room unless forced
+    if (lastChoiceFetchRoom === roomKey) return;
+
+    const result = await generateNarrative<{
+      choices: DynamicChoice[];
+      atmosphere: string;
+    }>("exploration_choices", {
+      floor: gameState.floor,
+      roomNumber: gameState.currentRoom,
+      dungeonName: gameState.currentDungeon?.name,
+      dungeonTheme: gameState.currentDungeon?.theme,
+      playerLevel: gameState.player.stats.level,
+      playerClass: gameState.player.className || undefined,
+      playerHealth: gameState.player.stats.health,
+      maxHealth: gameState.player.stats.maxHealth,
+      hasPotion: gameState.player.inventory.some((i) => i.type === "potion"),
+      lowHealth: gameState.player.stats.health < gameState.player.stats.maxHealth * 0.5,
+      entities: gameState.roomEnvironmentalEntities.filter((e) => !e.consumed).map((e) => ({
+        name: e.name,
+        entityClass: e.entityClass,
+        interactionTags: e.interactionTags,
+      })),
+      roomNarrative: currentNarrative?.segments.map((s) => s.content).join(" "),
+    });
+
+    if (result?.choices) {
+      setDynamicChoices(result.choices);
+      setChoiceAtmosphere(result.atmosphere || null);
+      setLastChoiceFetchRoom(roomKey);
+    }
+  }, [
+    gameState.floor,
+    gameState.currentRoom,
+    gameState.currentDungeon,
+    gameState.player,
+    gameState.roomEnvironmentalEntities,
+    currentNarrative,
+    lastChoiceFetchRoom,
+    generateNarrative,
+  ]);
+
+  // Fetch choices when entering exploration (not in combat, dungeon active)
+  useEffect(() => {
+    if (
+      gameState.currentDungeon &&
+      !gameState.inCombat &&
+      !gameState.gameOver &&
+      gameState.phase !== "trap_encounter" &&
+      gameState.phase !== "shrine_choice" &&
+      gameState.phase !== "npc_interaction" &&
+      !gameState.pathOptions?.length &&
+      !gameState.activeVault
+    ) {
+      fetchDynamicChoices();
+    }
+  }, [
+    gameState.currentDungeon,
+    gameState.inCombat,
+    gameState.gameOver,
+    gameState.phase,
+    gameState.pathOptions,
+    gameState.activeVault,
+    gameState.currentRoom,
+    fetchDynamicChoices,
+  ]);
+
+  // Clear dynamic choices when room changes or combat starts
+  useEffect(() => {
+    if (gameState.inCombat || gameState.phase === "trap_encounter") {
+      setDynamicChoices([]);
+      setChoiceAtmosphere(null);
+    }
+  }, [gameState.inCombat, gameState.phase]);
 
   useEffect(() => {
     if (gameState.gameStarted && !gameState.gameOver) {
@@ -2038,38 +2128,89 @@ export function DungeonGame() {
     }
 
     if (!gameState.inCombat && gameState.currentDungeon) {
-      const explorationChoices: GameChoice[] = [
-        {
-          id: "explore",
-          text: "Explore Deeper",
-          action: exploreRoom,
-          disabled: isProcessing,
-        },
-      ];
+      const explorationChoices: GameChoice[] = [];
 
-      const maxFloors = gameState.currentDungeon.floors;
-      if (gameState.currentRoom > 0 && gameState.currentRoom % 5 === 0) {
-        const isLastFloor = gameState.floor >= maxFloors;
+      // Use AI-generated dynamic choices if available
+      if (dynamicChoices.length > 0) {
+        for (const choice of dynamicChoices) {
+          // Map AI choice types to game actions
+          let action: () => void;
+          let tooltip: string | undefined;
+
+          switch (choice.type) {
+            case "explore":
+              action = exploreRoom;
+              break;
+            case "interact":
+              // Find entity to interact with
+              if (choice.entityTarget) {
+                const entity = gameState.roomEnvironmentalEntities.find(
+                  (e) => e.name.toLowerCase().includes(choice.entityTarget!.toLowerCase()) ||
+                         e.id === choice.entityTarget
+                );
+                if (entity && !entity.consumed) {
+                  action = () => handleEnvironmentalInteraction(entity.id, entity.possibleInteractions?.[0]?.action || "examine");
+                } else {
+                  action = exploreRoom; // Fallback
+                }
+              } else {
+                action = exploreRoom;
+              }
+              break;
+            case "investigate":
+              action = exploreRoom; // Investigation triggers room exploration
+              break;
+            case "rest":
+              if (potion) {
+                action = () => consumePotion(potion);
+              } else {
+                action = exploreRoom;
+              }
+              break;
+            case "special":
+            default:
+              action = exploreRoom;
+          }
+
+          // Add risk hint as tooltip
+          if (choice.hint) {
+            tooltip = choice.hint;
+          }
+
+          explorationChoices.push({
+            id: choice.id,
+            text: choice.text,
+            action,
+            tooltip,
+            disabled: isProcessing,
+            riskLevel: choice.riskLevel,
+          });
+        }
+      } else {
+        // Fallback to static choice while AI is loading
         explorationChoices.push({
-          id: "descend",
-          text: isLastFloor
-            ? "Claim Victory & Exit"
-            : `Descend to Floor ${gameState.floor + 1}`,
-          action: descendFloor,
-          disabled: isProcessing,
+          id: "explore",
+          text: isAiGenerating ? "..." : "Explore Deeper",
+          action: exploreRoom,
+          disabled: isProcessing || isAiGenerating,
         });
       }
 
-      if (
-        potion &&
-        gameState.player.stats.health < gameState.player.stats.maxHealth
-      ) {
-        explorationChoices.push({
-          id: "heal",
-          text: `Use ${potion.name}`,
-          action: () => consumePotion(potion),
-          disabled: isProcessing,
-        });
+      // Always add descend option when available (not AI-dependent)
+      const maxFloors = gameState.currentDungeon.floors;
+      if (gameState.currentRoom > 0 && gameState.currentRoom % 5 === 0) {
+        const isLastFloor = gameState.floor >= maxFloors;
+        // Only add if not already present from AI
+        if (!explorationChoices.some((c) => c.id === "descend")) {
+          explorationChoices.push({
+            id: "descend",
+            text: isLastFloor
+              ? "Claim Victory & Exit"
+              : `Descend to Floor ${gameState.floor + 1}`,
+            action: descendFloor,
+            disabled: isProcessing,
+          });
+        }
       }
 
       return explorationChoices;
@@ -2084,6 +2225,8 @@ export function DungeonGame() {
   }, [
     gameState,
     isProcessing,
+    isAiGenerating,
+    dynamicChoices,
     playerAttack,
     attemptFlee,
     consumePotion,
@@ -2092,6 +2235,7 @@ export function DungeonGame() {
     restartGame,
     startGame,
     handleTameEnemy,
+    handleEnvironmentalInteraction,
   ]);
 
   const npcOptions = useMemo(() => {
@@ -2597,7 +2741,11 @@ export function DungeonGame() {
             {!gameState.inCombat && renderInteractiveEntities()}
 
             <div className="mt-4">
-              <ChoiceButtons choices={currentChoices} disabled={isProcessing} />
+              <ChoiceButtons
+                choices={currentChoices}
+                disabled={isProcessing}
+                atmosphere={!gameState.inCombat ? choiceAtmosphere : null}
+              />
             </div>
 
             {isProcessing && (

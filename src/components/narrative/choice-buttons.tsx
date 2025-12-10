@@ -6,10 +6,12 @@ import { cn } from "@/lib/core/utils"
 interface ChoiceButtonsProps {
   choices: GameChoice[]
   disabled?: boolean
+  atmosphere?: string | null
 }
 
-// Get border color based on risk level
-function getRiskBorderClass(riskLevel: ForesightResult["riskLevel"]): string {
+// Get border color based on risk level (supports both foresight and dynamic choice risk)
+type RiskLevel = "safe" | "risky" | "dangerous"
+function getRiskBorderClass(riskLevel: RiskLevel | undefined): string {
   switch (riskLevel) {
     case "safe":
       return "border-l-2 border-l-green-500/60"
@@ -44,17 +46,25 @@ function ForesightIndicator({ level, source }: { level: ForesightLevel; source?:
   )
 }
 
-export function ChoiceButtons({ choices, disabled }: ChoiceButtonsProps) {
+export function ChoiceButtons({ choices, disabled, atmosphere }: ChoiceButtonsProps) {
   if (choices.length === 0) return null
 
   return (
     <div className="flex flex-col gap-1.5 py-3 animate-in fade-in slide-in-from-bottom-3 duration-500">
+      {/* Atmosphere text from AI */}
+      {atmosphere && (
+        <span className="text-muted-foreground/70 text-xs italic mb-2">
+          {atmosphere}
+        </span>
+      )}
       <span className="text-muted-foreground text-xs uppercase tracking-wider mb-1">
         {disabled ? <span className="animate-pulse">The dungeon stirs...</span> : "What do you do?"}
       </span>
       {choices.map((choice, index) => {
         const foresight = choice.foresight
         const hasInsight = foresight && foresight.level !== "hidden"
+        // Use direct riskLevel from choice or from foresight
+        const riskLevel = (choice as { riskLevel?: RiskLevel }).riskLevel || foresight?.riskLevel
 
         return (
           <button
@@ -68,8 +78,8 @@ export function ChoiceButtons({ choices, disabled }: ChoiceButtonsProps) {
               "text-foreground hover:text-primary",
               "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-secondary/30",
               "focus:outline-none focus:ring-1 focus:ring-primary/50",
-              // Risk level border
-              foresight?.riskLevel && getRiskBorderClass(foresight.riskLevel),
+              // Risk level border (from dynamic choice or foresight)
+              getRiskBorderClass(riskLevel),
             )}
           >
             <div className="flex items-start justify-between gap-2">

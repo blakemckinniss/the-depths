@@ -12,6 +12,7 @@ import {
   playerDeathSchema,
   descendSchema,
   emptyRoomSchema,
+  explorationChoicesSchema,
 } from "@/lib/ai/ai-schemas"
 
 export async function POST(req: Request) {
@@ -219,6 +220,43 @@ Nothing of immediate interest, but the atmosphere should still be unsettling.`,
         temperature,
         maxTokens: 200,
         cacheKey,
+      }))
+    }
+
+    case "exploration_choices": {
+      // Build entity context
+      const entitiesDesc = context.entities?.length > 0
+        ? `Environmental entities in room: ${context.entities.map((e: { name: string; entityClass: string; interactionTags?: string[] }) =>
+            `${e.name} (${e.entityClass}${e.interactionTags?.length ? `, tags: ${e.interactionTags.join(", ")}` : ""})`
+          ).join("; ")}`
+        : "No special entities present.";
+
+      const playerContext = `Player: Level ${context.playerLevel} ${context.playerClass || "Adventurer"}, ` +
+        `HP: ${context.playerHealth}/${context.maxHealth}` +
+        (context.hasPotion ? ", has healing potion" : "") +
+        (context.lowHealth ? " (wounded)" : "");
+
+      const roomContext = context.roomNarrative
+        ? `Current scene: ${context.roomNarrative}`
+        : `Room ${context.roomNumber} on floor ${context.floor}.`;
+
+      return Response.json(await generateWithAI({
+        schema: explorationChoicesSchema,
+        prompt: `Generate 2-5 contextual exploration choices for the player.
+
+${roomContext}
+${entitiesDesc}
+${playerContext}
+
+ALWAYS include one "explore" type choice to progress deeper.
+If entities exist, include interaction choices for them.
+If player is wounded and has potions, suggest resting.
+Make choices feel natural to the scene - don't force variety if the situation is simple.
+Choices should range from safe to risky based on dungeon floor and player state.`,
+        system,
+        temperature: AI_CONFIG.temperature.creative,
+        maxTokens: 400,
+        useCache: false, // Choices should feel fresh
       }))
     }
 

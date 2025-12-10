@@ -811,6 +811,7 @@ export interface GameChoice {
   disabled?: boolean
   tooltip?: string
   foresight?: ForesightResult // What the player can see about this choice's outcome
+  riskLevel?: "safe" | "risky" | "dangerous" // Direct risk level from AI choices
 }
 
 export interface GameState {
