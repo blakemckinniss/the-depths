@@ -249,7 +249,9 @@ function buildContext(state: GameState, extras: Record<string, unknown> = {}) {
     dungeonName: state.currentDungeon?.name,
     dungeonTheme: state.currentDungeon?.theme,
     dungeonRarity: state.currentDungeon?.rarity,
+    biome: state.currentDungeon?.biome,
     dungeonModifiers: state.currentDungeon?.modifiers?.map((m) => ({
+      id: m.id,
       name: m.name,
       description: m.description,
     })),

@@ -227,8 +227,10 @@ export async function POST(req: Request) {
     companions: context.companions,
     currentHazard: context.currentHazard,
     recentEvents: context.recentEvents,
+    biome: context.biome,
     dungeonModifiers: context.dungeonModifiers,
     mapMetadata: context.mapMetadata,
+    includeBossHints: eventType === "boss_entrance" || eventType === "boss_intro",
     includeMechanics: [...getMechanicsForEvent(eventType)],
   });
 

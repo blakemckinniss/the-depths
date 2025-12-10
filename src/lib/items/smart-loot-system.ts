@@ -28,6 +28,8 @@ import {
 } from "./item-sets-system"
 import { generateMap } from "./map-generator"
 import { generateCurrencyDrop } from "./currency-generator"
+import { calculateModifierLootBonuses } from "@/lib/maps/map-context"
+import type { DungeonModifier } from "@/lib/core/game-types"
 
 // =============================================================================
 // TYPES
@@ -40,6 +42,8 @@ export interface LootContext {
   recentLoot?: Item[]
   source?: "enemy" | "chest" | "boss" | "shrine" | "vault"
   guaranteeUseful?: boolean
+  /** Active map modifiers for loot bonuses */
+  modifiers?: DungeonModifier[]
 }
 
 export interface LootResult {
@@ -324,11 +328,14 @@ function getThemeModifiers(dungeonTheme?: string): ThemeLootModifiers {
 // =============================================================================
 
 export function generateSmartLoot(context: LootContext): LootResult {
-  const { player, floor, dungeonTheme, recentLoot = [], source = "enemy", guaranteeUseful = false } = context
+  const { player, floor, dungeonTheme, recentLoot = [], source = "enemy", guaranteeUseful = false, modifiers = [] } = context
+
+  // Calculate modifier-based loot bonuses
+  const modifierBonuses = calculateModifierLootBonuses(modifiers)
 
   // === MAP DROP CHANCE ===
-  // Base 15%, +30% from bosses, scaling with floor
-  const mapDropChance = source === "boss" ? 0.45 : source === "vault" ? 0.25 : 0.15
+  // Base 15%, +30% from bosses, scaling with floor, + modifier special drop chance
+  const mapDropChance = (source === "boss" ? 0.45 : source === "vault" ? 0.25 : 0.15) + modifierBonuses.specialDropChance * 0.5
   if (Math.random() < mapDropChance) {
     // Drop tier: 70% same as floor tier, 30% +1 tier
     const baseTier = Math.min(10, Math.ceil(floor / 3)) as MapTier  // floor 1-3 = T1, 4-6 = T2, etc.
@@ -370,9 +377,10 @@ export function generateSmartLoot(context: LootContext): LootResult {
   // Apply pity system
   rarity = applyPityToRarity(rarity, pity)
 
-  // Apply theme bonus (bosses/vaults get extra)
+  // Apply theme + modifier bonus (bosses/vaults get extra)
   const sourceBonus = source === "boss" ? 0.2 : source === "vault" ? 0.15 : source === "chest" ? 0.05 : 0
-  if (Math.random() < themeMods.rarityBonus + sourceBonus) {
+  const totalRarityBonus = themeMods.rarityBonus + sourceBonus + modifierBonuses.rarityBonus
+  if (Math.random() < totalRarityBonus) {
     rarity = upgradeRarity(rarity)
   }
 

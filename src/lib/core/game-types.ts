@@ -464,6 +464,7 @@ export interface DungeonCard {
   name: string
   rarity: ItemRarity
   theme: string
+  biome?: string                  // Biome for thematic enemy/boss generation
   dangers: string[]
   rewards: string[]
   floors: number

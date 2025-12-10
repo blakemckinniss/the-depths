@@ -18,6 +18,10 @@ import {
   validateEffect,
   type ConstraintSource,
 } from "@/lib/mechanics/game-mechanics-ledger";
+import {
+  buildFullMapContext,
+  calculateModifierLootBonuses,
+} from "@/lib/maps/map-context";
 
 // Groq client singleton
 export const groq = createGroq({
@@ -308,9 +312,13 @@ export function buildSystemPrompt(context: {
   currentHazard?: string;
   recentEvents?: string;
   /** Map modifiers active on this dungeon run */
-  dungeonModifiers?: Array<{ name: string; description: string }>;
+  dungeonModifiers?: Array<{ id: string; name: string; description: string }>;
   /** Map tier (1-10) and quality (0-20) for scaling */
   mapMetadata?: { tier: number; quality: number };
+  /** Biome for thematic enemy/boss generation */
+  biome?: string;
+  /** Include boss generation hints */
+  includeBossHints?: boolean;
   /** Set to true to include item mechanics rules (for loot generation) */
   includeItemMechanics?: boolean;
   /**
@@ -356,22 +364,31 @@ export function buildSystemPrompt(context: {
     parts.push(`Recent events: ${context.recentEvents}`);
   }
 
-  // Inject map modifiers as binding constraints for AI
+  // Inject full map context (modifiers, enemy pools, boss hints)
   if (context.dungeonModifiers && context.dungeonModifiers.length > 0) {
-    parts.push("");
-    parts.push("=== ACTIVE MAP MODIFIERS (MANDATORY) ===");
-    parts.push("These modifiers MUST influence all generated content:");
-    context.dungeonModifiers.forEach((mod) => {
-      parts.push(`• ${mod.name}: ${mod.description}`);
-    });
-    parts.push("Adapt encounters, atmosphere, and difficulty to reflect these modifiers.");
+    const biome = context.biome || "underground"
+    const tier = context.mapMetadata?.tier || 1
+    const mapContext = buildFullMapContext(biome, tier, context.dungeonModifiers as any, {
+      includeEnemyHints: true,
+      includeBossHints: context.includeBossHints,
+      includeModifierFlavor: true,
+    })
+    parts.push(mapContext)
   }
 
   // Include map metadata for scaling context
   if (context.mapMetadata) {
-    parts.push(`Map Tier: ${context.mapMetadata.tier}/10 (higher = harder enemies, better loot)`);
+    parts.push("")
+    parts.push(`=== MAP SCALING ===`)
+    parts.push(`Map Tier: ${context.mapMetadata.tier}/10 (higher = harder enemies, better loot)`)
     if (context.mapMetadata.quality > 0) {
-      parts.push(`Quality Bonus: +${context.mapMetadata.quality}% (improved rewards)`);
+      parts.push(`Quality Bonus: +${context.mapMetadata.quality}% (improved rewards)`)
+    }
+    // Provide tier-specific guidance
+    if (context.mapMetadata.tier >= 8) {
+      parts.push("HIGH TIER: Enemies are extremely dangerous. Legendary loot possible.")
+    } else if (context.mapMetadata.tier >= 5) {
+      parts.push("MID TIER: Challenging encounters. Rare+ loot common.")
     }
   }
 

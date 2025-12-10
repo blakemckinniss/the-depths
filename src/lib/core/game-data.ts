@@ -450,7 +450,7 @@ export function generateDungeonSelection(): DungeonCard[] {
  * This is the primary entry point for map-based dungeon creation
  */
 export function createDungeonFromMap(map: MapItem): DungeonCard {
-  const { tier, theme, floors, modifiers, quality } = map.mapProps
+  const { tier, theme, biome, floors, modifiers, quality } = map.mapProps
 
   // Generate dangers based on modifiers
   const dangers: string[] = ["Ancient guardians", "Deadly traps", "Dark magic"]
@@ -475,6 +475,7 @@ export function createDungeonFromMap(map: MapItem): DungeonCard {
     name: theme,
     rarity: map.rarity,
     theme,
+    biome,
     dangers: dangers.slice(0, 3),
     rewards: rewards.slice(0, 2),
     floors,
