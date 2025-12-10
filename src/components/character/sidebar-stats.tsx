@@ -59,6 +59,19 @@ const RARITY_ICON_STYLES: Record<ItemRarity, string> = {
   legendary: "text-entity-legendary/90",
 }
 
+// Resource type icons for compact display
+function getResourceIcon(resourceType: string): string {
+  switch (resourceType) {
+    case "mana": return "◆"
+    case "rage": return "▲"
+    case "energy": return "●"
+    case "focus": return "◇"
+    case "souls": return "◈"
+    case "faith": return "✦"
+    default: return "○"
+  }
+}
+
 function EquipSlot({ slot, item, compact = false }: { slot: EquipmentSlot; item: Item | null; compact?: boolean }) {
   const rarity = item?.rarity || "common"
 
@@ -331,20 +344,51 @@ export function SidebarStats({ player }: SidebarStatsProps) {
 
       {/* ═══ ABILITIES ═══ */}
       {player.abilities.length > 0 && (
-        <Section title="Abilities" icon="★" color="text-cyan-500/70" className="mb-3">
-          <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+        <Section title="Abilities" icon="★" color={classDef?.color || "text-cyan-500/70"} className="mb-3">
+          <div className="space-y-1">
             {player.abilities.slice(0, 6).map((ability) => {
               const cooldown = player.abilityCooldowns[ability.id] || 0
+              const abilityLevel = ability.level || 1
+              const maxLevel = ability.maxLevel || 5
+              const isOnCooldown = cooldown > 0
+              const resourceIcon = getResourceIcon(ability.resourceType)
+
               return (
-                <div key={ability.id} className="flex items-center justify-between text-[10px] min-w-0">
+                <div
+                  key={ability.id}
+                  className={cn(
+                    "flex items-center gap-1.5 px-1.5 py-0.5 rounded border transition-colors text-[10px]",
+                    isOnCooldown
+                      ? "border-stone-700/30 bg-stone-800/20 opacity-60"
+                      : "border-stone-700/40 bg-stone-800/30"
+                  )}
+                >
+                  {/* Ability name with class color */}
                   <EntityText
                     type="ability"
                     entity={ability}
-                    className={cn("truncate", cooldown > 0 ? "text-stone-500" : "text-stone-300")}
+                    className={cn(
+                      "truncate flex-1 min-w-0",
+                      isOnCooldown ? "text-stone-500" : classDef?.color || "text-cyan-400"
+                    )}
                   >
                     {ability.name}
                   </EntityText>
-                  {cooldown > 0 && <span className="text-stone-500 ml-1 shrink-0">{cooldown}t</span>}
+
+                  {/* Level indicator */}
+                  <span className="text-[9px] text-stone-500 shrink-0">
+                    L{abilityLevel}{abilityLevel < maxLevel && <span className="text-stone-600">/{maxLevel}</span>}
+                  </span>
+
+                  {/* Cost */}
+                  <span className={cn("text-[9px] tabular-nums shrink-0", getResourceColor(ability.resourceType))}>
+                    {resourceIcon}{ability.resourceCost}
+                  </span>
+
+                  {/* Cooldown indicator */}
+                  {isOnCooldown && (
+                    <span className="text-[9px] text-orange-400/70 shrink-0">{cooldown}t</span>
+                  )}
                 </div>
               )
             })}

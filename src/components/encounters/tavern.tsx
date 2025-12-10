@@ -4,17 +4,18 @@ import { useState } from "react"
 import type { Player } from "@/lib/core/game-types"
 import { EntityText } from "@/components/narrative/entity-text"
 import { StatBar } from "@/components/character/stat-bar"
-import { CLASSES } from "@/lib/character/ability-system"
+import { CLASSES, canLevelUpAbility, getAbilityLevelUpCost, ABILITY_LEVEL_CONFIG } from "@/lib/character/ability-system"
 
 interface TavernProps {
   player: Player
   onEnterDungeons: () => void
   onRestoreHealth: (cost: number, amount: number) => void
   onBuyKey: (keyRarity: "common" | "uncommon" | "rare") => void
+  onLevelUpAbility?: (abilityId: string) => void
 }
 
-export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey }: TavernProps) {
-  const [activeTab, setActiveTab] = useState<"main" | "healer" | "keysmith" | "party" | "alchemist">("main")
+export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey, onLevelUpAbility }: TavernProps) {
+  const [activeTab, setActiveTab] = useState<"main" | "healer" | "keysmith" | "party" | "alchemist" | "trainer">("main")
 
   const healthMissing = player.stats.maxHealth - player.stats.health
   const healCostPerHp = 1
@@ -60,12 +61,12 @@ export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey }: T
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex gap-2 mb-6">
-        {["main", "healer", "keysmith", "party", "alchemist"].map((tab) => (
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {["main", "healer", "keysmith", "trainer", "party", "alchemist"].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab as typeof activeTab)}
-            className={`flex-1 py-2 px-3 text-sm rounded transition-colors ${
+            className={`flex-1 min-w-[80px] py-2 px-3 text-sm rounded transition-colors ${
               activeTab === tab
                 ? "bg-amber-900/40 text-amber-300"
                 : "bg-stone-800/30 text-stone-400 hover:bg-stone-800/50"
@@ -74,6 +75,7 @@ export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey }: T
             {tab === "main" && "Hall"}
             {tab === "healer" && "Healer"}
             {tab === "keysmith" && "Keysmith"}
+            {tab === "trainer" && "Trainer"}
             {tab === "party" && "Companions"}
             {tab === "alchemist" && "Alchemist"}
           </button>
@@ -253,6 +255,114 @@ export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey }: T
                   </span>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "trainer" && (
+          <div className="space-y-4">
+            <div className="bg-stone-900/50 rounded p-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-full bg-amber-900/30 flex items-center justify-center text-2xl">
+                  ⚔
+                </div>
+                <div>
+                  <EntityText type="npc">Gregor the Battlemaster</EntityText>
+                  <p className="text-stone-500 text-sm">Combat Trainer</p>
+                </div>
+              </div>
+              <p className="text-stone-400 text-sm italic mb-4">
+                &quot;Every technique can be honed. Gold buys practice, practice buys power...&quot;
+              </p>
+            </div>
+
+            {/* Ability Leveling */}
+            {player.abilities.length > 0 ? (
+              <div className="space-y-3">
+                <div className="text-stone-500 text-xs uppercase">Your Abilities</div>
+                {player.abilities.map((ability) => {
+                  const currentLevel = ability.level || 1
+                  const maxLevel = ability.maxLevel || ABILITY_LEVEL_CONFIG.maxLevel
+                  const cost = getAbilityLevelUpCost(ability)
+                  const check = canLevelUpAbility(player, ability.id)
+                  const isMaxed = currentLevel >= maxLevel
+                  const abilityClass = ability.classRequired?.[0]
+                  const abilityClassDef = abilityClass ? CLASSES[abilityClass] : null
+
+                  return (
+                    <div
+                      key={ability.id}
+                      className="bg-stone-800/30 rounded p-3 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className={abilityClassDef?.color || "text-stone-300"}>
+                            {ability.name}
+                          </span>
+                          <span className="text-stone-500 text-xs ml-2">
+                            L{currentLevel}/{maxLevel}
+                          </span>
+                        </div>
+                        {!isMaxed && (
+                          <span className="text-amber-400/70 text-xs">
+                            +{Math.round(ABILITY_LEVEL_CONFIG.damageScalePerLevel * 100)}% power
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Level progress bar */}
+                      <div className="flex gap-1">
+                        {Array.from({ length: maxLevel }).map((_, i) => (
+                          <div
+                            key={i}
+                            className={`h-1 flex-1 rounded ${
+                              i < currentLevel
+                                ? "bg-amber-500"
+                                : "bg-stone-700"
+                            }`}
+                          />
+                        ))}
+                      </div>
+
+                      {/* Level up button */}
+                      {isMaxed ? (
+                        <div className="text-center text-stone-500 text-xs py-1">
+                          Mastered
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => onLevelUpAbility?.(ability.id)}
+                          disabled={!check.canLevel || !onLevelUpAbility}
+                          className="w-full py-2 bg-amber-900/30 hover:bg-amber-800/40 text-amber-300 rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          <span>Level Up</span>
+                          <EntityText type="gold">{cost}g</EntityText>
+                        </button>
+                      )}
+
+                      {!check.canLevel && !isMaxed && check.reason && (
+                        <div className="text-red-400/70 text-xs text-center">
+                          {check.reason}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-stone-500">
+                &quot;You have no abilities to train. Choose a class first.&quot;
+              </div>
+            )}
+
+            {/* Training info */}
+            <div className="bg-stone-800/20 rounded p-3 border border-stone-700/30">
+              <div className="text-stone-500 text-xs uppercase mb-2">Training Notes</div>
+              <ul className="text-stone-400 text-xs space-y-1">
+                <li>• Each level increases ability power by {Math.round(ABILITY_LEVEL_CONFIG.damageScalePerLevel * 100)}%</li>
+                <li>• Maximum level: {ABILITY_LEVEL_CONFIG.maxLevel}</li>
+                <li>• Abilities also level automatically every 3 player levels</li>
+              </ul>
             </div>
           </div>
         )}

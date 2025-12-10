@@ -676,6 +676,10 @@ export interface Ability extends GameEntity {
   levelRequired: number
   classRequired?: PlayerClass[]
 
+  // Ability progression
+  level?: number // Current ability level (1-5), affects damage/healing scaling
+  maxLevel?: number // Maximum level this ability can reach (default 5)
+
   // AI-generated flavor
   castNarration?: string // "You channel flames into your palms..."
   hitNarration?: string // "The fireball engulfs the enemy in searing heat!"

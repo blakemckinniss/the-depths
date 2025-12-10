@@ -45,6 +45,8 @@ import {
   tickCooldowns,
   getClassAbilitiesForLevel,
   CLASSES,
+  autoLevelAbilitiesOnLevelUp,
+  levelUpAbility,
 } from "@/lib/character/ability-system";
 import {
   initializePlayerRace,
@@ -975,6 +977,9 @@ export function DungeonGame() {
               log.levelUp(player.stats.level, ability);
             }
           }
+
+          // Auto-level existing abilities based on player level (every 3 levels = +1 ability level)
+          player = autoLevelAbilitiesOnLevelUp(player);
         }
       }
 
@@ -2055,6 +2060,28 @@ export function DungeonGame() {
     [tavern, addLog],
   );
 
+  const handleLevelUpAbility = useCallback(
+    (abilityId: string) => {
+      const updatedPlayer = levelUpAbility(gameState.player, abilityId);
+      if (!updatedPlayer) return;
+
+      const ability = updatedPlayer.abilities.find((a) => a.id === abilityId);
+      const newLevel = ability?.level || 1;
+
+      dispatch({ type: "LOAD_STATE", payload: { ...gameState, player: updatedPlayer } });
+
+      addLog(
+        <span>
+          Gregor guides your training.{" "}
+          <EntityText type="ability">{ability?.name}</EntityText>{" "}
+          improved to level <span className="text-amber-400">{newLevel}</span>!
+        </span>,
+        "system",
+      );
+    },
+    [gameState, dispatch, addLog],
+  );
+
   const currentChoices = useMemo(() => {
     const potion = gameState.player.inventory.find((i) => i.type === "potion");
 
@@ -2567,6 +2594,7 @@ export function DungeonGame() {
             onEnterDungeons={enterDungeonSelect}
             onRestoreHealth={handleRestoreHealth}
             onBuyKey={handleBuyKey}
+            onLevelUpAbility={handleLevelUpAbility}
           />
         ) : gameState.phase === "dungeon_select" ? (
           <DungeonSelect

@@ -958,9 +958,11 @@ export function calculateAbilityDamage(
     return { damage: 0, isCritical: false }
   }
 
-  let baseDamage = ability.baseDamage || 0
+  // Get level-scaled base damage
+  const levelMultiplier = 1 + ((ability.level || 1) - 1) * ABILITY_LEVEL_CONFIG.damageScalePerLevel
+  let baseDamage = Math.floor((ability.baseDamage || 0) * levelMultiplier)
 
-  // Apply scaling
+  // Apply stat scaling
   if (ability.damageScaling) {
     const statValue =
       ability.damageScaling.stat === "attack"
@@ -998,7 +1000,9 @@ export function calculateAbilityHealing(player: Player, ability: Ability): numbe
     return 0
   }
 
-  let healing = ability.baseHealing || 0
+  // Get level-scaled base healing
+  const levelMultiplier = 1 + ((ability.level || 1) - 1) * ABILITY_LEVEL_CONFIG.healingScalePerLevel
+  let healing = Math.floor((ability.baseHealing || 0) * levelMultiplier)
 
   if (ability.healingScaling) {
     const statValue =
@@ -1154,5 +1158,154 @@ export function getResourceColor(resourceType: ResourceType): string {
       return "text-violet-400"
     default:
       return "text-gray-400"
+  }
+}
+
+// ============================================================================
+// ABILITY LEVELING SYSTEM
+// ============================================================================
+
+// Constants for ability leveling
+export const ABILITY_LEVEL_CONFIG = {
+  maxLevel: 5,
+  damageScalePerLevel: 0.20,    // +20% damage per level
+  healingScalePerLevel: 0.20,   // +20% healing per level
+  baseGoldCost: 50,             // Base gold cost to level up
+  goldCostMultiplier: 2.0,      // Cost doubles per level (50, 100, 200, 400, 800)
+}
+
+/**
+ * Calculate the gold cost to level up an ability
+ */
+export function getAbilityLevelUpCost(ability: Ability): number {
+  const currentLevel = ability.level || 1
+  const maxLevel = ability.maxLevel || ABILITY_LEVEL_CONFIG.maxLevel
+
+  if (currentLevel >= maxLevel) return Infinity
+
+  // Cost increases exponentially: 50 → 100 → 200 → 400 → 800
+  return Math.floor(
+    ABILITY_LEVEL_CONFIG.baseGoldCost *
+    Math.pow(ABILITY_LEVEL_CONFIG.goldCostMultiplier, currentLevel - 1)
+  )
+}
+
+/**
+ * Check if an ability can be leveled up
+ */
+export function canLevelUpAbility(
+  player: Player,
+  abilityId: string
+): { canLevel: boolean; reason?: string; cost?: number } {
+  const ability = player.abilities.find(a => a.id === abilityId)
+
+  if (!ability) {
+    return { canLevel: false, reason: "Ability not found" }
+  }
+
+  const currentLevel = ability.level || 1
+  const maxLevel = ability.maxLevel || ABILITY_LEVEL_CONFIG.maxLevel
+
+  if (currentLevel >= maxLevel) {
+    return { canLevel: false, reason: `Already at max level (${maxLevel})` }
+  }
+
+  const cost = getAbilityLevelUpCost(ability)
+
+  if (player.stats.gold < cost) {
+    return { canLevel: false, reason: `Not enough gold (need ${cost})`, cost }
+  }
+
+  return { canLevel: true, cost }
+}
+
+/**
+ * Level up an ability, spending gold
+ * Returns updated player or null if cannot level up
+ */
+export function levelUpAbility(player: Player, abilityId: string): Player | null {
+  const check = canLevelUpAbility(player, abilityId)
+  if (!check.canLevel || !check.cost) return null
+
+  const abilityIndex = player.abilities.findIndex(a => a.id === abilityId)
+  if (abilityIndex === -1) return null
+
+  const ability = player.abilities[abilityIndex]
+  const newLevel = (ability.level || 1) + 1
+
+  // Create updated ability with new level
+  const updatedAbility: Ability = {
+    ...ability,
+    level: newLevel,
+  }
+
+  // Create new abilities array with updated ability
+  const newAbilities = [...player.abilities]
+  newAbilities[abilityIndex] = updatedAbility
+
+  return {
+    ...player,
+    abilities: newAbilities,
+    stats: {
+      ...player.stats,
+      gold: player.stats.gold - check.cost,
+    },
+  }
+}
+
+/**
+ * Get the level multiplier for damage/healing scaling
+ * Level 1 = 1.0x, Level 2 = 1.2x, Level 3 = 1.4x, Level 4 = 1.6x, Level 5 = 1.8x
+ */
+export function getAbilityLevelMultiplier(ability: Ability): number {
+  const level = ability.level || 1
+  return 1 + (level - 1) * ABILITY_LEVEL_CONFIG.damageScalePerLevel
+}
+
+/**
+ * Get scaled base damage for an ability (factoring in level)
+ */
+export function getScaledAbilityBaseDamage(ability: Ability): number {
+  if (!ability.baseDamage) return 0
+  return Math.floor(ability.baseDamage * getAbilityLevelMultiplier(ability))
+}
+
+/**
+ * Get scaled base healing for an ability (factoring in level)
+ */
+export function getScaledAbilityBaseHealing(ability: Ability): number {
+  if (!ability.baseHealing) return 0
+  return Math.floor(ability.baseHealing * getAbilityLevelMultiplier(ability))
+}
+
+/**
+ * Auto-level abilities on player level up (alternative to gold-based leveling)
+ * Levels up all abilities by 1 if player level meets threshold
+ * Thresholds: Player level 3, 6, 9, 12, 15 unlock ability levels 2, 3, 4, 5, 5
+ */
+export function autoLevelAbilitiesOnLevelUp(player: Player): Player {
+  const playerLevel = player.stats.level
+
+  // Calculate what ability level should be based on player level
+  // Every 3 player levels = +1 ability level (up to max)
+  const targetAbilityLevel = Math.min(
+    Math.floor(playerLevel / 3) + 1,
+    ABILITY_LEVEL_CONFIG.maxLevel
+  )
+
+  const updatedAbilities = player.abilities.map(ability => {
+    const currentLevel = ability.level || 1
+    const maxLevel = ability.maxLevel || ABILITY_LEVEL_CONFIG.maxLevel
+
+    // Only level up if below target and not at max
+    if (currentLevel < targetAbilityLevel && currentLevel < maxLevel) {
+      return { ...ability, level: currentLevel + 1 }
+    }
+    return ability
+  })
+
+  return {
+    ...player,
+    abilities: updatedAbilities,
   }
 }
