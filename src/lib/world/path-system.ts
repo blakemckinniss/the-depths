@@ -1,5 +1,6 @@
 import type { PathOption } from "@/lib/core/game-types"
 import { generateId } from "@/lib/core/utils"
+import { shouldSpawnVault, generateVault, type VaultInstance } from "@/lib/items/vault-system"
 
 // Generate branching path options for the next room
 export function generatePathOptions(floor: number, currentRoom: number, dungeonTheme?: string): PathOption[] {
@@ -12,6 +13,25 @@ export function generatePathOptions(floor: number, currentRoom: number, dungeonT
   for (let i = 0; i < numPaths; i++) {
     const isSafeOption = i === 0 && guaranteedSafe
     paths.push(generateSinglePath(floor, currentRoom, isSafeOption, dungeonTheme))
+  }
+
+  // Check for vault spawn (small chance on one path)
+  if (shouldSpawnVault(floor) && paths.length > 0) {
+    // Replace a random path with a vault path
+    const vaultIndex = Math.floor(Math.random() * paths.length)
+    const vault = generateVault(floor)
+
+    paths[vaultIndex] = {
+      id: generateId(),
+      preview: vault.definition.requiresKey
+        ? `A sealed vault door etched with ancient runes...`
+        : `${vault.definition.name} - ${vault.definition.description}`,
+      danger: vault.definition.dangerLevel >= 4 ? "dangerous" : vault.definition.dangerLevel >= 3 ? "moderate" : "safe",
+      reward: vault.definition.lootMultiplier >= 3 ? "rich" : "standard",
+      roomType: "vault",
+      environmentHint: vault.definition.uniqueMechanic || "A special chamber awaits...",
+      vault,
+    }
   }
 
   // Occasionally add a mystery path

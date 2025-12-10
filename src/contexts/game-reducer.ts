@@ -50,7 +50,10 @@ type InventoryAction =
   | { type: "EQUIP_ITEM"; payload: { item: Item; slot: EquipmentSlot | "weapon" | "armor" } }
   | { type: "UNEQUIP_ITEM"; payload: EquipmentSlot | "weapon" | "armor" }
   | { type: "ADD_KEY"; payload: DungeonKey }
-  | { type: "REMOVE_KEY"; payload: string }; // key ID
+  | { type: "REMOVE_KEY"; payload: string } // key ID
+  | { type: "ADD_ESSENCE"; payload: { type: string; amount: number } }
+  | { type: "REMOVE_ESSENCE"; payload: { type: string; amount: number } }
+  | { type: "SET_ESSENCE"; payload: Record<string, number> }; // Set entire essence object
 
 // Effects actions
 type EffectAction =
@@ -105,7 +108,8 @@ type EncounterAction =
       type: "UPDATE_ROOM_ENTITY";
       payload: { id: string; changes: Partial<EnvironmentalEntity> };
     }
-  | { type: "REMOVE_ROOM_ENTITY"; payload: string };
+  | { type: "REMOVE_ROOM_ENTITY"; payload: string }
+  | { type: "SET_ACTIVE_VAULT"; payload: import("@/lib/items/vault-system").VaultInstance | null };
 
 // Companion/party actions
 type CompanionAction =
@@ -332,6 +336,46 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         player: {
           ...state.player,
           keys: state.player.keys.filter((key) => key.id !== action.payload),
+        },
+      };
+
+    case "ADD_ESSENCE": {
+      const { type, amount } = action.payload;
+      const currentAmount = state.player.essence[type] || 0;
+      return {
+        ...state,
+        player: {
+          ...state.player,
+          essence: {
+            ...state.player.essence,
+            [type]: currentAmount + amount,
+          },
+        },
+      };
+    }
+
+    case "REMOVE_ESSENCE": {
+      const { type, amount } = action.payload;
+      const currentAmount = state.player.essence[type] || 0;
+      const newAmount = Math.max(0, currentAmount - amount);
+      return {
+        ...state,
+        player: {
+          ...state.player,
+          essence: {
+            ...state.player.essence,
+            [type]: newAmount,
+          },
+        },
+      };
+    }
+
+    case "SET_ESSENCE":
+      return {
+        ...state,
+        player: {
+          ...state.player,
+          essence: action.payload,
         },
       };
 
@@ -636,6 +680,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         phase: action.payload ? "trap_encounter" : state.phase,
       };
 
+    case "SET_ACTIVE_VAULT":
+      return {
+        ...state,
+        activeVault: action.payload,
+      };
+
     case "SET_CURRENT_BOSS":
       return {
         ...state,
@@ -869,6 +919,18 @@ export const gameActions = {
     type: "UNEQUIP_ITEM",
     payload: slot,
   }),
+  addEssence: (type: string, amount: number): GameAction => ({
+    type: "ADD_ESSENCE",
+    payload: { type, amount },
+  }),
+  removeEssence: (type: string, amount: number): GameAction => ({
+    type: "REMOVE_ESSENCE",
+    payload: { type, amount },
+  }),
+  setEssence: (essence: Record<string, number>): GameAction => ({
+    type: "SET_ESSENCE",
+    payload: essence,
+  }),
 
   // Effects
   addEffect: (effect: StatusEffect): GameAction => ({
@@ -931,6 +993,10 @@ export const gameActions = {
   setActiveTrap: (trap: Trap | null): GameAction => ({
     type: "SET_ACTIVE_TRAP",
     payload: trap,
+  }),
+  setActiveVault: (vault: import("@/lib/items/vault-system").VaultInstance | null): GameAction => ({
+    type: "SET_ACTIVE_VAULT",
+    payload: vault,
   }),
 
   // Phase

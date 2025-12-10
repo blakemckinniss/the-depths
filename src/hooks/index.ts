@@ -13,5 +13,8 @@ export { useInventory } from "./use-inventory";
 // Tavern hook
 export { useTavern } from "./use-tavern";
 
+// Alchemy hook
+export { useAlchemy } from "./use-alchemy";
+
 // Game flow hook
 export { useGameFlow } from "./use-game-flow";

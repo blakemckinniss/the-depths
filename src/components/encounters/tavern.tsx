@@ -14,7 +14,7 @@ interface TavernProps {
 }
 
 export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey }: TavernProps) {
-  const [activeTab, setActiveTab] = useState<"main" | "healer" | "keysmith" | "party">("main")
+  const [activeTab, setActiveTab] = useState<"main" | "healer" | "keysmith" | "party" | "alchemist">("main")
 
   const healthMissing = player.stats.maxHealth - player.stats.health
   const healCostPerHp = 1
@@ -61,7 +61,7 @@ export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey }: T
 
       {/* Navigation Tabs */}
       <div className="flex gap-2 mb-6">
-        {["main", "healer", "keysmith", "party"].map((tab) => (
+        {["main", "healer", "keysmith", "party", "alchemist"].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab as typeof activeTab)}
@@ -75,6 +75,7 @@ export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey }: T
             {tab === "healer" && "Healer"}
             {tab === "keysmith" && "Keysmith"}
             {tab === "party" && "Companions"}
+            {tab === "alchemist" && "Alchemist"}
           </button>
         ))}
       </div>
@@ -325,6 +326,44 @@ export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey }: T
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === "alchemist" && (
+          <div className="space-y-4">
+            <div className="bg-stone-900/50 rounded p-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-full bg-purple-900/30 flex items-center justify-center text-2xl">
+                  ⚗️
+                </div>
+                <div>
+                  <EntityText type="npc">Vesper the Alchemist</EntityText>
+                  <p className="text-stone-500 text-sm">Master of Transmutation</p>
+                </div>
+              </div>
+              <p className="text-stone-400 text-sm italic mb-4">
+                &quot;The essence of all things can be reshaped... for a price.&quot;
+              </p>
+            </div>
+
+            {/* Placeholder content */}
+            <div className="bg-stone-800/30 rounded p-4 text-center">
+              <p className="text-stone-400 mb-2">The alchemist&apos;s workbench awaits...</p>
+              <p className="text-stone-500 text-sm italic">
+                Gather materials from your adventures and return to experiment with transmutation.
+              </p>
+            </div>
+
+            {/* Feature hint */}
+            <div className="bg-purple-900/10 rounded p-3 border border-purple-900/30">
+              <div className="text-purple-400 text-xs uppercase mb-2">Coming Soon</div>
+              <ul className="text-stone-400 text-sm space-y-1">
+                <li>• Combine materials to discover new items</li>
+                <li>• Salvage equipment for crafting components</li>
+                <li>• Enchant weapons and armor</li>
+                <li>• Generate lore for your legendary items</li>
+              </ul>
+            </div>
           </div>
         )}
       </div>

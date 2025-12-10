@@ -563,6 +563,7 @@ export interface Player extends GameEntity {
   combo: ComboTracker
   sustainedAbilities: SustainedAbility[] // Toggle abilities that reserve resources while active
   spellBook: SpellBook // Learned spells from tomes, events, etc.
+  essence: Record<string, number> // Essence storage for transmogrification system (EssenceType -> amount)
 }
 
 // Player race type - matches race-system.ts
@@ -795,6 +796,7 @@ export interface GameState {
   activeNPC: NPC | null
   activeShrine: Shrine | null
   activeTrap: Trap | null
+  activeVault: import("@/lib/items/vault-system").VaultInstance | null
   eventHistory: GameEvent[]
   roomEntities: GameEntity[]
   turnCount: number
@@ -875,8 +877,9 @@ export interface PathOption {
   preview: string // AI-generated preview hint
   danger: "safe" | "moderate" | "dangerous" | "unknown"
   reward: "poor" | "standard" | "rich" | "unknown"
-  roomType?: "enemy" | "treasure" | "trap" | "shrine" | "npc" | "boss" | "mystery"
+  roomType?: "enemy" | "treasure" | "trap" | "shrine" | "npc" | "boss" | "mystery" | "vault"
   environmentHint?: string
+  vault?: import("@/lib/items/vault-system").VaultInstance // Vault encounter data
 }
 
 export interface ComboTracker {

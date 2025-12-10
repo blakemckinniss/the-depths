@@ -594,6 +594,7 @@ export const createInitialPlayer = (): Player => ({
     recentlyCast: [],
     cooldowns: {},
   },
+  essence: {}, // Empty essence storage for transmogrification system
 })
 
 export const createInitialRunStats = (): RunSummary => ({

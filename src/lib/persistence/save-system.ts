@@ -469,6 +469,7 @@ export class SaveSystem {
         combatStreak: serialized.eventMemory?.combatStreak || 0,
         roomsSinceReward: serialized.eventMemory?.roomsSinceReward || 0,
       },
+      activeVault: null, // Vaults are not persisted across saves
     } as GameState
   }
 

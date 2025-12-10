@@ -222,6 +222,7 @@ const initialState: GameState = {
     combatStreak: 0,
     roomsSinceReward: 0,
   },
+  activeVault: null,
 };
 
 export function DungeonGame() {

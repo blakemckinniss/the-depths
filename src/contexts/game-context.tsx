@@ -41,6 +41,7 @@ export function createInitialGameState(): GameState {
     activeNPC: null,
     activeShrine: null,
     activeTrap: null,
+    activeVault: null,
     eventHistory: [],
     roomEntities: [],
     turnCount: 0,
