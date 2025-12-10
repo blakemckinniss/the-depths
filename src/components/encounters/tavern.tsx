@@ -1,21 +1,29 @@
 "use client"
 
 import { useState } from "react"
-import type { Player } from "@/lib/core/game-types"
+import type { Player, Item } from "@/lib/core/game-types"
+import type { AlchemyResult } from "@/lib/ai/ai-alchemy-system"
+import type { EssenceCraftRecipe } from "@/lib/items/transmogrification-system"
 import { EntityText } from "@/components/narrative/entity-text"
 import { StatBar } from "@/components/character/stat-bar"
-import { CLASSES, canLevelUpAbility, getAbilityLevelUpCost, ABILITY_LEVEL_CONFIG } from "@/lib/character/ability-system"
+import { CLASSES, canLevelUpAbility, getAbilityLevelUpCost, ABILITY_LEVEL_CONFIG, getAbilityLevelMultiplier } from "@/lib/character/ability-system"
+import { AlchemyWorkbench } from "@/components/encounters/alchemy-workbench"
+import { TransmogMenu } from "@/components/encounters/transmog-menu"
 
 interface TavernProps {
   player: Player
+  floor: number
   onEnterDungeons: () => void
   onRestoreHealth: (cost: number, amount: number) => void
   onBuyKey: (keyRarity: "common" | "uncommon" | "rare") => void
   onLevelUpAbility?: (abilityId: string) => void
+  onTransmogrify?: (itemIds: string[], narrations: string[]) => void
+  onCraftFromEssence?: (recipe: EssenceCraftRecipe, result: Item | null) => void
+  onAlchemyExperiment?: (result: AlchemyResult | null, materialsUsed: string[]) => void
 }
 
-export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey, onLevelUpAbility }: TavernProps) {
-  const [activeTab, setActiveTab] = useState<"main" | "healer" | "keysmith" | "party" | "alchemist" | "trainer">("main")
+export function Tavern({ player, floor, onEnterDungeons, onRestoreHealth, onBuyKey, onLevelUpAbility, onTransmogrify, onCraftFromEssence, onAlchemyExperiment }: TavernProps) {
+  const [activeTab, setActiveTab] = useState<"main" | "healer" | "keysmith" | "party" | "alchemist" | "transmog" | "trainer">("main")
 
   const healthMissing = player.stats.maxHealth - player.stats.health
   const healCostPerHp = 1
@@ -62,7 +70,7 @@ export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey, onL
 
       {/* Navigation Tabs */}
       <div className="flex gap-2 mb-6 flex-wrap">
-        {["main", "healer", "keysmith", "trainer", "party", "alchemist"].map((tab) => (
+        {["main", "healer", "keysmith", "trainer", "party", "alchemist", "transmog"].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab as typeof activeTab)}
@@ -78,6 +86,7 @@ export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey, onL
             {tab === "trainer" && "Trainer"}
             {tab === "party" && "Companions"}
             {tab === "alchemist" && "Alchemist"}
+            {tab === "transmog" && "Altar"}
           </button>
         ))}
       </div>
@@ -289,6 +298,14 @@ export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey, onL
                   const abilityClass = ability.classRequired?.[0]
                   const abilityClassDef = abilityClass ? CLASSES[abilityClass] : null
 
+                  // Calculate current and next level values
+                  const currentMultiplier = getAbilityLevelMultiplier(ability)
+                  const nextMultiplier = 1 + currentLevel * ABILITY_LEVEL_CONFIG.damageScalePerLevel
+                  const currentDmg = ability.baseDamage ? Math.floor(ability.baseDamage * currentMultiplier) : null
+                  const nextDmg = ability.baseDamage ? Math.floor(ability.baseDamage * nextMultiplier) : null
+                  const currentHeal = ability.baseHealing ? Math.floor(ability.baseHealing * currentMultiplier) : null
+                  const nextHeal = ability.baseHealing ? Math.floor(ability.baseHealing * nextMultiplier) : null
+
                   return (
                     <div
                       key={ability.id}
@@ -309,6 +326,30 @@ export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey, onL
                           </span>
                         )}
                       </div>
+
+                      {/* Damage/Healing preview */}
+                      {(currentDmg || currentHeal) && (
+                        <div className="flex gap-3 text-xs">
+                          {currentDmg && (
+                            <div className="flex items-center gap-1">
+                              <span className="text-stone-500">Dmg:</span>
+                              <span className="text-red-400">{currentDmg}</span>
+                              {!isMaxed && nextDmg && (
+                                <span className="text-stone-500">→ <span className="text-red-300">{nextDmg}</span></span>
+                              )}
+                            </div>
+                          )}
+                          {currentHeal && (
+                            <div className="flex items-center gap-1">
+                              <span className="text-stone-500">Heal:</span>
+                              <span className="text-green-400">{currentHeal}</span>
+                              {!isMaxed && nextHeal && (
+                                <span className="text-stone-500">→ <span className="text-green-300">{nextHeal}</span></span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Level progress bar */}
                       <div className="flex gap-1">
@@ -456,24 +497,52 @@ export function Tavern({ player, onEnterDungeons, onRestoreHealth, onBuyKey, onL
               </p>
             </div>
 
-            {/* Placeholder content */}
-            <div className="bg-stone-800/30 rounded p-4 text-center">
-              <p className="text-stone-400 mb-2">The alchemist&apos;s workbench awaits...</p>
-              <p className="text-stone-500 text-sm italic">
-                Gather materials from your adventures and return to experiment with transmutation.
+            {player.materials.length > 0 ? (
+              <AlchemyWorkbench
+                player={player}
+                floor={floor}
+                materials={player.materials}
+                onExperimentComplete={(result, materialsUsed) => {
+                  onAlchemyExperiment?.(result, materialsUsed)
+                }}
+              />
+            ) : (
+              <div className="bg-stone-800/30 rounded p-4 text-center">
+                <p className="text-stone-400 mb-2">The alchemist&apos;s workbench awaits...</p>
+                <p className="text-stone-500 text-sm italic">
+                  Gather materials from your adventures and return to experiment with transmutation.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "transmog" && (
+          <div className="space-y-4">
+            <div className="bg-stone-900/50 rounded p-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-full bg-violet-900/30 flex items-center justify-center text-2xl">
+                  ✨
+                </div>
+                <div>
+                  <EntityText type="npc">The Transmog Altar</EntityText>
+                  <p className="text-stone-500 text-sm">Ancient Place of Power</p>
+                </div>
+              </div>
+              <p className="text-stone-400 text-sm italic mb-4">
+                &quot;Sacrifice items to extract their essence... and forge something greater.&quot;
               </p>
             </div>
 
-            {/* Feature hint */}
-            <div className="bg-purple-900/10 rounded p-3 border border-purple-900/30">
-              <div className="text-purple-400 text-xs uppercase mb-2">Coming Soon</div>
-              <ul className="text-stone-400 text-sm space-y-1">
-                <li>• Combine materials to discover new items</li>
-                <li>• Salvage equipment for crafting components</li>
-                <li>• Enchant weapons and armor</li>
-                <li>• Generate lore for your legendary items</li>
-              </ul>
-            </div>
+            <TransmogMenu
+              player={player}
+              onTransmogrify={(itemIds, narrations) => {
+                onTransmogrify?.(itemIds, narrations)
+              }}
+              onCraftFromEssence={(recipe, result) => {
+                onCraftFromEssence?.(recipe, result)
+              }}
+            />
           </div>
         )}
       </div>

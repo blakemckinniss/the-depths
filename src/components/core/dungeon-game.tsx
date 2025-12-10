@@ -77,6 +77,9 @@ import {
   getAvailableInteractions,
 } from "@/lib/world/environmental-system";
 import { executeItemUse } from "@/lib/items/item-execution";
+import type { EssenceCraftRecipe } from "@/lib/items/transmogrification-system";
+import type { AlchemyResult } from "@/lib/ai/ai-alchemy-system";
+import { gameActions } from "@/contexts/game-reducer";
 import { calculateForesight } from "@/lib/mechanics/foresight-system";
 import {
   EntityText,
@@ -2082,6 +2085,118 @@ export function DungeonGame() {
     [gameState, dispatch, addLog],
   );
 
+  const handleTransmogrify = useCallback(
+    (itemIds: string[], narrations: string[]) => {
+      // Remove the sacrificed items from inventory
+      for (const itemId of itemIds) {
+        dispatch({ type: "REMOVE_ITEM", payload: itemId });
+      }
+
+      // Log the narrations
+      if (narrations.length > 0) {
+        addLog(
+          <span>
+            The altar pulses with energy. {narrations[0]}
+          </span>,
+          "system",
+        );
+      } else {
+        addLog(
+          <span>
+            The altar pulses with energy. Essence extracted from {itemIds.length} item{itemIds.length > 1 ? "s" : ""}.
+          </span>,
+          "system",
+        );
+      }
+    },
+    [dispatch, addLog],
+  );
+
+  const handleCraftFromEssence = useCallback(
+    (recipe: EssenceCraftRecipe, result: Item | null) => {
+      if (result) {
+        // Add the crafted item
+        dispatch({ type: "ADD_ITEM", payload: result });
+
+        addLog(
+          <span>
+            The altar glows as essence coalesces.{" "}
+            <EntityText type={result.rarity} entity={result}>
+              {result.name}
+            </EntityText>{" "}
+            materializes from pure essence!
+          </span>,
+          "system",
+        );
+      } else {
+        addLog(
+          <span className="text-red-400">
+            The essence dissipates. The crafting of {recipe.name} failed.
+          </span>,
+          "system",
+        );
+      }
+    },
+    [dispatch, addLog],
+  );
+
+  const handleAlchemyExperiment = useCallback(
+    (result: AlchemyResult | null, materialsUsed: string[]) => {
+      // Remove used materials
+      dispatch(gameActions.removeMaterials(materialsUsed));
+
+      if (result?.success && result.result) {
+        // Map alchemy result type to Item type
+        const typeMap: Record<string, Item["type"]> = {
+          weapon: "weapon",
+          armor: "armor",
+          consumable: "potion",
+          trinket: "misc",
+          tool: "misc",
+          material: "misc",
+        };
+
+        // Convert alchemy result to full Item with required fields
+        const item: Item = {
+          name: result.result.name,
+          type: typeMap[result.result.type] || "misc",
+          subtype: result.result.subtype,
+          rarity: result.result.rarity,
+          description: result.result.description,
+          stats: result.result.stats,
+          id: `alchemy-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          entityType: "item",
+          value: Math.floor(10 * (["common", "uncommon", "rare", "epic", "legendary"].indexOf(result.result.rarity) + 1)),
+        };
+
+        // Add the created item
+        dispatch({ type: "ADD_ITEM", payload: item });
+
+        addLog(
+          <span>
+            Vesper nods approvingly.{" "}
+            <EntityText type={item.rarity} entity={item}>
+              {item.name}
+            </EntityText>{" "}
+            created!
+          </span>,
+          "system",
+        );
+      } else if (result?.failure) {
+        addLog(
+          <span className="text-red-400">
+            The experiment fails. {result.failure.reason}
+            {result.failure.hint && (
+              <span className="text-amber-400/70"> Hint: {result.failure.hint}</span>
+            )}
+          </span>,
+          "system",
+        );
+      }
+    },
+    [dispatch, addLog],
+  );
+
   const currentChoices = useMemo(() => {
     const potion = gameState.player.inventory.find((i) => i.type === "potion");
 
@@ -2591,10 +2706,14 @@ export function DungeonGame() {
         ) : gameState.phase === "tavern" ? (
           <Tavern
             player={gameState.player}
+            floor={gameState.floor}
             onEnterDungeons={enterDungeonSelect}
             onRestoreHealth={handleRestoreHealth}
             onBuyKey={handleBuyKey}
             onLevelUpAbility={handleLevelUpAbility}
+            onTransmogrify={handleTransmogrify}
+            onCraftFromEssence={handleCraftFromEssence}
+            onAlchemyExperiment={handleAlchemyExperiment}
           />
         ) : gameState.phase === "dungeon_select" ? (
           <DungeonSelect

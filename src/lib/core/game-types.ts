@@ -16,6 +16,7 @@ import type {
   Enchantment,
 } from "@/lib/items/item-taxonomy"
 import type { EntityImpact } from "@/lib/mechanics/game-mechanics-ledger"
+import type { MaterialItem } from "@/lib/materials/material-system"
 
 export type EntityType =
   | "enemy"
@@ -565,6 +566,7 @@ export interface Player extends GameEntity {
   sustainedAbilities: SustainedAbility[] // Toggle abilities that reserve resources while active
   spellBook: SpellBook // Learned spells from tomes, events, etc.
   essence: Record<string, number> // Essence storage for transmogrification system (EssenceType -> amount)
+  materials: MaterialItem[] // Crafting materials for alchemy system
 }
 
 // Player race type - matches race-system.ts

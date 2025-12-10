@@ -595,6 +595,7 @@ export const createInitialPlayer = (): Player => ({
     cooldowns: {},
   },
   essence: {}, // Empty essence storage for transmogrification system
+  materials: [], // Empty materials storage for alchemy system
 })
 
 export const createInitialRunStats = (): RunSummary => ({

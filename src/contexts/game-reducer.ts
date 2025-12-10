@@ -24,6 +24,7 @@ import type {
   RunSummary,
   EquipmentSlot,
 } from "@/lib/core/game-types";
+import type { MaterialItem as MaterialItemType } from "@/lib/materials/material-system";
 
 // ============================================================================
 // ACTION TYPES
@@ -53,7 +54,10 @@ type InventoryAction =
   | { type: "REMOVE_KEY"; payload: string } // key ID
   | { type: "ADD_ESSENCE"; payload: { type: string; amount: number } }
   | { type: "REMOVE_ESSENCE"; payload: { type: string; amount: number } }
-  | { type: "SET_ESSENCE"; payload: Record<string, number> }; // Set entire essence object
+  | { type: "SET_ESSENCE"; payload: Record<string, number> } // Set entire essence object
+  | { type: "ADD_MATERIAL"; payload: MaterialItemType }
+  | { type: "REMOVE_MATERIAL"; payload: string } // material ID
+  | { type: "REMOVE_MATERIALS"; payload: string[] }; // multiple material IDs
 
 // Effects actions
 type EffectAction =
@@ -376,6 +380,34 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         player: {
           ...state.player,
           essence: action.payload,
+        },
+      };
+
+    // === MATERIAL ACTIONS ===
+    case "ADD_MATERIAL":
+      return {
+        ...state,
+        player: {
+          ...state.player,
+          materials: [...state.player.materials, action.payload],
+        },
+      };
+
+    case "REMOVE_MATERIAL":
+      return {
+        ...state,
+        player: {
+          ...state.player,
+          materials: state.player.materials.filter((m) => m.id !== action.payload),
+        },
+      };
+
+    case "REMOVE_MATERIALS":
+      return {
+        ...state,
+        player: {
+          ...state.player,
+          materials: state.player.materials.filter((m) => !action.payload.includes(m.id)),
         },
       };
 
@@ -930,6 +962,20 @@ export const gameActions = {
   setEssence: (essence: Record<string, number>): GameAction => ({
     type: "SET_ESSENCE",
     payload: essence,
+  }),
+
+  // Materials
+  addMaterial: (material: MaterialItemType): GameAction => ({
+    type: "ADD_MATERIAL",
+    payload: material,
+  }),
+  removeMaterial: (materialId: string): GameAction => ({
+    type: "REMOVE_MATERIAL",
+    payload: materialId,
+  }),
+  removeMaterials: (materialIds: string[]): GameAction => ({
+    type: "REMOVE_MATERIALS",
+    payload: materialIds,
   }),
 
   // Effects
