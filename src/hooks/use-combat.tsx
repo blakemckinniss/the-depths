@@ -9,7 +9,30 @@ import type {
   CombatStance,
   StatusEffect,
   DamageType,
+  Item,
 } from "@/lib/game-types";
+import {
+  selectCompanionAction,
+  calculateCompanionDamage,
+  getBondTier,
+  getCompanionColor,
+  modifyBond,
+  useCompanionAbility,
+  processCompanionCooldowns,
+  removeCompanionFromParty,
+} from "@/lib/companion-system";
+import { getBossVictoryRewards } from "@/lib/ai-drops-system";
+
+// Response types for AI narrative generation
+interface CombatResponse {
+  attackNarration: string;
+  enemyReaction: string;
+}
+
+interface VictoryResponse {
+  deathNarration: string;
+  spoilsNarration: string;
+}
 import type { Dispatch } from "react";
 import type { GameAction } from "@/contexts/game-reducer";
 import { calculateEffectiveStats } from "@/lib/entity-system";
@@ -50,6 +73,9 @@ import { EntityText } from "@/components/entity-text";
 
 type AddLogFn = (message: ReactNode, category: LogCategory) => void;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type GenerateNarrativeFn = <T>(type: string, context: any) => Promise<T | null>;
+
 interface UseCombatOptions {
   state: GameState;
   dispatch: Dispatch<GameAction>;
@@ -58,6 +84,7 @@ interface UseCombatOptions {
   setIsProcessing: (processing: boolean) => void;
   updateRunStats: (stats: Partial<GameState["runStats"]>) => void;
   addLog: AddLogFn;
+  generateNarrative: GenerateNarrativeFn;
 }
 
 interface DamageResult {
@@ -78,6 +105,7 @@ export function useCombat({
   setIsProcessing,
   updateRunStats,
   addLog,
+  generateNarrative,
 }: UseCombatOptions) {
   // Calculate base damage between attacker and defender
   const calculateDamage = useCallback(
@@ -792,6 +820,739 @@ export function useCombat({
     ],
   );
 
+  // Process companion turns - returns updated enemy (or null if killed) and updated party
+  const processCompanionTurns = useCallback(
+    async (
+      enemy: Enemy,
+      player: Player,
+    ): Promise<{
+      enemy: Enemy | null;
+      party: typeof player.party;
+      playerHealed: number;
+    }> => {
+      const activeCompanions = player.party?.active || [];
+      if (activeCompanions.length === 0) {
+        return { enemy, party: player.party, playerHealed: 0 };
+      }
+
+      let currentEnemy: Enemy | null = enemy;
+      let updatedParty = player.party;
+      let totalPlayerHealed = 0;
+
+      for (const companion of activeCompanions) {
+        if (!currentEnemy || currentEnemy.health <= 0) break;
+        if (!companion.alive) continue;
+
+        const action = selectCompanionAction(companion, player, currentEnemy);
+        let updatedCompanion = companion;
+
+        switch (action.action) {
+          case "attack": {
+            if (!currentEnemy) break;
+            const damage = calculateCompanionDamage(companion);
+            const newHealth: number = currentEnemy.health - damage;
+            const bondTier = getBondTier(companion.bond.level);
+            const colorClass = getCompanionColor(companion);
+
+            addLog(
+              <span>
+                <span className={colorClass}>{companion.name}</span> attacks{" "}
+                <EntityText type="enemy" entity={currentEnemy}>
+                  {currentEnemy.name}
+                </EntityText>{" "}
+                for <EntityText type="damage">{damage}</EntityText> damage!
+              </span>,
+              "combat",
+            );
+
+            // Bond bonus narration for high bond
+            if (bondTier === "loyal" || bondTier === "soulbound") {
+              addLog(
+                <span className="text-xs text-muted-foreground italic">
+                  {companion.name}&apos;s devotion empowers their strike!
+                </span>,
+                "combat",
+              );
+            }
+
+            if (newHealth <= 0) {
+              currentEnemy = null;
+              addLog(
+                <span>
+                  <span className={colorClass}>{companion.name}</span> delivers
+                  the killing blow!
+                </span>,
+                "combat",
+              );
+              // Bond increase for killing enemy
+              updatedCompanion = modifyBond(companion, 3, "Killed an enemy");
+            } else {
+              currentEnemy = { ...currentEnemy, health: newHealth };
+            }
+            break;
+          }
+
+          case "ability": {
+            if (!action.ability) break;
+            const colorClass = getCompanionColor(companion);
+
+            if (action.ability.effect.type === "damage" && currentEnemy) {
+              const damage = calculateCompanionDamage(
+                companion,
+                action.ability,
+              );
+              const newHealth: number = currentEnemy.health - damage;
+
+              addLog(
+                <span>
+                  <span className={colorClass}>{companion.name}</span> uses{" "}
+                  <span className="text-amber-400">{action.ability.name}</span>!{" "}
+                  {action.ability.narration}{" "}
+                  <EntityText type="damage">(-{damage})</EntityText>
+                </span>,
+                "combat",
+              );
+
+              if (newHealth <= 0) {
+                currentEnemy = null;
+                updatedCompanion = modifyBond(
+                  companion,
+                  5,
+                  "Killed enemy with ability",
+                );
+              } else {
+                currentEnemy = { ...currentEnemy, health: newHealth };
+              }
+            } else if (action.ability.effect.type === "heal") {
+              const healing = action.ability.effect.value || 10;
+              totalPlayerHealed += healing;
+
+              addLog(
+                <span>
+                  <span className={colorClass}>{companion.name}</span> uses{" "}
+                  <span className="text-emerald-400">
+                    {action.ability.name}
+                  </span>
+                  ! {action.ability.narration}{" "}
+                  <EntityText type="heal">(+{healing})</EntityText>
+                </span>,
+                "combat",
+              );
+              updatedCompanion = modifyBond(companion, 2, "Healed the player");
+            } else if (action.ability.effect.type === "buff") {
+              addLog(
+                <span>
+                  <span className={colorClass}>{companion.name}</span> uses{" "}
+                  <span className="text-cyan-400">{action.ability.name}</span>!{" "}
+                  {action.ability.narration}
+                </span>,
+                "combat",
+              );
+            } else if (
+              action.ability.effect.type === "debuff" &&
+              currentEnemy
+            ) {
+              addLog(
+                <span>
+                  <span className={colorClass}>{companion.name}</span> uses{" "}
+                  <span className="text-purple-400">{action.ability.name}</span>{" "}
+                  on{" "}
+                  <EntityText type="enemy" entity={currentEnemy}>
+                    {currentEnemy.name}
+                  </EntityText>
+                  ! {action.ability.narration}
+                </span>,
+                "combat",
+              );
+            }
+
+            updatedCompanion = useCompanionAbility(
+              updatedCompanion,
+              action.ability.id,
+            );
+            break;
+          }
+
+          case "defend": {
+            const colorClass = getCompanionColor(companion);
+            addLog(
+              <span>
+                <span className={colorClass}>{companion.name}</span> takes a
+                defensive stance, protecting you!
+              </span>,
+              "combat",
+            );
+            break;
+          }
+
+          case "flee": {
+            const colorClass = getCompanionColor(companion);
+            addLog(
+              <span className="text-yellow-500">
+                <span className={colorClass}>{companion.name}</span> panics and
+                flees from battle!
+              </span>,
+              "combat",
+            );
+            // Remove from active party
+            if (updatedParty) {
+              updatedParty = removeCompanionFromParty(
+                updatedParty,
+                companion.id,
+              );
+            }
+            updatedCompanion = modifyBond(companion, -10, "Fled from battle");
+            continue; // Skip updating this companion
+          }
+
+          case "betray": {
+            const betrayDamage = Math.floor(companion.stats.attack * 0.5);
+            addLog(
+              <span className="text-red-500 font-bold">
+                {companion.name} turns on you! They attack for{" "}
+                <EntityText type="damage">{betrayDamage}</EntityText> damage!
+              </span>,
+              "combat",
+            );
+            // Remove from party and add to enemy side conceptually
+            if (updatedParty) {
+              updatedParty = removeCompanionFromParty(
+                updatedParty,
+                companion.id,
+              );
+            }
+            // Return negative healing to indicate damage to player
+            totalPlayerHealed -= betrayDamage;
+            continue;
+          }
+        }
+
+        // Process cooldowns and update companion in party
+        updatedCompanion = processCompanionCooldowns(updatedCompanion);
+        updatedCompanion = {
+          ...updatedCompanion,
+          turnsWithPlayer: companion.turnsWithPlayer + 1,
+        };
+
+        // Update the companion in the party
+        if (updatedParty) {
+          updatedParty = {
+            ...updatedParty,
+            active: updatedParty.active.map((c) =>
+              c.id === companion.id ? updatedCompanion : c,
+            ),
+          };
+        }
+      }
+
+      return {
+        enemy: currentEnemy,
+        party: updatedParty,
+        playerHealed: totalPlayerHealed,
+      };
+    },
+    [addLog],
+  );
+
+  // Player basic attack
+  const playerAttack = useCallback(async () => {
+    if (!state.currentEnemy || !state.inCombat || isProcessing) return;
+    setIsProcessing(true);
+
+    const effectiveStats = calculateEffectiveStats(state.player);
+    const baseDamage = calculateDamage(
+      { attack: effectiveStats.attack },
+      state.currentEnemy,
+    );
+
+    const weaponDamageType =
+      state.player.equipment.weapon?.damageType || "physical";
+    const { damage: rawDamage, effectiveness } = calculateDamageWithType(
+      baseDamage,
+      weaponDamageType,
+      state.currentEnemy,
+      state.player,
+    );
+
+    // Apply damage multiplier from effects (e.g., "deal 20% more damage")
+    const damage = Math.floor(rawDamage * effectiveStats.damageMultiplier);
+
+    updateRunStats({ damageDealt: state.runStats.damageDealt + damage });
+
+    const newEnemyHealth = state.currentEnemy.health - damage;
+    const isCritical = damage > effectiveStats.attack * 1.2;
+
+    const comboResult = checkForCombo(state.player.combo, weaponDamageType);
+    let updatedPlayer = { ...state.player, combo: comboResult.newCombo };
+
+    if (comboResult.triggered) {
+      addLog(
+        <span className="text-amber-400 font-bold">
+          COMBO: {comboResult.triggered.name}! {comboResult.triggered.bonus}
+        </span>,
+        "combat",
+      );
+    }
+
+    // Process attack triggers (on_attack, on_damage_dealt, on_critical_hit)
+    let bonusDamageToEnemy = 0;
+    const attackTrigger = triggerOnAttack(updatedPlayer, {
+      damageDealt: damage,
+      isCritical,
+      enemy: state.currentEnemy,
+    });
+    updatedPlayer = attackTrigger.player;
+    bonusDamageToEnemy += attackTrigger.damageToEnemy;
+    for (const narrative of attackTrigger.narratives) {
+      addLog(
+        <span className="text-amber-300 italic">{narrative}</span>,
+        "effect",
+      );
+    }
+
+    const damageTrigger = triggerOnDamageDealt(updatedPlayer, {
+      damageDealt: damage,
+      isCritical,
+      enemy: state.currentEnemy,
+    });
+    updatedPlayer = damageTrigger.player;
+    bonusDamageToEnemy += damageTrigger.damageToEnemy;
+    for (const narrative of damageTrigger.narratives) {
+      addLog(
+        <span className="text-amber-300 italic">{narrative}</span>,
+        "effect",
+      );
+    }
+
+    // Critical hit triggers
+    if (isCritical) {
+      const critTrigger = triggerOnCriticalHit(updatedPlayer, {
+        damageDealt: damage,
+        enemy: state.currentEnemy,
+      });
+      updatedPlayer = critTrigger.player;
+      bonusDamageToEnemy += critTrigger.damageToEnemy;
+      if (critTrigger.healToPlayer > 0) {
+        updatedPlayer = {
+          ...updatedPlayer,
+          stats: {
+            ...updatedPlayer.stats,
+            health: Math.min(
+              updatedPlayer.stats.maxHealth,
+              updatedPlayer.stats.health + critTrigger.healToPlayer,
+            ),
+          },
+        };
+        addLog(
+          <span>
+            Critical hit effect:{" "}
+            <EntityText type="heal">+{critTrigger.healToPlayer}</EntityText> HP
+          </span>,
+          "effect",
+        );
+      }
+      for (const narrative of critTrigger.narratives) {
+        addLog(
+          <span className="text-amber-300 italic">{narrative}</span>,
+          "effect",
+        );
+      }
+    }
+
+    // Apply bonus damage from triggers
+    const totalDamage = damage + bonusDamageToEnemy;
+    const actualNewEnemyHealth = state.currentEnemy.health - totalDamage;
+    if (bonusDamageToEnemy > 0) {
+      addLog(
+        <span>
+          Triggered effects deal{" "}
+          <EntityText type="damage">{bonusDamageToEnemy}</EntityText> bonus
+          damage!
+        </span>,
+        "effect",
+      );
+    }
+
+    const attackResponse = await generateNarrative<CombatResponse>(
+      "player_attack",
+      {
+        enemyName: state.currentEnemy.name,
+        damage,
+        playerWeapon: state.player.equipment.weapon?.name,
+        enemyHealth: newEnemyHealth,
+        enemyMaxHealth: state.currentEnemy.maxHealth,
+        isCritical,
+        damageType: weaponDamageType,
+        effectiveness,
+        playerStance: state.player.stance,
+        combatRound: state.combatRound,
+      },
+    );
+
+    let effectivenessNote = "";
+    if (effectiveness === "effective") effectivenessNote = " Super effective!";
+    if (effectiveness === "resisted") effectivenessNote = " Resisted...";
+
+    if (attackResponse) {
+      addLog(
+        <span>
+          {attackResponse.attackNarration}{" "}
+          <EntityText type="damage">(-{damage})</EntityText>
+          {effectivenessNote && (
+            <span
+              className={
+                effectiveness === "effective"
+                  ? "text-emerald-400"
+                  : "text-stone-500"
+              }
+            >
+              {effectivenessNote}
+            </span>
+          )}
+        </span>,
+        "combat",
+      );
+    } else {
+      addLog(
+        <span>
+          <EntityText type="player">You</EntityText> strike the{" "}
+          <EntityText type="enemy" entity={state.currentEnemy}>
+            {state.currentEnemy.name}
+          </EntityText>{" "}
+          for <EntityText type="damage">{damage}</EntityText> damage.
+          {effectivenessNote && (
+            <span
+              className={
+                effectiveness === "effective"
+                  ? "text-emerald-400"
+                  : "text-stone-500"
+              }
+            >
+              {effectivenessNote}
+            </span>
+          )}
+        </span>,
+        "combat",
+      );
+    }
+
+    if (actualNewEnemyHealth <= 0) {
+      // Process on_kill triggers
+      const killTrigger = triggerOnKill(updatedPlayer, {
+        enemy: state.currentEnemy,
+      });
+      updatedPlayer = killTrigger.player;
+      for (const narrative of killTrigger.narratives) {
+        addLog(
+          <span className="text-emerald-400 italic">{narrative}</span>,
+          "effect",
+        );
+      }
+      if (killTrigger.healToPlayer > 0) {
+        updatedPlayer = {
+          ...updatedPlayer,
+          stats: {
+            ...updatedPlayer.stats,
+            health: Math.min(
+              updatedPlayer.stats.maxHealth,
+              updatedPlayer.stats.health + killTrigger.healToPlayer,
+            ),
+          },
+        };
+        addLog(
+          <span>
+            Kill effect:{" "}
+            <EntityText type="heal">+{killTrigger.healToPlayer}</EntityText> HP
+          </span>,
+          "effect",
+        );
+      }
+
+      const expGain = Math.floor(
+        state.currentEnemy.expReward * effectiveStats.expMultiplier,
+      );
+      const goldGain = Math.floor(
+        state.currentEnemy.goldReward * effectiveStats.goldMultiplier,
+      );
+      const loot = state.currentEnemy.loot;
+      const materialDrops = state.currentEnemy.materialDrops || [];
+
+      // Collect all items found (main loot + material drops)
+      const allLoot: Item[] = [...(loot ? [loot] : []), ...materialDrops];
+
+      updateRunStats({
+        enemiesSlain: state.runStats.enemiesSlain + 1,
+        goldEarned: state.runStats.goldEarned + goldGain,
+        itemsFound: [...state.runStats.itemsFound, ...allLoot],
+      });
+
+      const victoryResponse = await generateNarrative<VictoryResponse>(
+        "victory",
+        {
+          enemyName: state.currentEnemy.name,
+          expGain,
+          goldGain,
+          lootName: loot?.name,
+          lootRarity: loot?.rarity,
+          leveledUp:
+            updatedPlayer.stats.experience + expGain >=
+            updatedPlayer.stats.experienceToLevel,
+        },
+      );
+
+      if (victoryResponse) {
+        addLog(<span>{victoryResponse.deathNarration}</span>, "combat");
+        addLog(
+          <span>
+            {victoryResponse.spoilsNarration}{" "}
+            <EntityText type="gold">+{goldGain}g</EntityText>{" "}
+            <EntityText type="heal">+{expGain}xp</EntityText>
+          </span>,
+          "loot",
+        );
+      } else {
+        addLog(
+          <span>
+            The{" "}
+            <EntityText type="enemy">{state.currentEnemy.name}</EntityText>{" "}
+            falls! You gain <EntityText type="gold">{goldGain} gold</EntityText>{" "}
+            and <EntityText type="heal">{expGain} experience</EntityText>.
+          </span>,
+          "combat",
+        );
+      }
+
+      if (loot) {
+        addLog(
+          <span>
+            Found:{" "}
+            <EntityText
+              type={
+                loot.rarity === "legendary"
+                  ? "legendary"
+                  : loot.rarity === "rare"
+                    ? "rare"
+                    : "item"
+              }
+            >
+              {loot.name}
+            </EntityText>
+          </span>,
+          "loot",
+        );
+      }
+
+      // Log material drops if any
+      if (materialDrops.length > 0) {
+        addLog(
+          <span>
+            Materials:{" "}
+            {materialDrops.map((mat, i) => (
+              <span key={mat.id}>
+                {i > 0 && ", "}
+                <EntityText type={mat.rarity}>{mat.name}</EntityText>
+              </span>
+            ))}
+          </span>,
+          "loot",
+        );
+      }
+
+      // Show AI-generated last words if enemy has them
+      if (state.currentEnemy.lastWords) {
+        addLog(
+          <span className="italic text-muted-foreground">
+            &quot;{state.currentEnemy.lastWords}&quot;
+          </span>,
+          "narrative",
+        );
+      }
+
+      // Check if this was a boss - generate special rewards
+      const isBoss =
+        state.currentEnemy.name.includes("Lord") ||
+        state.currentEnemy.name.includes("King") ||
+        state.currentEnemy.expReward > 100 ||
+        state.currentEnemy.maxHealth > 150;
+
+      if (isBoss) {
+        // Fire-and-forget boss reward generation (non-blocking)
+        getBossVictoryRewards(
+          state.currentEnemy.name,
+          undefined,
+          state.currentEnemy.abilities?.map((a) => a.name),
+          state.floor,
+          state.player.className || undefined,
+        )
+          .then((reward) => {
+            if (reward) {
+              // Log boss rewards
+              addLog(
+                <span className="text-amber-400 font-medium">
+                  The {state.currentEnemy!.name} yields legendary spoils!
+                </span>,
+                "loot",
+              );
+              reward.items.forEach((item) => {
+                addLog(
+                  <span>
+                    Boss Trophy:{" "}
+                    <EntityText type={item.rarity}>{item.name}</EntityText>
+                  </span>,
+                  "loot",
+                );
+              });
+              if (reward.lore) {
+                addLog(
+                  <span className="italic text-muted-foreground text-xs">
+                    {reward.lore}
+                  </span>,
+                  "narrative",
+                );
+              }
+              // Add to inventory via dispatch
+              for (const item of reward.items) {
+                dispatch({ type: "ADD_ITEM", payload: item });
+              }
+            }
+          })
+          .catch(() => {
+            // Silent fail - regular loot already given
+          });
+      }
+
+      updatedPlayer = {
+        ...updatedPlayer,
+        stats: {
+          ...updatedPlayer.stats,
+          gold: updatedPlayer.stats.gold + goldGain,
+          experience: updatedPlayer.stats.experience + expGain,
+        },
+        inventory: [...updatedPlayer.inventory, ...allLoot],
+      };
+
+      checkLevelUp();
+
+      dispatch({ type: "UPDATE_PLAYER", payload: updatedPlayer });
+      dispatch({ type: "END_COMBAT" });
+    } else {
+      const tickedEnemy = tickEnemyAbilities({
+        ...state.currentEnemy,
+        health: actualNewEnemyHealth,
+      });
+
+      // Process companion turns after player attack
+      const companionResult = await processCompanionTurns(
+        tickedEnemy,
+        updatedPlayer,
+      );
+
+      // Apply companion healing/damage to player
+      if (companionResult.playerHealed !== 0) {
+        const newPlayerHealth = Math.min(
+          updatedPlayer.stats.maxHealth,
+          Math.max(
+            1,
+            updatedPlayer.stats.health + companionResult.playerHealed,
+          ),
+        );
+        updatedPlayer = {
+          ...updatedPlayer,
+          stats: { ...updatedPlayer.stats, health: newPlayerHealth },
+          party: companionResult.party,
+        };
+      } else {
+        updatedPlayer = { ...updatedPlayer, party: companionResult.party };
+      }
+
+      // Check if companions killed the enemy
+      if (!companionResult.enemy) {
+        // Victory! Enemy killed by companion
+        const expGain = Math.floor(
+          tickedEnemy.expReward *
+            calculateEffectiveStats(updatedPlayer).expMultiplier,
+        );
+        const goldGain = Math.floor(
+          tickedEnemy.goldReward *
+            calculateEffectiveStats(updatedPlayer).goldMultiplier,
+        );
+        const loot = tickedEnemy.loot;
+        const materialDrops = tickedEnemy.materialDrops || [];
+        const allLoot: Item[] = [...(loot ? [loot] : []), ...materialDrops];
+
+        updateRunStats({
+          enemiesSlain: state.runStats.enemiesSlain + 1,
+          goldEarned: state.runStats.goldEarned + goldGain,
+          itemsFound: [...state.runStats.itemsFound, ...allLoot],
+        });
+
+        addLog(
+          <span>
+            Victory! Your companions have slain the{" "}
+            <EntityText type="enemy">{tickedEnemy.name}</EntityText>! You gain{" "}
+            <EntityText type="gold">{goldGain} gold</EntityText> and{" "}
+            <EntityText type="heal">{expGain} experience</EntityText>.
+          </span>,
+          "combat",
+        );
+
+        if (loot) {
+          addLog(
+            <span>
+              Found:{" "}
+              <EntityText
+                type={
+                  loot.rarity === "legendary"
+                    ? "legendary"
+                    : loot.rarity === "rare"
+                      ? "rare"
+                      : "item"
+                }
+              >
+                {loot.name}
+              </EntityText>
+            </span>,
+            "loot",
+          );
+        }
+
+        updatedPlayer = {
+          ...updatedPlayer,
+          stats: {
+            ...updatedPlayer.stats,
+            gold: updatedPlayer.stats.gold + goldGain,
+            experience: updatedPlayer.stats.experience + expGain,
+          },
+          inventory: [...updatedPlayer.inventory, ...allLoot],
+        };
+
+        checkLevelUp();
+
+        dispatch({ type: "UPDATE_PLAYER", payload: updatedPlayer });
+        dispatch({ type: "END_COMBAT" });
+      } else {
+        // Enemy still alive - now enemy attacks
+        dispatch({ type: "UPDATE_PLAYER", payload: updatedPlayer });
+        dispatch({ type: "UPDATE_ENEMY", payload: companionResult.enemy });
+
+        await enemyAttack(companionResult.enemy, updatedPlayer);
+      }
+    }
+    setIsProcessing(false);
+  }, [
+    state,
+    isProcessing,
+    calculateDamage,
+    addLog,
+    checkLevelUp,
+    enemyAttack,
+    updateRunStats,
+    processCompanionTurns,
+    generateNarrative,
+    dispatch,
+    setIsProcessing,
+  ]);
+
   return {
     // Calculations
     calculateDamage,
@@ -809,6 +1570,8 @@ export function useCombat({
     applyPlayerEffect,
     enemyAttack,
     handleUseAbility,
+    processCompanionTurns,
+    playerAttack,
 
     // Constants
     STANCE_MODIFIERS,
