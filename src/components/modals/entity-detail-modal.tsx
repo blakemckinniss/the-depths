@@ -24,7 +24,9 @@ import type {
   CompanionAbility,
   EntityType,
   ItemRarity,
+  MapItem,
 } from "@/lib/core/game-types"
+import type { ItemActions } from "./entity-modal-context"
 import { cn } from "@/lib/core/utils"
 
 // Type guards for entity discrimination
@@ -34,6 +36,11 @@ function hasEntityType(entity: DisplayableEntity): entity is DisplayableEntity &
 
 function isItem(entity: DisplayableEntity): entity is Item {
   return "type" in entity && ["weapon", "armor", "potion", "misc", "key", "quest"].includes((entity as Item).type)
+}
+
+function isMapItem(entity: DisplayableEntity): entity is MapItem {
+  return "category" in entity && (entity as Item).category === "consumable" &&
+         "subtype" in entity && (entity as Item).subtype === "map" && "mapProps" in entity
 }
 
 function isEnemy(entity: DisplayableEntity): entity is Enemy {
@@ -98,8 +105,18 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
+// Check if item is equippable
+function isEquippable(item: Item): boolean {
+  return item.type === "weapon" || item.type === "armor" ||
+         item.category === "weapon" || item.category === "armor" || item.category === "trinket"
+}
+
 // Individual entity renderers
-function ItemDetail({ item }: { item: Item }) {
+function ItemDetail({ item, actions, onClose }: { item: Item; actions: ItemActions; onClose: () => void }) {
+  const canEquip = isEquippable(item) && !actions.inCombat && !item.equipped
+  const canUse = item.type === "potion" && !!actions.onUseItem
+  const canDrop = !actions.inCombat && !!actions.onDropItem
+
   return (
     <>
       <div className="flex items-center gap-2 mb-2">
@@ -148,6 +165,96 @@ function ItemDetail({ item }: { item: Item }) {
       <div className="mt-4 pt-3 border-t border-border/30 flex justify-between text-xs text-muted-foreground">
         <span>Value: <EntityText type="gold" noAnimation>{item.value}g</EntityText></span>
         {item.equipped && <span className="text-entity-item">Equipped</span>}
+      </div>
+
+      {/* Action buttons */}
+      {(canEquip || canUse || canDrop) && (
+        <div className="mt-4 flex gap-2">
+          {canEquip && actions.onEquipItem && (
+            <button
+              onClick={() => { actions.onEquipItem!(item); onClose() }}
+              className="flex-1 px-3 py-2 text-sm bg-primary/20 hover:bg-primary/30 text-primary rounded border border-primary/30"
+            >
+              Equip
+            </button>
+          )}
+          {canUse && (
+            <button
+              onClick={() => { actions.onUseItem!(item); onClose() }}
+              className="flex-1 px-3 py-2 text-sm bg-entity-heal/20 hover:bg-entity-heal/30 text-entity-heal rounded border border-entity-heal/30"
+            >
+              Use
+            </button>
+          )}
+          {canDrop && (
+            <button
+              onClick={() => { actions.onDropItem!(item); onClose() }}
+              className="px-3 py-2 text-sm bg-destructive/20 hover:bg-destructive/30 text-destructive rounded border border-destructive/30"
+            >
+              Drop
+            </button>
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
+// Map item detail
+function MapDetail({ map, actions, onClose }: { map: MapItem; actions: ItemActions; onClose: () => void }) {
+  const canActivate = actions.canActivateMap && !!actions.onActivateMap
+
+  return (
+    <>
+      <div className="flex items-center gap-2 mb-2">
+        <RarityBadge rarity={map.rarity} />
+        <span className="text-xs px-2 py-0.5 rounded bg-purple-900/30 text-purple-400">Tier {map.mapProps.tier}</span>
+        <span className="text-xs text-muted-foreground">{map.mapProps.floors} Floors</span>
+      </div>
+
+      {map.description && (
+        <p className="text-sm text-muted-foreground mb-4">{map.description}</p>
+      )}
+
+      <Section title="Map Properties">
+        <StatRow label="Theme" value={map.mapProps.theme} />
+        <StatRow label="Biome" value={map.mapProps.biome} />
+        {map.mapProps.quality > 0 && (
+          <StatRow label="Quality" value={`+${map.mapProps.quality}%`} color="text-cyan-400" />
+        )}
+      </Section>
+
+      {map.mapProps.modifiers.length > 0 && (
+        <Section title="Modifiers">
+          {map.mapProps.modifiers.map((mod, i) => (
+            <div key={i} className="py-1 border-b border-border/20 last:border-0">
+              <div className="font-medium text-sm text-amber-400">{mod.name}</div>
+              <div className="text-xs text-muted-foreground">{mod.description}</div>
+            </div>
+          ))}
+        </Section>
+      )}
+
+      {map.lore && (
+        <Section title="Lore">
+          <p className="text-sm italic text-muted-foreground">{map.lore}</p>
+        </Section>
+      )}
+
+      {/* Action buttons */}
+      <div className="mt-4 flex gap-2">
+        {canActivate ? (
+          <button
+            onClick={() => { actions.onActivateMap!(map); onClose() }}
+            className="flex-1 px-3 py-2 text-sm bg-purple-600/30 hover:bg-purple-600/40 text-purple-300 rounded border border-purple-500/30 font-medium"
+          >
+            🗺️ Activate Map
+          </button>
+        ) : (
+          <div className="flex-1 px-3 py-2 text-sm text-center text-muted-foreground/50 italic">
+            Return to Tavern to activate
+          </div>
+        )}
       </div>
     </>
   )
@@ -560,12 +667,13 @@ function GenericDetail({ entity }: { entity: DisplayableEntity }) {
 
 // Main modal component
 export function EntityDetailModal() {
-  const { entity, isOpen, closeEntity } = useEntityModal()
+  const { entity, isOpen, closeEntity, actions } = useEntityModal()
 
   if (!entity) return null
 
   // Determine display type for styling
   const getDisplayType = (): EntityType | ItemRarity => {
+    if (isMapItem(entity)) return entity.rarity
     if (isItem(entity)) return entity.rarity
     if (isEnemyAbility(entity) || isCompanionAbility(entity)) return "ability"
     return (entity as { entityType: EntityType }).entityType
@@ -588,7 +696,9 @@ export function EntityDetailModal() {
         </DialogHeader>
 
         <div className="mt-2">
-          {isItem(entity) && <ItemDetail item={entity} />}
+          {/* Map check before Item (maps are items) */}
+          {isMapItem(entity) && <MapDetail map={entity} actions={actions} onClose={closeEntity} />}
+          {isItem(entity) && !isMapItem(entity) && <ItemDetail item={entity} actions={actions} onClose={closeEntity} />}
           {isEnemy(entity) && <EnemyDetail enemy={entity} />}
           {isNPC(entity) && <NPCDetail npc={entity} />}
           {isTrap(entity) && <TrapDetail trap={entity} />}
@@ -599,7 +709,7 @@ export function EntityDetailModal() {
           {isAbility(entity) && <AbilityDetail ability={entity} />}
           {isEnemyAbility(entity) && <EnemyAbilityDetail ability={entity} />}
           {isCompanionAbility(entity) && <CompanionAbilityDetail ability={entity} />}
-          {!isItem(entity) && !isEnemy(entity) && !isNPC(entity) && !isTrap(entity) &&
+          {!isItem(entity) && !isMapItem(entity) && !isEnemy(entity) && !isNPC(entity) && !isTrap(entity) &&
            !isShrine(entity) && !isStatusEffect(entity) && !isCompanion(entity) &&
            !isBoss(entity) && !isAbility(entity) && !isEnemyAbility(entity) &&
            !isCompanionAbility(entity) && <GenericDetail entity={entity} />}

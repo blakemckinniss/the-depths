@@ -124,6 +124,7 @@ import { useSaveSystem, type SaveData } from "@/lib/persistence/save-system";
 import { useGame } from "@/contexts/game-context";
 import { useLog } from "@/contexts/log-context";
 import { useUI } from "@/contexts/ui-context";
+import { useEntityModal } from "@/components/modals/entity-modal-context";
 import { useGameFlow } from "@/hooks/use-game-flow";
 import { useTavern } from "@/hooks/use-tavern";
 import { useNavigation } from "@/hooks/use-navigation";
@@ -271,6 +272,7 @@ export function DungeonGame() {
     setCurrentNarrative,
     setIsProcessing,
   } = useUI();
+  const { setActions: setEntityModalActions } = useEntityModal();
 
   // =========================================================================
   // LOCAL STATE - Only for things not in contexts
@@ -2801,6 +2803,18 @@ export function DungeonGame() {
       "narrative",
     );
   }, [dispatch, addLog]);
+
+  // Sync entity modal actions with current handlers
+  useEffect(() => {
+    setEntityModalActions({
+      onEquipItem: handleEquipItem,
+      onUseItem: handleUseItem,
+      onDropItem: handleDropItem,
+      onActivateMap: handleActivateMap,
+      canActivateMap: gameState.phase === "tavern",
+      inCombat: gameState.inCombat,
+    });
+  }, [setEntityModalActions, handleEquipItem, handleUseItem, handleDropItem, handleActivateMap, gameState.phase, gameState.inCombat]);
 
   // === RENDER HELPERS ===
   const renderInteractiveEntities = useCallback(() => {

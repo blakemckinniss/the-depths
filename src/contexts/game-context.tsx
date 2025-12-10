@@ -6,6 +6,7 @@ import {
   useReducer,
   useCallback,
   useEffect,
+  useState,
   type ReactNode,
   type Dispatch,
 } from "react";
@@ -175,13 +176,26 @@ interface GameProviderProps {
 }
 
 export function GameProvider({ children, initialState }: GameProviderProps) {
+  // Track client-side mounting to avoid SSR hydration issues with Math.random()
+  const [mounted, setMounted] = useState(false);
+
+  // Use lazy initializer that only runs on client (after mounted is set)
+  // During SSR, we start with a placeholder that gets replaced on mount
   const [state, dispatch] = useReducer(
     gameReducer,
-    initialState ?? createInitialGameState(),
+    undefined as unknown as GameState,
   );
 
   // Create bound actions that are stable across renders
   const actions = useCallback(() => createBoundActions(dispatch), [])();
+
+  // Initialize state on client-side mount only (avoids Math.random() during SSR)
+  useEffect(() => {
+    if (!mounted) {
+      setMounted(true);
+      dispatch(gameActions.loadState(initialState ?? createInitialGameState()));
+    }
+  }, [mounted, initialState]);
 
   // Initialize DM system on mount
   useEffect(() => {
@@ -198,6 +212,11 @@ export function GameProvider({ children, initialState }: GameProviderProps) {
 
   // Get current DM system (may be null during SSR)
   const dmSystem = getDMSystem();
+
+  // Show nothing during SSR/hydration to avoid hydration mismatch
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <GameContext.Provider value={{ state, dispatch, actions, dmSystem }}>
