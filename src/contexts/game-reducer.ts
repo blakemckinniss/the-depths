@@ -18,6 +18,7 @@ import type {
   CombatStance,
   Ability,
   Companion,
+  EventMemory,
   DungeonKey,
   RunSummary,
 } from "@/lib/core/game-types";
@@ -125,6 +126,7 @@ type PhaseAction =
 // Meta/state actions
 type MetaAction =
   | { type: "UPDATE_RUN_STATS"; payload: Partial<RunSummary> }
+  | { type: "UPDATE_EVENT_MEMORY"; payload: EventMemory }
   | { type: "ADD_EVENT"; payload: GameEvent }
   | { type: "LOAD_STATE"; payload: GameState }
   | { type: "RESET_GAME"; payload: GameState }; // Reset to initial state
@@ -797,6 +799,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         runStats: { ...state.runStats, ...action.payload },
       };
 
+    case "UPDATE_EVENT_MEMORY":
+      return {
+        ...state,
+        eventMemory: action.payload,
+      };
+
     case "ADD_EVENT":
       return {
         ...state,
@@ -937,6 +945,10 @@ export const gameActions = {
   updateRunStats: (stats: Partial<RunSummary>): GameAction => ({
     type: "UPDATE_RUN_STATS",
     payload: stats,
+  }),
+  updateEventMemory: (memory: EventMemory): GameAction => ({
+    type: "UPDATE_EVENT_MEMORY",
+    payload: memory,
   }),
   loadState: (state: GameState): GameAction => ({
     type: "LOAD_STATE",

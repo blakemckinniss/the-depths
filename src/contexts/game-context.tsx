@@ -40,6 +40,12 @@ export function createInitialGameState(): GameState {
     combatRound: 1,
     runStats: createInitialRunStats(),
     roomEnvironmentalEntities: [],
+    eventMemory: {
+      history: [],
+      typeLastSeen: new Map(),
+      combatStreak: 0,
+      roomsSinceReward: 0,
+    },
   };
 }
 

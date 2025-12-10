@@ -2134,6 +2134,542 @@ XP scaling:
 }
 
 // =============================================================================
+// EVENT ORCHESTRATION SYSTEM
+// =============================================================================
+
+/**
+ * Event types that can occur in dungeon rooms
+ */
+export const EVENT_TYPES = [
+  "combat",
+  "treasure",
+  "trap",
+  "shrine",
+  "npc",
+  "rest",
+  "mystery",
+  "boss",
+] as const;
+
+export type EventType = (typeof EVENT_TYPES)[number];
+
+/**
+ * Cooldowns: minimum rooms before an event type can repeat
+ * Prevents "treasure, treasure, treasure" sequences
+ */
+export const EVENT_COOLDOWNS: Record<EventType, number> = {
+  combat: 0, // Combat can always happen
+  treasure: 3, // Wait 3 rooms after treasure
+  trap: 2, // Wait 2 rooms after trap
+  shrine: 4, // Shrines are rare
+  npc: 2, // NPCs space out
+  rest: 5, // Rest areas are uncommon
+  mystery: 3, // Mystery events need spacing
+  boss: 10, // Boss per floor anyway
+} as const;
+
+/**
+ * Base weights for event selection (before modifiers)
+ */
+export const EVENT_BASE_WEIGHTS: Record<EventType, number> = {
+  combat: 35,
+  treasure: 12,
+  trap: 15,
+  shrine: 8,
+  npc: 10,
+  rest: 5,
+  mystery: 10,
+  boss: 0, // Boss is forced, not rolled
+} as const;
+
+/**
+ * Event modifiers that add secondary elements to primary events
+ */
+export const EVENT_MODIFIERS = {
+  guarded: {
+    name: "Guarded",
+    description: "Protected by enemies",
+    appliesTo: ["treasure", "shrine", "npc"] as EventType[],
+    weight: 15, // 15% chance when applicable
+    addsCombat: true,
+  },
+  trapped: {
+    name: "Trapped",
+    description: "Conceals a trap",
+    appliesTo: ["treasure", "rest", "npc"] as EventType[],
+    weight: 20,
+    addsTrap: true,
+  },
+  cursed: {
+    name: "Cursed",
+    description: "Bears a dark enchantment",
+    appliesTo: ["treasure", "shrine"] as EventType[],
+    weight: 10,
+    addsNegativeEffect: true,
+  },
+  blessed: {
+    name: "Blessed",
+    description: "Touched by divine grace",
+    appliesTo: ["combat", "trap"] as EventType[],
+    weight: 8,
+    addsPositiveEffect: true,
+  },
+  mysterious: {
+    name: "Mysterious",
+    description: "Shrouded in unknown magic",
+    appliesTo: ["treasure", "shrine", "npc", "rest"] as EventType[],
+    weight: 12,
+    addsRandomOutcome: true,
+  },
+} as const;
+
+export type EventModifier = keyof typeof EVENT_MODIFIERS;
+
+/**
+ * Event twists - surprise revelations that change the encounter
+ */
+export const EVENT_TWISTS = {
+  mimic: {
+    name: "Mimic!",
+    description: "The treasure was alive!",
+    appliesTo: ["treasure"] as EventType[],
+    chance: 0.08, // 8% of treasure events
+    transformsTo: "combat",
+  },
+  ambush: {
+    name: "Ambush!",
+    description: "Enemies spring from hiding!",
+    appliesTo: ["rest", "treasure", "npc"] as EventType[],
+    chance: 0.10,
+    transformsTo: "combat",
+  },
+  rescue: {
+    name: "Rescue",
+    description: "Someone needs saving!",
+    appliesTo: ["combat"] as EventType[],
+    chance: 0.12,
+    addsNPC: true,
+  },
+  offering: {
+    name: "Offering Required",
+    description: "The shrine demands sacrifice",
+    appliesTo: ["shrine"] as EventType[],
+    chance: 0.25,
+    requiresPayment: true,
+  },
+  betrayal: {
+    name: "Betrayal!",
+    description: "Trust was misplaced",
+    appliesTo: ["npc"] as EventType[],
+    chance: 0.05,
+    transformsTo: "combat",
+  },
+  revelation: {
+    name: "Revelation",
+    description: "Hidden truth unveiled",
+    appliesTo: ["mystery"] as EventType[],
+    chance: 0.30,
+    grantsLore: true,
+  },
+  bonanza: {
+    name: "Bonanza!",
+    description: "More than expected!",
+    appliesTo: ["treasure"] as EventType[],
+    chance: 0.05,
+    multiplesReward: 2,
+  },
+} as const;
+
+export type EventTwist = keyof typeof EVENT_TWISTS;
+
+/**
+ * Player state thresholds that modify event weights
+ */
+export const PLAYER_STATE_MODIFIERS = {
+  lowHealth: {
+    threshold: 0.3, // Below 30% HP
+    modifiers: {
+      shrine: 2.0, // Double shrine chance
+      rest: 2.5, // More rest areas
+      npc: 1.5, // More merchants (potions)
+      combat: 0.7, // Less combat
+      trap: 0.5, // Fewer traps
+    },
+  },
+  lowGold: {
+    threshold: 20, // Below 20 gold
+    modifiers: {
+      treasure: 1.5,
+      npc: 0.7, // Merchants less useful
+    },
+  },
+  highGold: {
+    threshold: 200, // Above 200 gold
+    modifiers: {
+      npc: 1.5, // More merchants to spend at
+      treasure: 0.8, // Slightly less treasure
+    },
+  },
+  noWeapon: {
+    modifiers: {
+      treasure: 1.8,
+      npc: 1.3,
+    },
+  },
+  noArmor: {
+    modifiers: {
+      treasure: 1.5,
+      shrine: 1.3, // Defensive blessings
+    },
+  },
+  combatStreak: {
+    threshold: 3, // 3+ combats in a row
+    modifiers: {
+      combat: 0.3, // Heavily reduce more combat
+      rest: 2.0,
+      shrine: 1.5,
+      treasure: 1.3,
+    },
+  },
+  noRecentReward: {
+    threshold: 4, // 4+ rooms without treasure/shrine
+    modifiers: {
+      treasure: 1.8,
+      shrine: 1.5,
+    },
+  },
+} as const;
+
+/**
+ * Floor progression affects event distribution
+ */
+export const FLOOR_EVENT_SCALING = {
+  early: {
+    floors: [1, 2],
+    modifiers: {
+      combat: 1.2, // More combat early (tutorial)
+      trap: 0.7, // Fewer traps
+      mystery: 0.5, // Less mystery
+      shrine: 1.3, // More shrines to help
+    },
+  },
+  mid: {
+    floors: [3, 4, 5],
+    modifiers: {
+      trap: 1.2,
+      mystery: 1.0,
+      npc: 1.2,
+    },
+  },
+  late: {
+    floors: [6, 7, 8],
+    modifiers: {
+      combat: 0.9,
+      trap: 1.5,
+      mystery: 1.5,
+      treasure: 1.2,
+    },
+  },
+  endgame: {
+    floors: [9, 10],
+    modifiers: {
+      combat: 1.1,
+      mystery: 2.0,
+      shrine: 0.7, // Fewer safe options
+      rest: 0.5,
+    },
+  },
+} as const;
+
+/**
+ * Dungeon theme affects event weights
+ */
+export const THEME_EVENT_MODIFIERS: Record<string, Partial<Record<EventType, number>>> = {
+  crypt: { combat: 1.2, shrine: 1.3, trap: 0.8, mystery: 1.2 },
+  cavern: { trap: 1.4, treasure: 1.2, combat: 0.9 },
+  fortress: { combat: 1.3, trap: 1.2, npc: 0.7 },
+  temple: { shrine: 2.0, mystery: 1.5, combat: 0.8, trap: 0.6 },
+  abyss: { mystery: 2.0, trap: 1.3, shrine: 0.5, rest: 0.3 },
+  library: { mystery: 1.8, npc: 1.5, treasure: 1.3, combat: 0.7 },
+  sewers: { trap: 1.5, combat: 1.1, shrine: 0.5, rest: 0.7 },
+  prison: { npc: 1.5, trap: 1.3, combat: 1.2, treasure: 0.8 },
+} as const;
+
+/**
+ * Event memory structure for tracking recent events
+ */
+export interface EventMemory {
+  history: Array<{ type: EventType; room: number; floor: number }>;
+  typeLastSeen: Map<EventType, number>; // Room number when last seen
+  combatStreak: number;
+  roomsSinceReward: number; // Rooms since treasure or valuable shrine
+}
+
+/**
+ * Create initial event memory
+ */
+export function createEventMemory(): EventMemory {
+  return {
+    history: [],
+    typeLastSeen: new Map(),
+    combatStreak: 0,
+    roomsSinceReward: 0,
+  };
+}
+
+/**
+ * Update event memory after an event occurs
+ */
+export function updateEventMemory(
+  memory: EventMemory,
+  eventType: EventType,
+  room: number,
+  floor: number
+): EventMemory {
+  const updated: EventMemory = {
+    history: [...memory.history.slice(-20), { type: eventType, room, floor }],
+    typeLastSeen: new Map(memory.typeLastSeen),
+    combatStreak: eventType === "combat" ? memory.combatStreak + 1 : 0,
+    roomsSinceReward:
+      eventType === "treasure" || eventType === "shrine"
+        ? 0
+        : memory.roomsSinceReward + 1,
+  };
+  updated.typeLastSeen.set(eventType, room);
+  return updated;
+}
+
+/**
+ * Check if an event type is on cooldown
+ */
+export function isEventOnCooldown(
+  memory: EventMemory,
+  eventType: EventType,
+  currentRoom: number
+): boolean {
+  const lastSeen = memory.typeLastSeen.get(eventType);
+  if (lastSeen === undefined) return false;
+  const cooldown = EVENT_COOLDOWNS[eventType];
+  return currentRoom - lastSeen < cooldown;
+}
+
+/**
+ * Calculate dynamic event weights based on context
+ */
+export function calculateDynamicEventWeights(context: {
+  floor: number;
+  room: number;
+  playerHealthPercent: number;
+  playerGold: number;
+  hasWeapon: boolean;
+  hasArmor: boolean;
+  dungeonTheme?: string;
+  memory: EventMemory;
+}): Record<EventType, number> {
+  // Start with base weights
+  const weights: Record<EventType, number> = { ...EVENT_BASE_WEIGHTS };
+
+  // Apply cooldowns (zero out events on cooldown)
+  for (const eventType of EVENT_TYPES) {
+    if (isEventOnCooldown(context.memory, eventType, context.room)) {
+      weights[eventType] = 0;
+    }
+  }
+
+  // Apply floor progression modifiers
+  let floorTier: keyof typeof FLOOR_EVENT_SCALING = "mid";
+  if (context.floor <= 2) floorTier = "early";
+  else if (context.floor <= 5) floorTier = "mid";
+  else if (context.floor <= 8) floorTier = "late";
+  else floorTier = "endgame";
+
+  const floorMods = FLOOR_EVENT_SCALING[floorTier].modifiers;
+  for (const [type, mod] of Object.entries(floorMods)) {
+    weights[type as EventType] *= mod;
+  }
+
+  // Apply theme modifiers
+  if (context.dungeonTheme && THEME_EVENT_MODIFIERS[context.dungeonTheme]) {
+    const themeMods = THEME_EVENT_MODIFIERS[context.dungeonTheme];
+    for (const [type, mod] of Object.entries(themeMods)) {
+      if (mod !== undefined) {
+        weights[type as EventType] *= mod;
+      }
+    }
+  }
+
+  // Apply player state modifiers
+  if (context.playerHealthPercent < PLAYER_STATE_MODIFIERS.lowHealth.threshold) {
+    for (const [type, mod] of Object.entries(PLAYER_STATE_MODIFIERS.lowHealth.modifiers)) {
+      weights[type as EventType] *= mod;
+    }
+  }
+
+  if (context.playerGold < PLAYER_STATE_MODIFIERS.lowGold.threshold) {
+    for (const [type, mod] of Object.entries(PLAYER_STATE_MODIFIERS.lowGold.modifiers)) {
+      weights[type as EventType] *= mod;
+    }
+  }
+
+  if (context.playerGold > PLAYER_STATE_MODIFIERS.highGold.threshold) {
+    for (const [type, mod] of Object.entries(PLAYER_STATE_MODIFIERS.highGold.modifiers)) {
+      weights[type as EventType] *= mod;
+    }
+  }
+
+  if (!context.hasWeapon) {
+    for (const [type, mod] of Object.entries(PLAYER_STATE_MODIFIERS.noWeapon.modifiers)) {
+      weights[type as EventType] *= mod;
+    }
+  }
+
+  if (!context.hasArmor) {
+    for (const [type, mod] of Object.entries(PLAYER_STATE_MODIFIERS.noArmor.modifiers)) {
+      weights[type as EventType] *= mod;
+    }
+  }
+
+  // Apply combat streak modifier
+  if (context.memory.combatStreak >= PLAYER_STATE_MODIFIERS.combatStreak.threshold) {
+    for (const [type, mod] of Object.entries(PLAYER_STATE_MODIFIERS.combatStreak.modifiers)) {
+      weights[type as EventType] *= mod;
+    }
+  }
+
+  // Apply no-reward streak modifier
+  if (context.memory.roomsSinceReward >= PLAYER_STATE_MODIFIERS.noRecentReward.threshold) {
+    for (const [type, mod] of Object.entries(PLAYER_STATE_MODIFIERS.noRecentReward.modifiers)) {
+      weights[type as EventType] *= mod;
+    }
+  }
+
+  // Ensure no negative weights
+  for (const type of EVENT_TYPES) {
+    weights[type] = Math.max(0, weights[type]);
+  }
+
+  return weights;
+}
+
+/**
+ * Select an event type using weighted random with memory
+ */
+export function selectEventType(
+  weights: Record<EventType, number>,
+  forcedType?: EventType
+): EventType {
+  if (forcedType) return forcedType;
+
+  const total = Object.values(weights).reduce((a, b) => a + b, 0);
+  if (total === 0) return "combat"; // Fallback
+
+  let roll = Math.random() * total;
+  for (const [type, weight] of Object.entries(weights)) {
+    roll -= weight;
+    if (roll <= 0) return type as EventType;
+  }
+  return "combat";
+}
+
+/**
+ * Roll for event modifier
+ */
+export function rollEventModifier(eventType: EventType): EventModifier | null {
+  for (const [modKey, mod] of Object.entries(EVENT_MODIFIERS)) {
+    if (mod.appliesTo.includes(eventType) && Math.random() * 100 < mod.weight) {
+      return modKey as EventModifier;
+    }
+  }
+  return null;
+}
+
+/**
+ * Roll for event twist
+ */
+export function rollEventTwist(eventType: EventType): EventTwist | null {
+  for (const [twistKey, twist] of Object.entries(EVENT_TWISTS)) {
+    if (twist.appliesTo.includes(eventType) && Math.random() < twist.chance) {
+      return twistKey as EventTwist;
+    }
+  }
+  return null;
+}
+
+/**
+ * Full event orchestration result
+ */
+export interface OrchestratedEvent {
+  type: EventType;
+  modifier: EventModifier | null;
+  twist: EventTwist | null;
+  weights: Record<EventType, number>; // For debugging/AI context
+}
+
+/**
+ * Orchestrate a complete event decision
+ */
+export function orchestrateEvent(context: {
+  floor: number;
+  room: number;
+  playerHealthPercent: number;
+  playerGold: number;
+  hasWeapon: boolean;
+  hasArmor: boolean;
+  dungeonTheme?: string;
+  memory: EventMemory;
+  forcedType?: EventType;
+}): OrchestratedEvent {
+  const weights = calculateDynamicEventWeights(context);
+  const type = selectEventType(weights, context.forcedType);
+  const modifier = rollEventModifier(type);
+  const twist = rollEventTwist(type);
+
+  return { type, modifier, twist, weights };
+}
+
+/**
+ * Generate event system prompt for AI orchestration
+ */
+export function generateEventSystemPrompt(): string {
+  const cooldownList = Object.entries(EVENT_COOLDOWNS)
+    .filter(([, cd]) => cd > 0)
+    .map(([type, cd]) => `${type}: ${cd} rooms`)
+    .join(", ");
+
+  const modifierList = Object.entries(EVENT_MODIFIERS)
+    .map(([key, mod]) => `${mod.name}: ${mod.description}`)
+    .join("; ");
+
+  const twistList = Object.entries(EVENT_TWISTS)
+    .map(([key, twist]) => `${twist.name}: ${twist.description}`)
+    .join("; ");
+
+  return `EVENT ORCHESTRATION SYSTEM:
+
+Event Types: ${EVENT_TYPES.join(", ")}
+
+Cooldowns (min rooms between repeats): ${cooldownList}
+
+Event Modifiers (compound events): ${modifierList}
+
+Event Twists (surprises): ${twistList}
+
+The system dynamically adjusts event weights based on:
+- Player health (low HP = more shrines/rest, less combat)
+- Player gold (low = more treasure, high = more merchants)
+- Equipment gaps (missing weapon/armor = more treasure)
+- Combat streaks (3+ combats = reduce combat weight 70%)
+- Reward drought (4+ rooms without loot = increase treasure)
+- Floor progression (early = tutorial, late = chaos)
+- Dungeon theme (temples = shrines, caverns = traps)
+
+When generating narrative, consider the modifier and twist:
+- Guarded treasure should mention the enemy presence
+- Trapped events should hint at danger
+- Twists should be dramatic reveals, not telegraphed`;
+}
+
+// =============================================================================
 // TYPE EXPORTS FOR NEW CONSTANTS
 // =============================================================================
 

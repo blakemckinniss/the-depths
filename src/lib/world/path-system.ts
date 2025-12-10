@@ -80,6 +80,13 @@ function generatePreviewHints(
       "Claws scrape against stone.",
       "A guttural voice chants ahead.",
     ],
+    combat: [
+      "Growling echoes from within...",
+      "The stench of blood seeps through.",
+      "Something moves in the darkness.",
+      "Claws scrape against stone.",
+      "A guttural voice chants ahead.",
+    ],
     treasure: [
       "A faint golden gleam catches your eye.",
       "The air smells of old coins.",
@@ -107,6 +114,13 @@ function generatePreviewHints(
       "Someone... or something... waits.",
       "The sound of commerce echoes.",
       "A figure stands in the distance.",
+    ],
+    rest: [
+      "The air feels calmer here.",
+      "A gentle breeze carries the scent of moss.",
+      "Soft light filters through cracks above.",
+      "The stone here is worn smooth by travelers.",
+      "A moment of peace seems possible.",
     ],
     boss: [
       "Immense power emanates from beyond.",

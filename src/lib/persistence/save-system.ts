@@ -95,6 +95,12 @@ export interface SerializedGameState {
     companionsLost: number
   }
   roomEnvironmentalEntities: EnvironmentalEntity[]
+  eventMemory: {
+    history: Array<{ type: string; room: number; floor: number }>
+    typeLastSeen: Array<[string, number]> // Map converted to array
+    combatStreak: number
+    roomsSinceReward: number
+  }
 }
 
 export interface SerializedWorldState {
@@ -382,6 +388,12 @@ export class SaveSystem {
         companionsLost: state.runStats.companionsLost.length,
       },
       roomEnvironmentalEntities: state.roomEnvironmentalEntities,
+      eventMemory: {
+        history: state.eventMemory.history,
+        typeLastSeen: Array.from(state.eventMemory.typeLastSeen.entries()),
+        combatStreak: state.eventMemory.combatStreak,
+        roomsSinceReward: state.eventMemory.roomsSinceReward,
+      },
     }
   }
 
@@ -436,6 +448,28 @@ export class SaveSystem {
       ...serialized,
       roomStates: new Map(serialized.roomStates),
     }
+  }
+
+  deserializeGameState(serialized: SerializedGameState): GameState {
+    return {
+      ...serialized,
+      phase: serialized.phase as GameState["phase"],
+      eventHistory: serialized.eventHistory as unknown as GameState["eventHistory"],
+      roomEntities: serialized.roomEntities as unknown as GameState["roomEntities"],
+      runStats: {
+        ...serialized.runStats,
+        itemsFound: [], // Items are not fully serialized
+        dungeonsCompleted: [], // Dungeons are not fully serialized
+        companionsLost: [], // Companions are not fully serialized
+        causeOfDeath: "", // Reset on load
+      },
+      eventMemory: {
+        history: serialized.eventMemory?.history || [],
+        typeLastSeen: new Map(serialized.eventMemory?.typeLastSeen || []),
+        combatStreak: serialized.eventMemory?.combatStreak || 0,
+        roomsSinceReward: serialized.eventMemory?.roomsSinceReward || 0,
+      },
+    } as GameState
   }
 
   // Version migration
@@ -522,6 +556,7 @@ export function useSaveSystem() {
     getSettings: saveSystem.getSettings.bind(saveSystem),
     saveSettings: saveSystem.saveSettings.bind(saveSystem),
     deserializeWorldState: saveSystem.deserializeWorldState.bind(saveSystem),
+    deserializeGameState: saveSystem.deserializeGameState.bind(saveSystem),
     getStorageUsage: saveSystem.getStorageUsage.bind(saveSystem),
   }
 }

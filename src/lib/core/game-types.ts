@@ -678,6 +678,15 @@ export interface GameState {
   combatRound: number
   runStats: RunSummary
   roomEnvironmentalEntities: EnvironmentalEntity[] // added field
+  eventMemory: EventMemory // Event orchestration memory for cooldowns/streaks
+}
+
+// Event memory for orchestration system (imported from ledger at runtime)
+export interface EventMemory {
+  history: Array<{ type: string; room: number; floor: number }>
+  typeLastSeen: Map<string, number>
+  combatStreak: number
+  roomsSinceReward: number
 }
 
 export interface Enemy extends GameEntity {

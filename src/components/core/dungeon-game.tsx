@@ -205,6 +205,12 @@ const initialState: GameState = {
   combatRound: 1,
   runStats: createInitialRunStats(),
   roomEnvironmentalEntities: [], // added environmental entities to initial state
+  eventMemory: {
+    history: [],
+    typeLastSeen: new Map(),
+    combatStreak: 0,
+    roomsSinceReward: 0,
+  },
 };
 
 export function DungeonGame() {
@@ -242,7 +248,7 @@ export function DungeonGame() {
   const [chaosEvents, setChaosEvents] = useState<ChaosEvent[]>([]);
   const [hasExistingSaves, setHasExistingSaves] = useState(false); // Client-side only to avoid hydration mismatch
 
-  const { autoSave, hasSaves, load, deserializeWorldState } = useSaveSystem();
+  const { autoSave, hasSaves, load, deserializeWorldState, deserializeGameState } = useSaveSystem();
   const { generate: generateNarrative, isGenerating: isAiGenerating } =
     useDungeonMaster();
 
@@ -357,14 +363,15 @@ export function DungeonGame() {
   // === SAVE/LOAD HANDLERS ===
   const handleLoadSave = useCallback(
     (data: SaveData) => {
-      // Use gameFlow for state loading
-      gameFlow.loadSavedGame(data.gameState as unknown as GameState);
+      // Use gameFlow for state loading with proper deserialization (handles Map reconstruction)
+      const gameState = deserializeGameState(data.gameState);
+      gameFlow.loadSavedGame(gameState);
       setWorldState(deserializeWorldState(data.worldState));
       setChaosEvents(data.chaosEvents || []);
       closeClassSelect();
       setShowMenuFalse();
     },
-    [deserializeWorldState, gameFlow, closeClassSelect, setShowMenuFalse],
+    [deserializeGameState, deserializeWorldState, gameFlow, closeClassSelect, setShowMenuFalse],
   );
 
   const handleNewGame = useCallback(() => {
