@@ -77,7 +77,10 @@ import {
   getCombatModifiers,
   hasDeathtouch,
   hasRegenerate,
+  hasFirstStrike,
+  hasIndestructible,
   useModifier,
+  getLifelinkRatio,
 } from "@/lib/ai/dm-combat-integration";
 
 // ============================================================================
@@ -104,6 +107,57 @@ interface DamageResult {
   damage: number;
   effectiveness: "effective" | "resisted" | "normal";
   isCritical: boolean;
+}
+
+interface DeathCheckResult {
+  shouldDie: boolean;
+  resurrected: boolean;
+  narrative: string | null;
+}
+
+/**
+ * Check if an entity should die, respecting rule modifiers:
+ * - INDESTRUCTIBLE: Cannot die from damage
+ * - REGENERATE: Resurrects once per combat (consumes the modifier)
+ */
+function checkEntityDeath(entityId: string, currentHealth: number): DeathCheckResult {
+  if (currentHealth > 0) {
+    return { shouldDie: false, resurrected: false, narrative: null };
+  }
+
+  // Check INDESTRUCTIBLE - cannot die from damage
+  if (hasIndestructible(entityId)) {
+    return {
+      shouldDie: false,
+      resurrected: false,
+      narrative: "An unnatural force prevents the killing blow!",
+    };
+  }
+
+  // Check REGENERATE - resurrects once per combat
+  if (hasRegenerate(entityId)) {
+    // useModifier consumes the one-time use and returns true if it was available
+    if (useModifier(entityId, "REGENERATE")) {
+      return {
+        shouldDie: false,
+        resurrected: true,
+        narrative: "Dark energy surges as the creature refuses to stay dead!",
+      };
+    }
+  }
+
+  return { shouldDie: true, resurrected: false, narrative: null };
+}
+
+/**
+ * Apply DEATHTOUCH modifier - if attacker has it, any damage is lethal
+ */
+function applyDeathtouch(attackerId: string, damage: number, targetHealth: number): number {
+  if (damage > 0 && hasDeathtouch(attackerId)) {
+    // Deathtouch makes any damage lethal - return damage that will kill
+    return targetHealth + 1;
+  }
+  return damage;
 }
 
 // ============================================================================
@@ -325,6 +379,14 @@ export function useCombat({
         goldEarned: state.runStats.goldEarned + goldGain,
       });
 
+      // Prominent victory banner
+      addLog(
+        <span className="text-emerald-400 font-bold text-lg animate-pulse">
+          ⚔ VICTORY! ⚔
+        </span>,
+        "system",
+      );
+
       dispatch({
         type: "UPDATE_PLAYER",
         payload: {
@@ -530,6 +592,9 @@ export function useCombat({
         finalDamage * effectiveStats.damageTakenMultiplier,
       );
 
+      // Apply enemy DEATHTOUCH - if enemy has it, any damage is lethal
+      finalDamage = applyDeathtouch(enemy.id, finalDamage, player.stats.health);
+
       updateRunStats({
         damageTaken: state.runStats.damageTaken + finalDamage,
       });
@@ -580,6 +645,12 @@ export function useCombat({
           const goldGain = Math.floor(
             enemy.goldReward *
               calculateEffectiveStats(updatedPlayer).goldMultiplier,
+          );
+          addLog(
+            <span className="text-emerald-400 font-bold text-lg animate-pulse">
+              ⚔ VICTORY! ⚔
+            </span>,
+            "system",
           );
           logger.enemySlain(enemy, goldGain, expGain);
           const victoriousPlayer = {
@@ -805,6 +876,14 @@ export function useCombat({
             enemiesSlain: state.runStats.enemiesSlain + 1,
             goldEarned: state.runStats.goldEarned + goldGain,
           });
+
+          // Prominent victory banner
+          addLog(
+            <span className="text-emerald-400 font-bold text-lg animate-pulse">
+              ⚔ VICTORY! ⚔
+            </span>,
+            "system",
+          );
 
           const victoriousPlayer = {
             ...updatedPlayer,
@@ -1119,7 +1198,10 @@ export function useCombat({
     );
 
     // Apply damage multiplier from effects (e.g., "deal 20% more damage")
-    const damage = Math.floor(rawDamage * effectiveStats.damageMultiplier);
+    let damage = Math.floor(rawDamage * effectiveStats.damageMultiplier);
+
+    // Apply DEATHTOUCH - if player has it, any damage is lethal
+    damage = applyDeathtouch(state.player.id, damage, state.currentEnemy.health);
 
     updateRunStats({ damageDealt: state.runStats.damageDealt + damage });
 
@@ -1217,6 +1299,30 @@ export function useCombat({
       );
     }
 
+    // Apply LIFELINK - heal for portion of damage dealt
+    const lifelinkRatio = getLifelinkRatio(state.player.id);
+    if (lifelinkRatio > 0 && totalDamage > 0) {
+      const lifelinkHeal = Math.floor(totalDamage * lifelinkRatio);
+      if (lifelinkHeal > 0) {
+        updatedPlayer = {
+          ...updatedPlayer,
+          stats: {
+            ...updatedPlayer.stats,
+            health: Math.min(
+              updatedPlayer.stats.maxHealth,
+              updatedPlayer.stats.health + lifelinkHeal,
+            ),
+          },
+        };
+        addLog(
+          <span className="text-purple-400">
+            Lifelink: <EntityText type="heal">+{lifelinkHeal}</EntityText> HP
+          </span>,
+          "effect",
+        );
+      }
+    }
+
     const attackResponse = await generateNarrative<CombatResponse>(
       "player_attack",
       {
@@ -1280,7 +1386,35 @@ export function useCombat({
       );
     }
 
-    if (actualNewEnemyHealth <= 0) {
+    // Check if enemy should die (respects INDESTRUCTIBLE, REGENERATE)
+    const deathCheck = checkEntityDeath(state.currentEnemy.id, actualNewEnemyHealth);
+
+    if (deathCheck.narrative) {
+      addLog(
+        <span className="text-purple-400 italic">{deathCheck.narrative}</span>,
+        "effect",
+      );
+    }
+
+    if (deathCheck.resurrected) {
+      // Enemy regenerates - restore to 25% health
+      const restoredHealth = Math.floor(state.currentEnemy.maxHealth * 0.25);
+      dispatch({
+        type: "UPDATE_ENEMY",
+        payload: { health: restoredHealth },
+      });
+      dispatch({ type: "UPDATE_PLAYER", payload: updatedPlayer });
+
+      // Enemy gets a turn after regenerating
+      await enemyAttack(
+        { ...state.currentEnemy, health: restoredHealth },
+        updatedPlayer,
+      );
+      setIsProcessing(false);
+      return;
+    }
+
+    if (deathCheck.shouldDie) {
       // Process on_kill triggers
       const killTrigger = triggerOnKill(updatedPlayer, {
         enemy: state.currentEnemy,
@@ -1330,6 +1464,14 @@ export function useCombat({
         goldEarned: state.runStats.goldEarned + goldGain,
         itemsFound: [...state.runStats.itemsFound, ...allLoot],
       });
+
+      // Prominent victory banner
+      addLog(
+        <span className="text-emerald-400 font-bold text-lg animate-pulse">
+          ⚔ VICTORY! ⚔
+        </span>,
+        "system",
+      );
 
       const victoryResponse = await generateNarrative<VictoryResponse>(
         "victory",
@@ -1481,9 +1623,11 @@ export function useCombat({
       dispatch({ type: "UPDATE_PLAYER", payload: updatedPlayer });
       dispatch({ type: "END_COMBAT" });
     } else {
+      // Enemy survives - clamp health to at least 1 (for INDESTRUCTIBLE case)
+      const survivingHealth = Math.max(1, actualNewEnemyHealth);
       const tickedEnemy = tickEnemyAbilities({
         ...state.currentEnemy,
-        health: actualNewEnemyHealth,
+        health: survivingHealth,
       });
 
       // Process companion turns after player attack
@@ -1531,9 +1675,17 @@ export function useCombat({
           itemsFound: [...state.runStats.itemsFound, ...allLoot],
         });
 
+        // Prominent victory banner
+        addLog(
+          <span className="text-emerald-400 font-bold text-lg animate-pulse">
+            ⚔ VICTORY! ⚔
+          </span>,
+          "system",
+        );
+
         addLog(
           <span>
-            Victory! Your companions have slain the{" "}
+            Your companions have slain the{" "}
             <EntityText type="enemy">{tickedEnemy.name}</EntityText>! You gain{" "}
             <EntityText type="gold">{goldGain} gold</EntityText> and{" "}
             <EntityText type="heal">{expGain} experience</EntityText>.
