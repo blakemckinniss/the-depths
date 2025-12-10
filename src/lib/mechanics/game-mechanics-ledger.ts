@@ -814,6 +814,194 @@ export const ENTITY_TAGS = [
   "quest", // Related to quest
 ] as const;
 
+// =============================================================================
+// ENTITY IMPACT SYSTEM
+// Defines REAL game state changes that interactions can produce
+// Used to validate that options have mechanical impact (anti-theater)
+// =============================================================================
+
+/**
+ * Entity impacts - ACTUAL game state changes the engine processes
+ * These are the only real outcomes an interaction can produce.
+ * If an option can't produce any of these, it's theater and should be filtered.
+ */
+export const ENTITY_IMPACTS = [
+  // Resource changes
+  "grant_gold",        // Add gold to player
+  "grant_item",        // Add item to inventory
+  "grant_xp",          // Add experience points
+  "heal_player",       // Restore player HP
+  "damage_player",     // Deal damage to player
+  "consume_item",      // Remove item from inventory (item used)
+
+  // Status effects
+  "apply_buff",        // Apply positive status effect
+  "apply_debuff",      // Apply negative status effect
+  "remove_effect",     // Cleanse/remove status effect
+
+  // Entity changes
+  "consume_entity",    // Remove entity from room (used up)
+  "transform_entity",  // Change entity into something else
+  "spawn_entity",      // Create new environmental entity
+  "add_to_inventory",  // Entity becomes inventory item
+
+  // Combat triggers
+  "spawn_enemy",       // Trigger combat encounter
+  "spawn_companion",   // Create recruitable companion
+
+  // World changes
+  "reveal_secret",     // Unlock hidden content/path
+  "trigger_trap",      // Activate trap mechanism
+  "modify_environment",// Change room state
+
+  // Permanent changes
+  "modify_stat",       // Permanent stat increase/decrease
+  "grant_ability",     // Learn new ability
+  "advance_quest",     // Quest/story progression
+] as const;
+
+export type EntityImpact = (typeof ENTITY_IMPACTS)[number];
+
+/**
+ * Interaction actions and what impacts they CAN produce
+ * Actions are verbs - what the player DOES to the entity
+ */
+export const ACTION_POTENTIAL_IMPACTS: Record<string, readonly EntityImpact[]> = {
+  // Collection actions
+  "collect": ["add_to_inventory", "consume_entity", "apply_buff", "apply_debuff"],
+  "loot": ["grant_item", "grant_gold", "trigger_trap", "spawn_enemy", "consume_entity", "reveal_secret"],
+  "take": ["grant_item", "add_to_inventory", "consume_entity", "trigger_trap"],
+
+  // Examination actions (minimal but some impact possible)
+  "examine": ["reveal_secret", "advance_quest", "apply_buff"], // Only if entity has hidden/quest tags
+  "read": ["grant_xp", "advance_quest", "apply_buff", "apply_debuff", "reveal_secret"],
+
+  // Physical interaction
+  "touch": ["apply_buff", "apply_debuff", "damage_player", "heal_player", "trigger_trap", "transform_entity", "spawn_enemy"],
+  "break": ["grant_item", "consume_entity", "spawn_enemy", "trigger_trap", "modify_environment"],
+  "use_ability": ["consume_entity", "apply_buff", "remove_effect", "spawn_companion", "heal_player", "damage_player", "transform_entity"],
+
+  // Consumption
+  "consume": ["heal_player", "damage_player", "apply_buff", "apply_debuff", "modify_stat", "consume_entity"],
+  "taste": ["apply_buff", "apply_debuff", "damage_player", "heal_player"],
+  "drink": ["heal_player", "damage_player", "apply_buff", "apply_debuff", "modify_stat", "consume_entity"],
+
+  // Item usage
+  "use_item": ["consume_item", "apply_buff", "transform_entity", "spawn_companion", "trigger_trap", "heal_player"],
+
+  // Creature interaction
+  "tame": ["spawn_companion", "damage_player", "apply_debuff"],
+  "feed": ["spawn_companion", "consume_item", "apply_buff"],
+  "approach": ["spawn_companion", "spawn_enemy", "damage_player", "apply_debuff"],
+} as const;
+
+/**
+ * Entity tags and what impacts they ENABLE
+ * Tags describe entity properties - what the entity CAN provide
+ */
+export const TAG_ENABLED_IMPACTS: Record<string, readonly EntityImpact[]> = {
+  // Core functional tags
+  "lootable": ["grant_item", "grant_gold", "grant_xp", "reveal_secret"],
+  "collectible": ["add_to_inventory", "consume_entity"],
+  "consumable": ["heal_player", "damage_player", "apply_buff", "apply_debuff", "modify_stat", "consume_entity"],
+  "breakable": ["consume_entity", "grant_item", "modify_environment", "trigger_trap"],
+  "readable": ["grant_xp", "advance_quest", "reveal_secret", "apply_buff", "apply_debuff"],
+
+  // Danger tags
+  "dangerous": ["damage_player", "apply_debuff", "trigger_trap", "spawn_enemy"],
+  "trapped": ["trigger_trap", "damage_player", "apply_debuff"],
+
+  // Magical tags
+  "magical": ["apply_buff", "apply_debuff", "heal_player", "damage_player", "transform_entity", "grant_ability", "modify_stat"],
+
+  // Creature tags
+  "tameable": ["spawn_companion"],
+
+  // Discovery tags
+  "hidden": ["reveal_secret", "grant_item", "advance_quest"],
+  "valuable": ["grant_gold", "grant_item"],
+  "quest": ["advance_quest", "grant_xp", "reveal_secret"],
+
+  // Interactive tags
+  "interactive": ["transform_entity", "spawn_entity", "modify_environment", "apply_buff", "apply_debuff"],
+  "ancient": ["grant_xp", "reveal_secret", "apply_buff", "apply_debuff", "advance_quest"],
+} as const;
+
+/**
+ * Check if an action on an entity with given tags can produce any real impact
+ * Returns true if the interaction has at least one possible game state change
+ *
+ * @param action - The interaction action (e.g., "examine", "loot", "touch")
+ * @param entityTags - The entity's interaction tags
+ * @returns true if the action can have real impact, false if it's pure theater
+ */
+export function canInteractionHaveImpact(action: string, entityTags: readonly string[]): boolean {
+  const actionImpacts = ACTION_POTENTIAL_IMPACTS[action];
+  if (!actionImpacts || actionImpacts.length === 0) {
+    // Unknown action - be conservative, allow it
+    return true;
+  }
+
+  // Collect all impacts this entity enables via its tags
+  const enabledImpacts = new Set<EntityImpact>();
+  for (const tag of entityTags) {
+    const tagImpacts = TAG_ENABLED_IMPACTS[tag];
+    if (tagImpacts) {
+      for (const impact of tagImpacts) {
+        enabledImpacts.add(impact);
+      }
+    }
+  }
+
+  // If entity has no recognized tags, be conservative - allow interaction
+  if (enabledImpacts.size === 0) {
+    return true;
+  }
+
+  // Check if action can produce any impact that entity enables
+  return actionImpacts.some(impact => enabledImpacts.has(impact));
+}
+
+/**
+ * Get the possible impacts for an action on an entity
+ * Returns the intersection of what the action CAN do and what the entity ENABLES
+ *
+ * @param action - The interaction action
+ * @param entityTags - The entity's interaction tags
+ * @returns Array of possible impacts, empty if no valid impacts
+ */
+export function getPossibleImpacts(action: string, entityTags: readonly string[]): EntityImpact[] {
+  const actionImpacts = ACTION_POTENTIAL_IMPACTS[action];
+  if (!actionImpacts) return [];
+
+  const enabledImpacts = new Set<EntityImpact>();
+  for (const tag of entityTags) {
+    const tagImpacts = TAG_ENABLED_IMPACTS[tag];
+    if (tagImpacts) {
+      for (const impact of tagImpacts) {
+        enabledImpacts.add(impact);
+      }
+    }
+  }
+
+  return actionImpacts.filter(impact => enabledImpacts.has(impact));
+}
+
+/**
+ * Generate AI prompt for entity impact constraints
+ * Tells AI what real impacts are possible for given entity/action
+ */
+export function generateImpactConstraintPrompt(action: string, entityTags: readonly string[]): string {
+  const possibleImpacts = getPossibleImpacts(action, entityTags);
+
+  if (possibleImpacts.length === 0) {
+    return `WARNING: This action has NO valid mechanical impacts. The result MUST include at least one of: ${ENTITY_IMPACTS.slice(0, 5).join(", ")}, etc.`;
+  }
+
+  return `VALID IMPACTS for this interaction: ${possibleImpacts.join(", ")}.
+The outcome MUST include at least one of these impacts. Do not generate pure narrative with no state change.`;
+}
+
 /**
  * Container types for loot generation
  */

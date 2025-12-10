@@ -6,6 +6,7 @@ import type {
   NarrativeSegment,
   Player,
 } from "@/lib/core/game-types"
+import { canInteractionHaveImpact } from "@/lib/mechanics/game-mechanics-ledger"
 
 // Generate a unique ID
 function genId(): string {
@@ -228,6 +229,7 @@ const INTERACTION_TEMPLATES: Record<string, EnvironmentalInteraction[]> = {
 }
 
 // Determine interactions based on entity class and tags
+// Filters out "theater" options that can't produce real game state changes
 export function getInteractionsForEntity(entity: EnvironmentalEntity): EnvironmentalInteraction[] {
   const interactions: EnvironmentalInteraction[] = []
   const seenActions = new Set<string>()
@@ -239,21 +241,30 @@ export function getInteractionsForEntity(entity: EnvironmentalEntity): Environme
     if (templates) {
       for (const t of templates) {
         if (!seenActions.has(t.action)) {
-          interactions.push({ ...t, id: `${entity.id}_${t.id}` })
-          seenActions.add(t.action)
+          // ANTI-THEATER: Only add interaction if it can have real impact
+          if (canInteractionHaveImpact(t.action, entity.interactionTags)) {
+            interactions.push({ ...t, id: `${entity.id}_${t.id}` })
+            seenActions.add(t.action)
+          }
         }
       }
     }
   }
 
-  // Add default examine if nothing else
+  // Add default examine ONLY if entity has tags that make examine meaningful
+  // (hidden, quest, readable, ancient - things where examining reveals something)
   if (interactions.length === 0) {
-    interactions.push({
-      id: `${entity.id}_examine`,
-      action: "examine",
-      label: "Examine",
-      dangerLevel: "safe",
-    })
+    const examineHasImpact = canInteractionHaveImpact("examine", entity.interactionTags)
+    if (examineHasImpact) {
+      interactions.push({
+        id: `${entity.id}_examine`,
+        action: "examine",
+        label: "Examine",
+        dangerLevel: "safe",
+      })
+    }
+    // If even examine has no impact, this entity is purely decorative
+    // Don't add any interactions - it's just scenery
   }
 
   return interactions

@@ -484,6 +484,7 @@ export function DungeonGame() {
         entityName: entity.name,
         entityClass: entity.entityClass,
         entityDescription: entity.description,
+        entityTags: entity.interactionTags, // For impact validation
         interactionAction: interaction.action,
         interactionLabel: interaction.label,
         dangerLevel: interaction.dangerLevel,

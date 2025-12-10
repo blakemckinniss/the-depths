@@ -9,6 +9,7 @@ import {
   generateEntitySystemPrompt,
   ENTITY_CLASSES,
   ENTITY_TAGS,
+  generateImpactConstraintPrompt,
 } from "@/lib/mechanics/game-mechanics-ledger";
 import {
   roomEventSchema,
@@ -322,6 +323,13 @@ Make it dramatic and dark.`,
     }
 
     case "environmental_interaction": {
+      // Generate impact constraints to prevent theater/hallucinated outcomes
+      const entityTags = context.entityTags || [];
+      const impactConstraint = generateImpactConstraintPrompt(
+        context.interactionAction,
+        entityTags
+      );
+
       return Response.json(
         await generateWithAI({
           schema: environmentalInteractionSchema,
@@ -329,6 +337,7 @@ Make it dramatic and dark.`,
 
 Entity: ${context.entityName} (${context.entityClass})
 Entity description: ${context.entityDescription || "unknown"}
+Entity tags: ${entityTags.join(", ") || "none"}
 Interaction: ${context.interactionAction} (${context.interactionLabel})
 Danger level: ${context.dangerLevel}
 Player class: ${context.playerClass || "adventurer"}
@@ -336,12 +345,16 @@ Player health: ${context.playerHealth}/${context.maxHealth}
 Item used: ${context.itemUsed || "none"}
 Companion present: ${context.companionName || "none"}
 
+MECHANICAL IMPACT REQUIREMENT:
+${impactConstraint}
+
 Generate the outcome. Consider:
 - Danger level (safe/risky/dangerous) influences success chance
 - Class-appropriate interactions have better outcomes
 - Using proper items guarantees success for risky actions
 - Dangerous actions have meaningful consequences
-- Include companion reactions if one is present`,
+- Include companion reactions if one is present
+- CRITICAL: The outcome MUST have real mechanical impact (item, gold, damage, healing, effect, etc.)`,
           system,
           temperature: AI_CONFIG.temperature.balanced,
           maxTokens: 600,
