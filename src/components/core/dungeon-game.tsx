@@ -3133,8 +3133,8 @@ export function DungeonGame() {
               </div>
             )}
 
-            {/* Game Log */}
-            <div className="flex-1 overflow-hidden">
+            {/* Game Log + Choices */}
+            <div className="flex-1 overflow-y-auto overflow-x-hidden">
               {currentNarrative ? (
                 <InteractiveNarrative
                   narrative={currentNarrative}
@@ -3145,6 +3145,23 @@ export function DungeonGame() {
                 />
               ) : (
                 <GameLog logs={logs} />
+              )}
+
+              {/* Choices flow directly after narrative */}
+              {!gameState.inCombat && currentChoices.length > 0 && (
+                <div className="mt-4 sticky bottom-0 bg-gradient-to-t from-background via-background to-transparent pt-4 pb-2">
+                  <ChoiceButtons
+                    choices={currentChoices}
+                    disabled={isProcessing}
+                    atmosphere={choiceAtmosphere}
+                  />
+                </div>
+              )}
+
+              {isProcessing && !gameState.inCombat && (
+                <div className="text-center text-stone-500 text-sm mt-2 animate-pulse">
+                  The dungeon stirs...
+                </div>
               )}
             </div>
 
@@ -3287,20 +3304,6 @@ export function DungeonGame() {
             )}
 
             {!gameState.inCombat && renderInteractiveEntities()}
-
-            <div className="mt-4">
-              <ChoiceButtons
-                choices={currentChoices}
-                disabled={isProcessing}
-                atmosphere={!gameState.inCombat ? choiceAtmosphere : null}
-              />
-            </div>
-
-            {isProcessing && (
-              <div className="text-center text-stone-500 text-sm mt-2 animate-pulse">
-                The dungeon stirs...
-              </div>
-            )}
           </div>
         )}
       </div>
