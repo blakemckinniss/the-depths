@@ -62,7 +62,7 @@ npm run lint     # ESLint check
 
 ### The Monolith
 
-`src/components/dungeon-game.tsx` (3024 lines) - Main game orchestrator. **For AI editing, use line-range reads.**
+`src/components/core/dungeon-game.tsx` (2165 lines) - Main game orchestrator. **For AI editing, use line-range reads.**
 
 #### Handler Reference
 
@@ -110,78 +110,115 @@ Edit the specific logic needed
 
 | File | Purpose |
 |------|---------|
-| `src/lib/game-types.ts` | All TypeScript types |
-| `src/lib/game-data.ts` | Entity generators, initial state |
+| `src/lib/core/game-types.ts` | All TypeScript types |
+| `src/lib/core/game-data.ts` | Entity generators, initial state |
 
 ---
 
 ## Systems (`src/lib/`)
 
-### Core Game
+```
+lib/
+├── core/        game-types, game-data, utils
+├── combat/      combat-system, effect-system, effect-combo-system, effect-factory, skill-check
+├── entity/      entity-system, entity-factory, enemy-rank-system, companion-system
+├── character/   ability-system, sustained-ability-system, race-system
+├── items/       item-taxonomy, item-generator, consumable-system, item-sets-system, ego-item-system,
+│                unknown-item-system, smart-loot-system, vault-system, transmogrification-system
+├── materials/   material-system
+├── world/       world-state, environmental-system, environmental-effects, hazard-system, path-system, chaos-system
+├── ai/          ai-schemas, ai-utils, ai-alchemy-system, ai-drops-system, game-log-system, event-engine
+├── hooks/       use-event-chain, use-dungeon-master, use-entity-generator
+├── persistence/ save-system
+├── debug/       debug
+└── mechanics/   game-mechanics-ledger
+```
+
+### core/
 | System | Responsibility |
 |--------|----------------|
-| `ability-system` | Class abilities, cooldowns, resources |
-| `sustained-ability-system` | Channeled/maintained abilities |
+| `game-types` | All TypeScript type definitions |
+| `game-data` | Entity generators, initial state |
+| `utils` | Shared utilities (cn helper) |
+
+### combat/
+| System | Responsibility |
+|--------|----------------|
 | `combat-system` | Damage calc, stances, combos, enemy AI |
 | `effect-system` | Status effects, buffs/debuffs |
 | `effect-combo-system` | Effect interactions (fire+oil=explosion) |
 | `effect-factory` | Effect creation helpers |
-| `entity-system` | Entity processing, stat calculations |
-| `entity-factory` | Dynamic entity creation |
 | `skill-check` | Dice rolls, skill checks |
 
-### Items & Loot
+### entity/
 | System | Responsibility |
 |--------|----------------|
-| `item-generator` | Procedural item creation |
+| `entity-system` | Entity processing, stat calculations |
+| `entity-factory` | Dynamic entity creation |
+| `enemy-rank-system` | Elite/champion/boss scaling |
+| `companion-system` | Party members, companion actions |
+
+### character/
+| System | Responsibility |
+|--------|----------------|
+| `ability-system` | Class abilities, cooldowns, resources |
+| `sustained-ability-system` | Channeled/maintained abilities |
+| `race-system` | Player/NPC race traits |
+
+### items/
+| System | Responsibility |
+|--------|----------------|
 | `item-taxonomy` | Item classification hierarchy |
+| `item-generator` | Procedural item creation |
+| `consumable-system` | Potions, scrolls, food |
 | `item-sets-system` | Set bonuses and tracking |
-| `material-system` | Material properties and crafting |
 | `ego-item-system` | Sentient/cursed items |
 | `unknown-item-system` | Unidentified item mechanics |
-| `consumable-system` | Potions, scrolls, food |
 | `smart-loot-system` | Context-aware drop generation |
 | `vault-system` | Persistent item storage |
-| `transmogrification-system` | Item appearance changes |
+| `transmogrification-system` | Item conversion system |
 
-### World & Environment
+### materials/
 | System | Responsibility |
 |--------|----------------|
+| `material-system` | Material properties and crafting |
+
+### world/
+| System | Responsibility |
+|--------|----------------|
+| `world-state` | Global game state management |
 | `environmental-system` | Room hazards, terrain effects |
 | `environmental-effects` | Environmental effect definitions |
 | `hazard-system` | Traps, environmental damage |
 | `path-system` | Dungeon path generation |
 | `chaos-system` | Random events, world mutations |
-| `world-state` | Global game state management |
 
-### Entities & NPCs
-| System | Responsibility |
-|--------|----------------|
-| `companion-system` | Party members, companion actions |
-| `enemy-rank-system` | Elite/champion/boss scaling |
-| `race-system` | Player/NPC race traits |
-
-### AI Integration
+### ai/
 | System | Responsibility |
 |--------|----------------|
 | `ai-schemas` | Zod schemas for AI responses |
 | `ai-utils` | AI helper functions |
 | `ai-alchemy-system` | AI-powered alchemy recipes |
 | `ai-drops-system` | AI-generated loot |
-
-### Infrastructure
-| System | Responsibility |
-|--------|----------------|
-| `save-system` | LocalStorage persistence |
+| `game-log-system` | Structured event logging with JSX |
 | `event-engine` | Event dispatching |
-| `utils` | Shared utilities |
 
-### React Hooks
+### hooks/
 | Hook | Purpose |
 |------|---------|
 | `use-dungeon-master` | AI narrative generation |
 | `use-entity-generator` | Dynamic entity creation |
 | `use-event-chain` | AI event sequencing |
+
+### persistence/
+| System | Responsibility |
+|--------|----------------|
+| `save-system` | LocalStorage persistence |
+
+### mechanics/
+| System | Responsibility |
+|--------|----------------|
+| `game-mechanics-ledger` | Engine constraints, validation, constants (1969 lines)
 
 ---
 
@@ -202,33 +239,29 @@ Edit the specific logic needed
 
 ## UI Components (`src/components/`)
 
-**Core:** `dungeon-game`, `dungeon-card`, `game-log`, `game-menu`, `dev-panel`, `dev-button`, `providers`
-
-**Combat:** `combat-display`, `ability-bar`, `stance-selector`, `combo-display`, `weakness-indicator`, `enemy-ability-warn`
-
-**Character:** `class-select`, `stats-view`, `inline-stats`, `sidebar-stats`, `stat-bar`, `death-screen`
-
-**Party:** `companion-display`, `party-panel`
-
-**World:** `path-select`, `dungeon-select`, `environmental-indicator`, `hazard-display`, `world-context-display`, `chaos-event-display`
-
-**Encounters:** `boss-encounter`, `npc-dialogue`, `shrine-interaction`, `trap-encounter`, `trap-interaction`, `tavern`, `skill-check-display`
-
-**Items:** `inventory-view`, `inline-inventory`, `sidebar-inventory`, `sidebar-keys`, `item-action-menu`, `unknown-item-use`, `loot-container-reveal`
-
-**Effects:** `status-effects-display`, `enhanced-status-display`, `effect-combo-display`, `ambient-effect-display`
-
-**Narrative:** `interactive-narrative`, `entity-text`, `choice-buttons`
-
-**Modals:** `entity-detail-modal`, `entity-modal-context`
-
-**Persistence:** `save-load-menu`
+```
+components/
+├── core/        dungeon-game, dungeon-card, providers, error-boundary, game-menu, game-log
+├── combat/      combat-display, ability-bar, stance-selector, combo-display, weakness-indicator, enemy-ability-warn
+├── character/   class-select, stats-view, sidebar-stats, stat-bar, inline-stats, death-screen
+├── inventory/   inventory-view, inline-inventory, sidebar-inventory, sidebar-keys, item-action-menu,
+│                unknown-item-use, loot-container-reveal
+├── party/       companion-display, party-panel
+├── encounters/  boss-encounter, npc-dialogue, shrine-interaction, trap-encounter, trap-interaction, tavern, skill-check-display
+├── world/       path-select, dungeon-select, environmental-indicator, hazard-display, world-context-display, chaos-event-display
+├── effects/     status-effects-display, enhanced-status-display, effect-combo-display, ambient-effect-display
+├── narrative/   interactive-narrative, entity-text, choice-buttons
+├── modals/      entity-detail-modal, entity-modal-context
+├── persistence/ save-load-menu
+├── dev/         dev-panel, dev-button
+└── ui/          dialog (shadcn/ui primitives)
+```
 
 ---
 
 ## Type System
 
-All types in `src/lib/game-types.ts`. Key types:
+All types in `src/lib/core/game-types.ts`. Key types:
 
 ```typescript
 GameState        // Root state object
@@ -297,15 +330,15 @@ ClassSelect → DungeonSelect → PathSelect → [Room Loop]
 ## Adding New Features
 
 ### New System
-1. Create `src/lib/<name>-system.ts`
-2. Add types to `game-types.ts`
-3. Import and integrate in `dungeon-game.tsx`
-4. Add UI component if needed
+1. Create `src/lib/<category>/<name>-system.ts` (choose appropriate subdirectory)
+2. Add types to `src/lib/core/game-types.ts`
+3. Import and integrate in `src/components/core/dungeon-game.tsx`
+4. Add UI component in appropriate `src/components/<category>/` subdirectory
 
 ### New AI Feature
 1. Create API route in `src/app/api/<name>/route.ts`
-2. Define Zod schema in `ai-schemas.ts`
-3. Create React hook in `src/lib/use-<name>.ts`
+2. Define Zod schema in `src/lib/ai/ai-schemas.ts`
+3. Create React hook in `src/lib/hooks/use-<name>.ts`
 4. Integrate in game component
 
 ---
