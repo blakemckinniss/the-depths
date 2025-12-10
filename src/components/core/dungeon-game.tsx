@@ -84,6 +84,7 @@ import { DungeonSelect } from "@/components/world/dungeon-select";
 import { SidebarKeys } from "@/components/inventory/sidebar-keys";
 import { ClassSelect } from "@/components/character/class-select";
 import { AbilityBar } from "@/components/combat/ability-bar";
+import { SpellBar } from "@/components/combat/spell-bar";
 import { PathSelect } from "@/components/world/path-select";
 import { HazardDisplay } from "@/components/world/hazard-display";
 import { TrapInteraction } from "@/components/encounters/trap-interaction";
@@ -101,6 +102,7 @@ import { useTavern } from "@/hooks/use-tavern";
 import { useNavigation } from "@/hooks/use-navigation";
 import { useEncounters } from "@/hooks/use-encounters";
 import { useCombat } from "@/hooks/use-combat";
+import { useSpellCasting } from "@/hooks/use-spell-casting";
 import { useDungeonMaster } from "@/lib/hooks/use-dungeon-master";
 import {
   enhanceEnemyWithLore,
@@ -323,6 +325,17 @@ export function DungeonGame() {
 
   // Destructure combat handlers from hook
   const { enemyAttack, handleUseAbility, processCompanionTurns, playerAttack } = combat;
+
+  // Spell casting hook
+  const spellCasting = useSpellCasting({
+    state: gameState,
+    dispatch,
+    logger: log,
+    updateRunStats,
+    addLog,
+  });
+
+  const { handleCastSpell, handleLearnFromItem, hasSpells } = spellCasting;
 
   // DevPanel-only: wrapper to provide setState-style API for dev tools
   const setGameState = useCallback(
@@ -1566,10 +1579,56 @@ export function DungeonGame() {
 
   const equipItem = useCallback(
     (item: Item) => {
-      if (item.type !== "weapon" && item.type !== "armor") return;
+      // Determine the equipment slot based on item properties
+      let slot: string | null = null;
 
-      const slot = item.type;
-      const currentEquipped = gameState.player.equipment[slot];
+      if (item.type === "weapon" || item.category === "weapon") {
+        // Check if it's a shield (goes to offHand)
+        if (item.subtype === "shield" || item.armorProps?.slot === "shield") {
+          slot = "offHand";
+        } else {
+          slot = "mainHand";
+        }
+      } else if (item.type === "armor" || item.category === "armor") {
+        // Use armorProps.slot if available, otherwise map from subtype
+        const armorSlot = item.armorProps?.slot || item.subtype;
+        switch (armorSlot) {
+          case "head": slot = "head"; break;
+          case "chest": slot = "chest"; break;
+          case "legs": slot = "legs"; break;
+          case "feet": slot = "feet"; break;
+          case "hands": slot = "hands"; break;
+          case "shield": slot = "offHand"; break;
+          case "cloak": slot = "cloak"; break;
+          case "belt": slot = "belt"; break;
+          default: slot = "chest"; // Default armor to chest
+        }
+      } else if (item.category === "trinket") {
+        // Trinkets go to appropriate accessory slot
+        const trinketType = item.subtype;
+        switch (trinketType) {
+          case "ring":
+            // Use ring1 if empty, else ring2
+            slot = gameState.player.equipment.ring1 ? "ring2" : "ring1";
+            break;
+          case "amulet":
+          case "necklace":
+            slot = "amulet";
+            break;
+          case "cloak":
+            slot = "cloak";
+            break;
+          default:
+            slot = "amulet"; // Default trinkets to amulet
+        }
+      }
+
+      // Legacy fallback for old items
+      if (!slot) {
+        if (item.type === "weapon") slot = "mainHand";
+        else if (item.type === "armor") slot = "chest";
+        else return; // Can't equip this item
+      }
 
       addLog(
         <span>
@@ -1591,6 +1650,13 @@ export function DungeonGame() {
       );
 
       dispatch({ type: "EQUIP_ITEM", payload: { item, slot } });
+
+      // Also update legacy aliases for backwards compatibility
+      if (slot === "mainHand") {
+        dispatch({ type: "EQUIP_ITEM", payload: { item, slot: "weapon" } });
+      } else if (slot === "chest") {
+        dispatch({ type: "EQUIP_ITEM", payload: { item, slot: "armor" } });
+      }
     },
     [gameState.player.equipment, addLog, dispatch],
   );
@@ -2134,6 +2200,23 @@ export function DungeonGame() {
                   />
                 </div>
               )}
+
+            {/* Spell Bar - shown in combat if player has spells */}
+            {gameState.inCombat && gameState.currentEnemy && hasSpells && (
+              <div className="mt-3">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                  Spells
+                </div>
+                <SpellBar
+                  player={gameState.player}
+                  spellBook={gameState.player.spellBook}
+                  onCastSpell={handleCastSpell}
+                  inCombat={true}
+                  disabled={isProcessing}
+                  currentEnemy={gameState.currentEnemy}
+                />
+              </div>
+            )}
 
             {gameState.pathOptions && gameState.pathOptions.length > 0 && (
               <PathSelect

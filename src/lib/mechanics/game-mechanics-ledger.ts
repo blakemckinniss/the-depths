@@ -3002,6 +3002,632 @@ When generating narrative, consider the modifier and twist:
 }
 
 // =============================================================================
+// DM OPERATIONS SYSTEM
+// TCG-style rule-bending capabilities for AI Dungeon Master
+// =============================================================================
+
+/**
+ * Entity Transformation Matrix
+ * Defines what entities can transform into what.
+ * Format: sourceType -> [validTargetTypes]
+ *
+ * The AI DM can trigger any valid transformation as events dictate.
+ * Invalid transformations are blocked at validation time.
+ */
+export const ENTITY_TRANSFORMATION_MATRIX = {
+  // Enemies can become many things through narrative events
+  enemy: [
+    "companion",      // Taming, befriending, dominating
+    "npc",            // Surrender, negotiation, curse lifting
+    "item",           // Essence extraction, petrification
+    "boss",           // Rage transformation, absorbing power
+    "environmental",  // Death curse, spectral form
+  ],
+
+  // NPCs have flexible transformation paths
+  npc: [
+    "companion",      // Joins party
+    "enemy",          // Betrayal, possession, curse
+    "boss",           // Reveals true form
+    "shrine",         // Spirit becomes shrine
+    "item",           // Sacrifice, binding into object
+  ],
+
+  // Companions can transform
+  companion: [
+    "enemy",          // Betrayal, corruption, mind control
+    "boss",           // Evolution gone wrong, power overflow
+    "npc",            // Releases from service
+    "item",           // Soul binding, death transformation
+  ],
+
+  // Items have transmutation paths
+  item: [
+    "item",           // Upgrade, corrupt, transmute
+    "companion",      // Awakening (ego items, golems)
+    "enemy",          // Curse unleashed, mimic reveal
+    "environmental",  // Shatters into hazard
+    "gold",           // Sell/destroy value extraction
+  ],
+
+  // Shrines can transform
+  shrine: [
+    "enemy",          // Angry god, corrupted blessing
+    "npc",            // Spirit manifests
+    "trap",           // Curse trap
+    "environmental",  // Power releases into area
+  ],
+
+  // Traps can become other things
+  trap: [
+    "item",           // Disarm and salvage
+    "environmental",  // Triggered effect lingers
+    "enemy",          // Animated trap / golem
+  ],
+
+  // Bosses have special paths
+  boss: [
+    "companion",      // Rare - dominated, humbled
+    "item",           // Death drops legendary gear
+    "npc",            // Defeated but spared
+    "environmental",  // Death curse on area
+  ],
+
+  // Environmental effects can shift
+  environmental: [
+    "enemy",          // Elemental manifest
+    "item",           // Crystallized essence
+    "shrine",         // Becomes permanent fixture
+  ],
+} as const;
+
+export type TransformableEntityType = keyof typeof ENTITY_TRANSFORMATION_MATRIX;
+export type TransformationTarget = (typeof ENTITY_TRANSFORMATION_MATRIX)[TransformableEntityType][number];
+
+/**
+ * Entity Link Types
+ * Mechanical bonds between entities that affect gameplay.
+ * Unlike simple relations (killed_by), these are ACTIVE bonds.
+ */
+export const ENTITY_LINK_TYPES = [
+  // Lifecycle links
+  "soul_bound",       // Entity A dies when Entity B dies
+  "life_linked",      // Damage to A also damages B
+  "death_trigger",    // A's death causes effect on B
+  "resurrection_link",// A can resurrect B (or vice versa)
+
+  // Power links
+  "power_source",     // A powers B (remove A, B weakens)
+  "power_drain",      // A drains power from B
+  "stat_sync",        // A and B share stat modifiers
+  "damage_share",     // Damage split between A and B
+
+  // Control links
+  "master_servant",   // A controls B's actions
+  "possession",       // A inhabits B's body
+  "puppeteer",        // A can take actions through B
+
+  // Curse/blessing links
+  "curse_anchor",     // A is anchor for curse on B
+  "blessing_source",  // A provides buff to B while alive
+  "karmic_link",      // A's fortune affects B's fortune
+
+  // Item links
+  "bound_to_wielder", // Item linked to specific entity
+  "phylactery",       // Entity's soul stored in item
+  "key_lock",         // A (key) required to affect B
+
+  // Location links
+  "territorial",      // Entity bonded to location
+  "summoning_anchor", // Entity can be summoned to location
+  "banishment_link",  // Destroy link to banish entity
+
+  // Combo links
+  "synergy",          // A and B have enhanced effects together
+  "conflict",         // A and B have reduced effects together
+  "evolution_chain",  // A can evolve into B under conditions
+] as const;
+
+export type EntityLinkType = (typeof ENTITY_LINK_TYPES)[number];
+
+/**
+ * Entity Link Definition
+ * Structure for a link between two entities
+ */
+export interface EntityLink {
+  id: string;
+  linkType: EntityLinkType;
+  sourceId: string;
+  targetId: string;
+  bidirectional: boolean;      // Does link work both ways?
+  strength: number;            // 0-100, affects magnitude of link effects
+  condition?: string;          // Optional activation condition (AI-defined)
+  effect?: {
+    onSourceDeath?: string;    // What happens to target when source dies
+    onTargetDeath?: string;    // What happens to source when target dies
+    statTransfer?: Record<string, number>; // Stats shared/transferred
+    damageShare?: number;      // 0-1, fraction of damage shared
+    buffShare?: boolean;       // Share status effects
+  };
+  narrativeHook?: string;      // AI flavor text for link
+  createdBy: string;           // What created this link (event, spell, item)
+  permanent: boolean;          // Can this link be broken?
+  breakCondition?: string;     // How to break non-permanent links
+}
+
+/**
+ * Rule Modifier Types
+ * TCG-style "card effects" that bend or break normal game rules.
+ * The AI DM can grant these through items, shrines, curses, bosses, etc.
+ */
+export const RULE_MODIFIERS = {
+  // Combat rule benders
+  FIRST_STRIKE: {
+    name: "First Strike",
+    description: "Always act first in combat regardless of speed",
+    scope: "combat",
+    effect: { alwaysFirst: true },
+  },
+  DOUBLE_STRIKE: {
+    name: "Double Strike",
+    description: "Basic attacks hit twice",
+    scope: "combat",
+    effect: { attackMultiplier: 2 },
+  },
+  DEATHTOUCH: {
+    name: "Deathtouch",
+    description: "Any damage kills (ignores max health)",
+    scope: "combat",
+    effect: { oneHitKill: true },
+  },
+  INDESTRUCTIBLE: {
+    name: "Indestructible",
+    description: "Cannot die from damage (can still die to effects)",
+    scope: "combat",
+    effect: { immuneToDamage: true },
+  },
+  REGENERATE: {
+    name: "Regenerate",
+    description: "Resurrect once per combat when killed",
+    scope: "combat",
+    effect: { resurrectOnce: true },
+  },
+  LIFELINK: {
+    name: "Lifelink",
+    description: "Heal for damage dealt",
+    scope: "combat",
+    effect: { lifeSteal: 1.0 },
+  },
+  TRAMPLE: {
+    name: "Trample",
+    description: "Excess damage carries to next enemy",
+    scope: "combat",
+    effect: { overkillCarry: true },
+  },
+  HEXPROOF: {
+    name: "Hexproof",
+    description: "Cannot be targeted by enemy abilities",
+    scope: "combat",
+    effect: { abilityImmune: true },
+  },
+
+  // Resource rule benders
+  FREE_CAST: {
+    name: "Free Cast",
+    description: "Next ability costs no resources",
+    scope: "resource",
+    effect: { nextAbilityFree: true },
+  },
+  DOUBLE_RESOURCES: {
+    name: "Abundance",
+    description: "Resource costs halved",
+    scope: "resource",
+    effect: { resourceCostMultiplier: 0.5 },
+  },
+  COOLDOWN_RESET: {
+    name: "Time Warp",
+    description: "All ability cooldowns reset",
+    scope: "resource",
+    effect: { resetCooldowns: true },
+  },
+
+  // Loot rule benders
+  MIDAS_TOUCH: {
+    name: "Midas Touch",
+    description: "Enemies drop 3x gold",
+    scope: "loot",
+    effect: { goldMultiplier: 3 },
+  },
+  TREASURE_MAGNET: {
+    name: "Treasure Magnet",
+    description: "Enemies always drop items",
+    scope: "loot",
+    effect: { guaranteedDrop: true },
+  },
+  RARITY_BOOST: {
+    name: "Fortune's Favor",
+    description: "All drops are upgraded one rarity tier",
+    scope: "loot",
+    effect: { rarityBoost: 1 },
+  },
+
+  // Navigation rule benders
+  PHASE_WALK: {
+    name: "Phase Walk",
+    description: "Can skip any room without entering",
+    scope: "navigation",
+    effect: { skipRooms: true },
+  },
+  FORESIGHT: {
+    name: "Foresight",
+    description: "See all paths clearly (no unknown paths)",
+    scope: "navigation",
+    effect: { revealPaths: true },
+  },
+  BACKTRACK: {
+    name: "Backtrack",
+    description: "Can return to previous rooms",
+    scope: "navigation",
+    effect: { enableBacktrack: true },
+  },
+
+  // Entity rule benders
+  DOMINATION: {
+    name: "Domination",
+    description: "Can attempt to recruit any enemy",
+    scope: "entity",
+    effect: { anyEnemyRecruitable: true },
+  },
+  SHAPESHIFTER: {
+    name: "Shapeshifter",
+    description: "Can transform into defeated enemies",
+    scope: "entity",
+    effect: { copyEnemy: true },
+  },
+  NECROMANCY: {
+    name: "Necromancy",
+    description: "Killed enemies rise as allies",
+    scope: "entity",
+    effect: { raiseUndead: true },
+  },
+
+  // Ultimate rule breakers (legendary/curse level)
+  INVINCIBILITY: {
+    name: "Invincibility",
+    description: "Cannot take damage (but can't deal damage either)",
+    scope: "ultimate",
+    effect: { immune: true, cantAttack: true },
+  },
+  TIME_LOOP: {
+    name: "Time Loop",
+    description: "On death, restart floor with full knowledge",
+    scope: "ultimate",
+    effect: { deathRewind: true },
+  },
+  REALITY_WARP: {
+    name: "Reality Warp",
+    description: "Once per floor, reroll current room entirely",
+    scope: "ultimate",
+    effect: { rerollRoom: true, usesPerFloor: 1 },
+  },
+  WISH: {
+    name: "Wish",
+    description: "Grant one request within power limits",
+    scope: "ultimate",
+    effect: { grantWish: true },
+  },
+} as const;
+
+export type RuleModifierKey = keyof typeof RULE_MODIFIERS;
+export type RuleModifierScope = "combat" | "resource" | "loot" | "navigation" | "entity" | "ultimate";
+
+/**
+ * Active Rule Modifier on an entity
+ */
+export interface ActiveRuleModifier {
+  key: RuleModifierKey;
+  source: string;              // What granted this modifier
+  sourceType: "item" | "shrine" | "curse" | "boss" | "event" | "spell" | "companion";
+  duration: number | "permanent" | "floor" | "dungeon" | "combat";
+  usesRemaining?: number;      // For limited-use modifiers
+  conditions?: string;         // Activation conditions
+  narrativeHook?: string;
+}
+
+/**
+ * DM Operations - High-level narrative operations the AI DM can invoke
+ * These go beyond simple effects to full game state transformations
+ */
+export const DM_OPERATIONS = [
+  // Entity transformations
+  "transform_entity",          // Change entity type (uses matrix)
+  "merge_entities",            // Combine two entities into one
+  "split_entity",              // Split one entity into multiple
+  "swap_entities",             // Exchange two entities' positions/states
+
+  // Entity links
+  "create_link",               // Establish link between entities
+  "break_link",                // Destroy an existing link
+  "transfer_link",             // Move link from one entity to another
+
+  // Rule modifications
+  "grant_rule_modifier",       // Give entity a rule modifier
+  "revoke_rule_modifier",      // Remove a rule modifier
+  "swap_rules",                // Exchange rules between entities
+
+  // Spawn operations
+  "spawn_entity",              // Create new entity in room
+  "spawn_wave",                // Create multiple related entities
+  "spawn_boss_adds",           // Boss creates minions
+  "summon_reinforcements",     // Call in backup entities
+
+  // Remove operations
+  "banish_entity",             // Remove entity entirely
+  "absorb_entity",             // One entity absorbs another
+  "disintegrate_entity",       // Destroy with no remains
+
+  // State operations
+  "possess_entity",            // Control an entity
+  "resurrect_entity",          // Bring back dead entity
+  "evolve_entity",             // Trigger evolution
+  "corrupt_entity",            // Apply corruption transformation
+  "purify_entity",             // Remove corruption/curses
+
+  // Area operations
+  "change_environment",        // Alter room hazards/effects
+  "lock_area",                 // Prevent escape
+  "unlock_area",               // Allow passage
+  "reset_room",                // Restore room to initial state
+
+  // Time operations (advanced)
+  "freeze_time",               // Pause turn order
+  "rewind_turn",               // Undo last turn
+  "accelerate_effects",        // Speed up all durations
+
+  // Narrative operations
+  "trigger_flashback",         // Show past event
+  "foreshadow_event",          // Hint at future
+  "reveal_secret",             // Expose hidden information
+  "create_dilemma",            // Force meaningful choice
+] as const;
+
+export type DMOperation = (typeof DM_OPERATIONS)[number];
+
+/**
+ * DM Operation Request structure
+ * What the AI sends when invoking an operation
+ */
+export interface DMOperationRequest {
+  operation: DMOperation;
+  source: string;              // What triggered this (event, spell, etc.)
+  targets: string[];           // Entity IDs affected
+  parameters: Record<string, unknown>; // Operation-specific params
+  narrative: string;           // Story justification
+  constraints?: {
+    powerLevel?: number;       // 1-10 power of effect
+    duration?: number | string;// How long it lasts
+    reversible?: boolean;      // Can it be undone?
+  };
+}
+
+/**
+ * Validate entity transformation
+ */
+export function isValidTransformation(
+  sourceType: string,
+  targetType: string
+): boolean {
+  const matrix = ENTITY_TRANSFORMATION_MATRIX[sourceType as TransformableEntityType];
+  if (!matrix) return false;
+  return (matrix as readonly string[]).includes(targetType);
+}
+
+/**
+ * Get valid transformation targets for an entity type
+ */
+export function getValidTransformationTargets(
+  sourceType: string
+): readonly string[] {
+  return ENTITY_TRANSFORMATION_MATRIX[sourceType as TransformableEntityType] ?? [];
+}
+
+/**
+ * Validate link type for given entities
+ */
+export function isValidLinkForEntities(
+  linkType: EntityLinkType,
+  sourceType: string,
+  targetType: string
+): boolean {
+  // Some links are type-restricted
+  const linkRestrictions: Record<string, { source?: string[]; target?: string[] }> = {
+    phylactery: { source: ["enemy", "boss", "npc"], target: ["item"] },
+    soul_bound: { source: ["companion"], target: ["player", "companion"] },
+    master_servant: { source: ["player", "boss"], target: ["companion", "enemy"] },
+    bound_to_wielder: { source: ["item"], target: ["player", "companion"] },
+  };
+
+  const restriction = linkRestrictions[linkType];
+  if (!restriction) return true; // No restrictions
+
+  if (restriction.source && !restriction.source.includes(sourceType)) return false;
+  if (restriction.target && !restriction.target.includes(targetType)) return false;
+
+  return true;
+}
+
+/**
+ * Generate comprehensive DM capabilities prompt
+ */
+export function generateDMCapabilitiesPrompt(): string {
+  const transformations = Object.entries(ENTITY_TRANSFORMATION_MATRIX)
+    .map(([source, targets]) => `${source} → ${(targets as readonly string[]).join(", ")}`)
+    .join("\n");
+
+  const linkTypes = ENTITY_LINK_TYPES.slice(0, 10).join(", ") + "...";
+
+  const modifiers = Object.entries(RULE_MODIFIERS)
+    .slice(0, 8)
+    .map(([key, mod]) => `${mod.name}: ${mod.description}`)
+    .join("\n");
+
+  const operations = DM_OPERATIONS.slice(0, 15).join(", ") + "...";
+
+  return `DUNGEON MASTER CAPABILITIES:
+
+You have creative freedom within these bounds - like TCG cards that bend rules.
+
+=== ENTITY TRANSFORMATIONS ===
+You can transform entities following these paths:
+${transformations}
+
+=== ENTITY LINKS ===
+Create mechanical bonds between entities:
+${linkTypes}
+Links can trigger on death, share damage/stats, grant control, etc.
+
+=== RULE MODIFIERS ===
+Grant TCG-style abilities that bend normal rules:
+${modifiers}
+...and more. Use sparingly for dramatic moments.
+
+=== DM OPERATIONS ===
+High-level operations: ${operations}
+
+=== CREATIVE FREEDOM ===
+✓ Any valid transformation in the matrix
+✓ Create links between any entities
+✓ Grant rule modifiers as rewards/curses
+✓ Chain operations for complex events
+✓ Combine effects in new ways
+✓ Create unique named variants
+
+=== CONSTRAINTS ===
+✗ Cannot bypass the transformation matrix
+✗ Cannot grant permanent ultimate modifiers without major cost
+✗ Links must have logical narrative basis
+✗ Power level must match context (shrine ≠ random chest)
+✗ Always preserve game balance - powerful effects need drawbacks
+
+Be creative like a TCG designer - interesting effects that feel unique but fair.`;
+}
+
+/**
+ * Entity Mutation System
+ * Apply overlays/modifications to existing entities without full transformation
+ */
+export const ENTITY_MUTATIONS = [
+  // Visual/thematic mutations
+  "spectral",         // Ghost-like, can phase
+  "corrupted",        // Dark energy, unstable
+  "blessed",          // Divine light, radiant
+  "ancient",          // Old, powerful, wise
+  "primal",           // Wild, untamed, fierce
+  "mechanical",       // Construct aspects
+  "elemental",        // Infused with element
+  "void_touched",     // Reality-warping
+
+  // Stat mutations
+  "giant",            // Larger, more HP/damage
+  "tiny",             // Smaller, harder to hit
+  "swift",            // Faster, more actions
+  "armored",          // Higher defense
+  "berserk",          // More damage, less control
+  "cunning",          // Smarter AI patterns
+
+  // Ability mutations
+  "spellcasting",     // Gains magic abilities
+  "regenerating",     // Heals over time
+  "draining",         // Steals resources
+  "explosive",        // Death triggers explosion
+  "summoning",        // Can call allies
+  "mimicking",        // Copies player abilities
+
+  // Meta mutations
+  "legendary",        // Guaranteed rare+ loot
+  "quest_tied",       // Connected to story
+  "immortal",         // Returns after death
+  "evolving",         // Gets stronger over time
+] as const;
+
+export type EntityMutation = (typeof ENTITY_MUTATIONS)[number];
+
+/**
+ * Mutation definition with effects
+ */
+export const MUTATION_EFFECTS: Record<EntityMutation, {
+  statMods: Partial<Record<string, number>>;
+  abilities?: string[];
+  flags?: string[];
+  description: string;
+}> = {
+  spectral: { statMods: { defense: -5 }, flags: ["phase", "magic_only"], description: "Ethereal and hard to hit physically" },
+  corrupted: { statMods: { attack: 3 }, flags: ["unstable"], description: "Dark energy grants power but causes chaos" },
+  blessed: { statMods: { defense: 3 }, flags: ["radiant"], description: "Divine protection shields the bearer" },
+  ancient: { statMods: { attack: 2, defense: 2 }, abilities: ["wisdom"], description: "Centuries of experience" },
+  primal: { statMods: { attack: 5, defense: -2 }, flags: ["wild"], description: "Untamed fury" },
+  mechanical: { statMods: { defense: 5 }, flags: ["construct", "no_heal"], description: "Built, not born" },
+  elemental: { statMods: {}, flags: ["elemental_affinity"], description: "One with an element" },
+  void_touched: { statMods: { attack: 4 }, flags: ["reality_warp"], description: "Reality bends around them" },
+  giant: { statMods: { maxHealth: 20, attack: 5, defense: 2 }, description: "Massive and powerful" },
+  tiny: { statMods: { maxHealth: -10, defense: -3 }, flags: ["hard_to_hit"], description: "Small and elusive" },
+  swift: { statMods: {}, abilities: ["extra_action"], description: "Blindingly fast" },
+  armored: { statMods: { defense: 8, attack: -2 }, description: "Heavy protection at cost of offense" },
+  berserk: { statMods: { attack: 8, defense: -4 }, flags: ["uncontrollable"], description: "Rage beyond reason" },
+  cunning: { statMods: {}, flags: ["smart_ai"], description: "Tactical and clever" },
+  spellcasting: { statMods: {}, abilities: ["cast_spell"], description: "Wields magic" },
+  regenerating: { statMods: { healthRegen: 5 }, description: "Wounds close rapidly" },
+  draining: { statMods: {}, abilities: ["life_drain", "mana_drain"], description: "Feeds on life force" },
+  explosive: { statMods: {}, flags: ["explodes_on_death"], description: "Goes out with a bang" },
+  summoning: { statMods: {}, abilities: ["summon_minion"], description: "Calls allies to battle" },
+  mimicking: { statMods: {}, abilities: ["copy_ability"], description: "Learns from opponents" },
+  legendary: { statMods: {}, flags: ["guaranteed_loot"], description: "Carries treasures" },
+  quest_tied: { statMods: {}, flags: ["story_entity"], description: "Part of a greater tale" },
+  immortal: { statMods: {}, flags: ["will_return"], description: "Death is temporary" },
+  evolving: { statMods: {}, flags: ["grows_stronger"], description: "Adapts and grows" },
+};
+
+/**
+ * Entity Composition - combining multiple entities
+ */
+export interface EntityComposition {
+  baseEntity: string;          // Primary entity ID
+  mergedEntities: string[];    // Entity IDs merged into base
+  resultType: string;          // What type the composite is
+  inheritedTraits: {
+    abilities: string[];       // Abilities from merged entities
+    statBonuses: Record<string, number>;
+    mutations: EntityMutation[];
+    flags: string[];
+  };
+  narrative: string;           // Story of the merger
+  unstable?: boolean;          // Composite may split
+  splitCondition?: string;     // When it splits back
+}
+
+/**
+ * Check if entities can be merged
+ */
+export function canMergeEntities(
+  entity1Type: string,
+  entity2Type: string
+): boolean {
+  // Same types can always merge (two goblins = goblin chief)
+  if (entity1Type === entity2Type) return true;
+
+  // Compatible merges
+  const compatibleMerges: Record<string, string[]> = {
+    enemy: ["enemy", "companion", "item"],       // Absorb for power
+    companion: ["companion", "item"],            // Fuse with gear
+    item: ["item"],                              // Craft/combine
+    environmental: ["environmental"],            // Merge hazards
+  };
+
+  const compatible = compatibleMerges[entity1Type];
+  return compatible?.includes(entity2Type) ?? false;
+}
+
+// =============================================================================
 // TYPE EXPORTS FOR NEW CONSTANTS
 // =============================================================================
 

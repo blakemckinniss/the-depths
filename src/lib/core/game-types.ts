@@ -487,17 +487,57 @@ export interface PlayerStats {
   intelligence: number
   dexterity: number
   critChance: number
+  critDamage: number
   dodgeChance: number
+  luck: number
+  speed: number
+  vampirism: number
+  thorns: number
+  blockChance: number
+  magicFind: number
+  expBonus: number
+  healthRegen: number
+  resourceRegen: number
+}
+
+export type EquipmentSlot =
+  | "mainHand"
+  | "offHand"
+  | "head"
+  | "chest"
+  | "legs"
+  | "feet"
+  | "hands"
+  | "ring1"
+  | "ring2"
+  | "amulet"
+  | "cloak"
+  | "belt"
+
+export interface PlayerEquipment {
+  // Primary slots (canonical names)
+  mainHand: Item | null
+  offHand: Item | null
+  head: Item | null
+  chest: Item | null
+  legs: Item | null
+  feet: Item | null
+  hands: Item | null
+  ring1: Item | null
+  ring2: Item | null
+  amulet: Item | null
+  cloak: Item | null
+  belt: Item | null
+  // Legacy aliases for backwards compatibility
+  weapon: Item | null  // Alias for mainHand (used by older components)
+  armor: Item | null   // Alias for chest (used by older components)
 }
 
 export interface Player extends GameEntity {
   entityType: "player"
   stats: PlayerStats
   inventory: Item[]
-  equipment: {
-    weapon: Item | null
-    armor: Item | null
-  }
+  equipment: PlayerEquipment
   keys: DungeonKey[]
   activeEffects: StatusEffect[]
   party: PartyState // replaced single companion with party system
@@ -532,10 +572,10 @@ export interface Spell extends GameEntity {
   resourceType: ResourceType
   healthCost?: number
   cooldown: number
-  damage?: { base: number; scaling?: { stat: string; ratio: number }; type: DamageType }
-  healing?: { base: number; scaling?: { stat: string; ratio: number } }
+  damage?: { base: number; scaling?: { stat: "attack" | "intelligence" | "level"; ratio: number }; type: DamageType }
+  healing?: { base: number; scaling?: { stat: "intelligence" | "level" | "maxHealth"; ratio: number } }
   appliesEffects?: StatusEffect[]
-  utilityEffect?: { type: string; value?: number; duration?: number }
+  utilityEffect?: { type: SpellUtilityType; value?: number; duration?: number }
   levelRequired: number
   source?: SpellSource
   powerLevel: number
@@ -550,6 +590,7 @@ export type SpellUsageContext = "combat_only" | "exploration" | "anytime" | "tar
 export type SpellEffectType = "damage" | "heal" | "buff" | "debuff" | "summon" | "utility" | "transmute" | "control" | "ward"
 export type SpellTargetType = "self" | "enemy" | "ally" | "all_enemies" | "all_allies" | "item" | "npc" | "environment" | "location"
 export type SpellSource = "tome" | "scroll_study" | "shrine" | "npc" | "event" | "discovery" | "quest" | "innate" | "curse" | "artifact"
+export type SpellUtilityType = "light" | "reveal_traps" | "reveal_secrets" | "teleport" | "unlock" | "identify" | "transmute_gold" | "transmute_item" | "charm" | "dominate" | "fear" | "ward_area" | "summon_companion" | "banish" | "dispel" | "scry" | "restore_item"
 
 // Re-export for convenience (actual type is in sustained-ability-system.ts)
 import type { SustainedAbility } from "@/lib/character/sustained-ability-system"

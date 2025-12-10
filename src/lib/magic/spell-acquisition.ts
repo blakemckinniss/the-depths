@@ -42,11 +42,19 @@ export interface TomeProps {
 }
 
 /**
+ * Check if an item is a scroll (any scroll subtype)
+ */
+function isScrollItem(item: Item): boolean {
+  const subtype = item.subtype
+  return typeof subtype === "string" && subtype.startsWith("scroll_")
+}
+
+/**
  * Check if an item can teach a spell
  */
 export function canTeachSpell(item: Item): boolean {
   // Check item category (tome or consumable scroll)
-  if (item.category !== "tome" && item.subtype !== "scroll") {
+  if (item.category !== "tome" && !isScrollItem(item)) {
     return false
   }
 
@@ -124,13 +132,13 @@ export function learnSpellFromItem(
   }
 
   // Determine source type
-  const source: SpellSource = item.subtype === "scroll" ? "scroll_study" : "tome"
+  const source: SpellSource = isScrollItem(item) ? "scroll_study" : "tome"
 
   // Learn the spell
   const result = learnSpell(player, spell, spellBook, source, item.id)
 
-  // Determine if item is consumed
-  const consumeItem = tomeProps?.isConsumed ?? item.subtype === "scroll"
+  // Determine if item is consumed (scrolls are consumed by default)
+  const consumeItem = tomeProps?.isConsumed ?? isScrollItem(item)
 
   return {
     ...result,
@@ -613,7 +621,7 @@ export function createSpellTome(
     entityType: "item",
     type: "misc", // Legacy type field
     category: "tome",
-    subtype: `spellbook_${spell.school}` as const,
+    subtype: "skill_book_magic", // Spell-teaching tome
     rarity,
     description: `A tome teaching the ${spell.school} spell "${spell.name}". ${spell.description}`,
     value: rarityValues[rarity],
@@ -625,6 +633,24 @@ export function createSpellTome(
       levelRequired: spell.levelRequired,
     },
   } as Item
+}
+
+/**
+ * Map spell effect type to scroll subtype
+ */
+function getScrollSubtype(spell: Spell): "scroll_damage" | "scroll_buff" | "scroll_utility" | "scroll_summon" {
+  switch (spell.effectType) {
+    case "damage":
+      return "scroll_damage"
+    case "buff":
+    case "heal":
+    case "ward":
+      return "scroll_buff"
+    case "summon":
+      return "scroll_summon"
+    default:
+      return "scroll_utility"
+  }
 }
 
 /**
@@ -640,7 +666,7 @@ export function createSpellScroll(spellId: string): Item | null {
     entityType: "item",
     type: "misc", // Legacy type field
     category: "consumable",
-    subtype: "scroll",
+    subtype: getScrollSubtype(spell),
     rarity: spell.rarity,
     description: `A scroll containing the spell "${spell.name}". Study it to permanently learn the spell.`,
     value: (spell.powerLevel ?? 3) * 15,

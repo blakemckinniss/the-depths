@@ -7,9 +7,28 @@ import type {
   GameState,
   Player,
   LogEntry,
+  Enemy,
+  Companion,
+  StatusEffect,
 } from "@/lib/core/game-types"
 import { generateEntityId } from "@/lib/entity/entity-system"
 import type React from "react"
+import {
+  type DMOperation,
+  type DMOperationRequest,
+  type EntityLink,
+  type EntityLinkType,
+  type ActiveRuleModifier,
+  type RuleModifierKey,
+  type EntityMutation,
+  type EntityComposition,
+  ENTITY_TRANSFORMATION_MATRIX,
+  RULE_MODIFIERS,
+  MUTATION_EFFECTS,
+  isValidTransformation,
+  isValidLinkForEntities,
+  canMergeEntities,
+} from "@/lib/mechanics/game-mechanics-ledger"
 
 // Event context that AI uses to generate content
 export interface EventContext {
