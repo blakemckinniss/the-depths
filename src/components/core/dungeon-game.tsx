@@ -75,6 +75,7 @@ import {
   getAvailableInteractions,
 } from "@/lib/world/environmental-system";
 import { executeItemUse } from "@/lib/items/item-execution";
+import { calculateForesight } from "@/lib/mechanics/foresight-system";
 import {
   EntityText,
   EnemyText,
@@ -2175,6 +2176,16 @@ export function DungeonGame() {
     );
     if (activeEntities.length === 0) return null;
 
+    // Risk border classes for foresight
+    const getRiskBorder = (riskLevel: "safe" | "risky" | "dangerous" | undefined) => {
+      switch (riskLevel) {
+        case "safe": return "border-l-2 border-l-green-500/60";
+        case "risky": return "border-l-2 border-l-yellow-500/60";
+        case "dangerous": return "border-l-2 border-l-red-500/60";
+        default: return "";
+      }
+    };
+
     return (
       <div className="mt-2 space-y-1">
         <span className="text-xs text-muted-foreground uppercase tracking-wider">
@@ -2186,13 +2197,28 @@ export function DungeonGame() {
               entity,
               gameState.player,
             );
-            const hasAvailable = interactions.some((i) => i.available);
+            const available = interactions.find((i) => i.available);
+            const hasAvailable = !!available;
+
+            // Calculate foresight for the available interaction
+            const foresight = available
+              ? calculateForesight(
+                  gameState.player,
+                  "environmental_interaction",
+                  available.interaction.action,
+                  entity.interactionTags || [],
+                )
+              : null;
+
+            // Build tooltip with foresight info
+            const baseTooltip = entity.description || entity.name;
+            const foresightHint = foresight?.outcomeHint;
+            const tooltip = foresightHint ? `${baseTooltip}\n\n${foresightHint}` : baseTooltip;
 
             return (
               <button
                 key={entity.id}
                 onClick={() => {
-                  const available = interactions.find((i) => i.available);
                   if (available) {
                     handleEnvironmentalInteraction(
                       entity.id,
@@ -2208,12 +2234,22 @@ export function DungeonGame() {
                       ? "bg-secondary/30 hover:bg-secondary/50 text-foreground"
                       : "bg-secondary/10 text-muted-foreground cursor-not-allowed"
                   }
+                  ${foresight?.riskLevel ? getRiskBorder(foresight.riskLevel) : ""}
                 `}
-                title={entity.description || entity.name}
+                title={tooltip}
               >
                 <EntityText type="item" noAnimation>
                   {entity.name}
                 </EntityText>
+                {/* Foresight eye indicator */}
+                {foresight && foresight.level !== "hidden" && (
+                  <span className={`ml-1 inline-block w-2 h-2 rounded-full ${
+                    foresight.level === "full" ? "bg-emerald-400" :
+                    foresight.level === "partial" ? "bg-purple-400" :
+                    foresight.level === "type" ? "bg-blue-400" :
+                    "bg-yellow-400"
+                  }`} />
+                )}
               </button>
             );
           })}

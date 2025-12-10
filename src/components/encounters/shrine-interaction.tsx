@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
 import type { Shrine, Player } from "@/lib/core/game-types"
 import { EntityText } from "@/components/narrative/entity-text"
 import { cn } from "@/lib/core/utils"
+import { calculateForesight } from "@/lib/mechanics/foresight-system"
 
 interface ShrineInteractionProps {
   shrine: Shrine
@@ -11,33 +11,72 @@ interface ShrineInteractionProps {
   onInteract: (choice: "accept" | "decline" | "desecrate" | "seek_blessing") => void
   isProcessing?: boolean
   aiDescription?: string
-  onCreativeEvent?: () => void // Trigger DM creative event
+  onCreativeEvent?: () => void
 }
 
 export function ShrineInteraction({ shrine, player, onInteract, isProcessing, aiDescription, onCreativeEvent }: ShrineInteractionProps) {
   const canAffordGold = !shrine.cost?.gold || player.stats.gold >= shrine.cost.gold
   const canAffordHealth = !shrine.cost?.health || player.stats.health > shrine.cost.health
-  // Show creative option for unknown or dark shrines (mysterious enough for communion)
   const showCreativeOption = shrine.shrineType === "unknown" || shrine.shrineType === "dark"
+
+  // Calculate foresight for shrine encounter
+  const foresight = calculateForesight(
+    player,
+    "shrine_choice",
+    "interact",
+    ["shrine", shrine.shrineType, "magical"]
+  )
+
+  // Determine what to show based on foresight
+  const showRiskLevel = foresight.level !== "hidden"
+  const showOutcomeHint = foresight.level === "partial" || foresight.level === "full"
 
   return (
     <div className="my-4 pl-4 py-3 border-l-2 border-l-violet-500/50 space-y-3">
       <div className="flex items-center gap-2">
         <EntityText type="shrine">{shrine.name}</EntityText>
-        <span
-          className={cn(
-            "text-xs px-1.5 py-0.5 rounded",
-            shrine.riskLevel === "safe" && "bg-green-500/20 text-green-400",
-            shrine.riskLevel === "moderate" && "bg-yellow-500/20 text-yellow-400",
-            shrine.riskLevel === "dangerous" && "bg-orange-500/20 text-orange-400",
-            shrine.riskLevel === "deadly" && "bg-red-500/20 text-red-400",
-          )}
-        >
-          {shrine.riskLevel}
-        </span>
+        {showRiskLevel ? (
+          <span
+            className={cn(
+              "text-xs px-1.5 py-0.5 rounded",
+              shrine.riskLevel === "safe" && "bg-green-500/20 text-green-400",
+              shrine.riskLevel === "moderate" && "bg-yellow-500/20 text-yellow-400",
+              shrine.riskLevel === "dangerous" && "bg-orange-500/20 text-orange-400",
+              shrine.riskLevel === "deadly" && "bg-red-500/20 text-red-400",
+            )}
+          >
+            {shrine.riskLevel}
+          </span>
+        ) : (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-stone-800/50 text-stone-500">
+            ???
+          </span>
+        )}
+        {/* Foresight source indicator */}
+        {foresight.level !== "hidden" && foresight.source && (
+          <span className={`text-xs px-1.5 py-0.5 rounded inline-flex items-center gap-1 ${
+            foresight.level === "full" ? "bg-emerald-900/30 text-emerald-400" :
+            foresight.level === "partial" ? "bg-purple-900/30 text-purple-400" :
+            "bg-yellow-900/30 text-yellow-400"
+          }`}>
+            <span className="w-1 h-1 rounded-full bg-current" />
+            {foresight.source === "racial" ? "Keen Senses" :
+             foresight.source === "ability" ? "Divine Insight" :
+             foresight.source === "effect" ? "Foresight" :
+             foresight.source === "item" ? "Item" :
+             "Arcana"}
+          </span>
+        )}
       </div>
 
       <p className="text-sm text-muted-foreground">{aiDescription || shrine.description}</p>
+
+      {/* Foresight outcome hint */}
+      {showOutcomeHint && foresight.outcomeHint && (
+        <p className="text-xs text-purple-400/80 italic">
+          {foresight.outcomeHint}
+        </p>
+      )}
 
       {shrine.cost && (
         <div className="text-sm">
