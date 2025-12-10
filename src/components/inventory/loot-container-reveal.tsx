@@ -16,7 +16,7 @@ import {
 
 interface LootContainerRevealProps {
   container: LootContainer
-  onComplete: (items: Item[], curseTriggered?: boolean, curseEffect?: string) => void
+  onComplete: (items: Item[], goldAmount: number, curseTriggered?: boolean, curseEffect?: string) => void
   onCancel: () => void
 }
 
@@ -67,7 +67,7 @@ export function LootContainerReveal({ container, onComplete, onCancel }: LootCon
   const handleCollect = () => {
     if (openResult) {
       const items = containerLootToItems(openResult.contents)
-      onComplete(items, openResult.curseTriggered, openResult.curseEffect)
+      onComplete(items, openResult.goldAmount || 0, openResult.curseTriggered, openResult.curseEffect)
     }
   }
 
@@ -246,8 +246,9 @@ export function LootContainerReveal({ container, onComplete, onCancel }: LootCon
                     <span className="text-lg">
                       {item.type === "weapon" ? "⚔" :
                        item.type === "armor" ? "🛡" :
-                       item.type === "gold" ? "💰" :
-                       item.type === "gem" ? "💎" :
+                       item.type === "trinket" ? "💍" :
+                       item.type === "consumable" ? "🧪" :
+                       item.type === "material" ? "💎" :
                        item.type === "artifact" ? "✨" :
                        item.type === "cursed" ? "💀" : "◆"}
                     </span>
@@ -257,7 +258,6 @@ export function LootContainerReveal({ container, onComplete, onCancel }: LootCon
                       </EntityText>
                       <div className="text-xs text-muted-foreground">{item.description}</div>
                     </div>
-                    <div className="text-xs text-entity-gold">{item.value}g</div>
                   </div>
                 )}
               </div>

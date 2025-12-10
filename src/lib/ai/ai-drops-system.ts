@@ -662,19 +662,95 @@ export interface ContainerExamineResult {
   anticipationText: string
 }
 
-export interface ContainerLootItem {
+// =============================================================================
+// TCG-STYLE LOOT ITEM TYPES (matches loot-container API schema)
+// =============================================================================
+
+// Base fields all loot items share
+interface BaseLootItem {
   name: string
-  type: "weapon" | "armor" | "trinket" | "consumable" | "material" | "gold" | "gem" | "artifact" | "cursed"
   rarity: LootContainerRarity
   description: string
-  value: number
-  effect?: string
+  lore?: string
   isJackpot?: boolean
 }
+
+// Weapon - REQUIRES attack stat
+export interface WeaponLootItem extends BaseLootItem {
+  type: "weapon"
+  attack: number
+  damageType?: "physical" | "fire" | "ice" | "lightning" | "shadow" | "holy" | "poison" | "arcane"
+}
+
+// Armor - REQUIRES defense stat
+export interface ArmorLootItem extends BaseLootItem {
+  type: "armor"
+  defense: number
+  slot?: "head" | "body" | "hands" | "feet" | "shield"
+}
+
+// Accessory (trinket) - REQUIRES stat modifier
+export interface AccessoryLootItem extends BaseLootItem {
+  type: "trinket"
+  modifiers: {
+    attack?: number
+    defense?: number
+    maxHealth?: number
+  }
+}
+
+// Consumable - REQUIRES effect
+export interface ConsumableLootItem extends BaseLootItem {
+  type: "consumable"
+  healing?: number
+  statusEffect?: {
+    name: string
+    effectType: "buff" | "debuff"
+    duration: number
+  }
+}
+
+// Material - crafting component
+export interface MaterialLootItem extends BaseLootItem {
+  type: "material"
+  materialType: string
+}
+
+// Artifact - special items
+export interface ArtifactLootItem extends BaseLootItem {
+  type: "artifact"
+  power: string
+  attack?: number
+  defense?: number
+  modifiers?: {
+    attack?: number
+    defense?: number
+    maxHealth?: number
+  }
+}
+
+// Cursed items
+export interface CursedLootItem extends BaseLootItem {
+  type: "cursed"
+  curse: string
+  attack?: number
+  defense?: number
+}
+
+// Union of all loot types
+export type ContainerLootItem =
+  | WeaponLootItem
+  | ArmorLootItem
+  | AccessoryLootItem
+  | ConsumableLootItem
+  | MaterialLootItem
+  | ArtifactLootItem
+  | CursedLootItem
 
 export interface ContainerOpenResult {
   openingNarrative: string
   revealMoment: string
+  goldAmount: number // Gold is separate - NOT an item
   contents: ContainerLootItem[]
   jackpotMoment?: string
   curseTriggered?: boolean
@@ -756,27 +832,124 @@ export async function openContainer(
 }
 
 /**
- * Convert container loot to game Items
+ * Convert AI loot items to game Items with proper mechanical stats.
+ * Uses TCG-style type checking to ensure all items have required mechanics.
  */
 export function containerLootToItems(loot: ContainerLootItem[]): Item[] {
   const timestamp = Date.now()
-  return loot.map((item, index) => ({
-    id: `loot_${timestamp}_${index}_${Math.random().toString(36).substr(2, 6)}`,
-    name: item.name,
-    entityType: item.type === "weapon" ? "weapon" as const :
-                item.type === "armor" ? "armor" as const : "item" as const,
-    type: item.type === "weapon" ? "weapon" as const :
-          item.type === "armor" ? "armor" as const :
-          item.type === "consumable" ? "potion" as const : "misc" as const,
-    rarity: item.rarity === "epic" ? "legendary" as const : item.rarity as ItemRarity,
-    description: item.description,
-    value: item.value,
-    category: item.type as Item["category"],
-    aiGenerated: true,
-    useText: item.effect,
-    // Mark jackpot items
-    lore: item.isJackpot ? "A truly exceptional find!" : undefined,
-  }))
+
+  return loot.map((item, index) => {
+    const baseItem: Partial<Item> = {
+      id: `loot_${timestamp}_${index}_${Math.random().toString(36).substr(2, 6)}`,
+      name: item.name,
+      rarity: item.rarity === "epic" ? "legendary" as const : item.rarity as ItemRarity,
+      description: item.description,
+      category: item.type as Item["category"],
+      aiGenerated: true,
+      lore: item.lore || (item.isJackpot ? "A truly exceptional find!" : undefined),
+    }
+
+    // Apply type-specific mechanics (TCG card rules)
+    switch (item.type) {
+      case "weapon": {
+        const weapon = item as WeaponLootItem
+        return {
+          ...baseItem,
+          entityType: "weapon" as const,
+          type: "weapon" as const,
+          stats: { attack: weapon.attack },
+          damageType: weapon.damageType || "physical",
+          value: weapon.attack * 10, // Value based on attack
+        } as Item
+      }
+
+      case "armor": {
+        const armor = item as ArmorLootItem
+        return {
+          ...baseItem,
+          entityType: "armor" as const,
+          type: "armor" as const,
+          stats: { defense: armor.defense },
+          subtype: armor.slot || "body",
+          value: armor.defense * 12,
+        } as Item
+      }
+
+      case "trinket": {
+        const trinket = item as AccessoryLootItem
+        return {
+          ...baseItem,
+          entityType: "item" as const,
+          type: "misc" as const,
+          stats: {
+            attack: trinket.modifiers.attack,
+            defense: trinket.modifiers.defense,
+            health: trinket.modifiers.maxHealth,
+          },
+          value: ((trinket.modifiers.attack || 0) + (trinket.modifiers.defense || 0) + (trinket.modifiers.maxHealth || 0)) * 8,
+        } as Item
+      }
+
+      case "consumable": {
+        const consumable = item as ConsumableLootItem
+        return {
+          ...baseItem,
+          entityType: "potion" as const,
+          type: "potion" as const,
+          stats: consumable.healing ? { health: consumable.healing } : undefined,
+          effects: consumable.statusEffect ? [{
+            name: consumable.statusEffect.name,
+            effectType: consumable.statusEffect.effectType,
+            duration: consumable.statusEffect.duration,
+            source: "consumable",
+            modifiers: {},
+          }] : undefined,
+          value: consumable.healing ? consumable.healing * 2 : 25,
+        } as Item
+      }
+
+      case "artifact": {
+        const artifact = item as ArtifactLootItem
+        return {
+          ...baseItem,
+          entityType: artifact.attack ? "weapon" as const : "item" as const,
+          type: artifact.attack ? "weapon" as const : "misc" as const,
+          stats: {
+            attack: artifact.attack,
+            defense: artifact.defense,
+            health: artifact.modifiers?.maxHealth,
+          },
+          useText: artifact.power,
+          value: 200, // Artifacts are valuable
+        } as Item
+      }
+
+      case "cursed": {
+        const cursed = item as CursedLootItem
+        return {
+          ...baseItem,
+          entityType: cursed.attack ? "weapon" as const : "item" as const,
+          type: cursed.attack ? "weapon" as const : "misc" as const,
+          stats: {
+            attack: cursed.attack,
+            defense: cursed.defense,
+          },
+          useText: `CURSED: ${cursed.curse}`,
+          value: 1, // Cursed items have low sell value
+        } as Item
+      }
+
+      case "material":
+      default: {
+        return {
+          ...baseItem,
+          entityType: "item" as const,
+          type: "misc" as const,
+          value: 15,
+        } as Item
+      }
+    }
+  })
 }
 
 /**

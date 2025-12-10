@@ -834,22 +834,27 @@ export function useEncounters({
   );
 
   const handleLootContainerComplete = useCallback(
-    (items: Item[], curseTriggered?: boolean, curseEffect?: string) => {
-      const goldFound = items.reduce((sum, item) => sum + (item.value || 0), 0);
+    (items: Item[], goldAmount: number, curseTriggered?: boolean, curseEffect?: string) => {
+      // Gold now comes directly from container, not from item values
+      const totalGold = goldAmount;
 
       addLog(
         <span>
-          Collected {items.length} item{items.length !== 1 ? "s" : ""}:{" "}
-          {items.map((item, i) => (
-            <span key={item.id}>
-              {i > 0 && ", "}
-              <ItemText item={item} />
-            </span>
-          ))}
-          {goldFound > 0 && (
+          {totalGold > 0 && (
             <>
-              {" "}
-              worth <EntityText type="gold">{goldFound} gold</EntityText>
+              Found <EntityText type="gold">{totalGold} gold</EntityText>
+              {items.length > 0 && " and "}
+            </>
+          )}
+          {items.length > 0 && (
+            <>
+              {items.length} item{items.length !== 1 ? "s" : ""}:{" "}
+              {items.map((item, i) => (
+                <span key={item.id}>
+                  {i > 0 && ", "}
+                  <ItemText item={item} />
+                </span>
+              ))}
             </>
           )}
         </span>,
@@ -871,11 +876,13 @@ export function useEncounters({
       for (const item of items) {
         dispatch({ type: "ADD_ITEM", payload: item });
       }
-      dispatch({ type: "MODIFY_PLAYER_GOLD", payload: goldFound });
+      if (totalGold > 0) {
+        dispatch({ type: "MODIFY_PLAYER_GOLD", payload: totalGold });
+      }
       dispatch({
         type: "UPDATE_RUN_STATS",
         payload: {
-          goldEarned: state.runStats.goldEarned + goldFound,
+          goldEarned: state.runStats.goldEarned + totalGold,
           itemsFound: [...state.runStats.itemsFound, ...items],
         },
       });
