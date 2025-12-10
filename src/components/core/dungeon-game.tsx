@@ -3301,7 +3301,9 @@ export function DungeonGame() {
               onEquipItem={handleEquipItem}
               onUseItem={handleUseItem}
               onDropItem={handleDropItem}
+              onActivateMap={handleActivateMap}
               inCombat={gameState.inCombat}
+              canActivateMap={gameState.phase === "tavern"}
             />
             <SidebarKeys keys={gameState.player.keys} />
           </div>

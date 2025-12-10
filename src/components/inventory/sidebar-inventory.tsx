@@ -1,6 +1,6 @@
 "use client"
 
-import type { Item, Player } from "@/lib/core/game-types"
+import type { Item, Player, MapItem } from "@/lib/core/game-types"
 import { EntityText } from "@/components/narrative/entity-text"
 
 interface SidebarInventoryProps {
@@ -8,10 +8,19 @@ interface SidebarInventoryProps {
   onEquipItem: (item: Item) => void
   onUseItem?: (item: Item) => void
   onDropItem?: (item: Item) => void
+  onActivateMap?: (map: MapItem) => void
   inCombat?: boolean
+  /** Allow map activation (true when in tavern) */
+  canActivateMap?: boolean
+}
+
+function isMapItem(item: Item): item is MapItem {
+  return item.category === "consumable" && item.subtype === "map" && "mapProps" in item
 }
 
 function getItemIcon(item: Item): string {
+  if (isMapItem(item)) return "🗺"
+  if (item.category === "currency") return "💠"
   if (item.type === "weapon" || item.category === "weapon") return "⚔"
   if (item.type === "armor" || item.category === "armor") {
     const slot = item.armorProps?.slot || item.subtype
@@ -79,7 +88,7 @@ function getSlotHint(item: Item): string | null {
   return null
 }
 
-export function SidebarInventory({ player, onEquipItem, onUseItem, onDropItem, inCombat }: SidebarInventoryProps) {
+export function SidebarInventory({ player, onEquipItem, onUseItem, onDropItem, onActivateMap, inCombat, canActivateMap }: SidebarInventoryProps) {
   if (!player) {
     return (
       <div className="h-full flex flex-col py-6 px-4 text-sm">
@@ -110,6 +119,7 @@ export function SidebarInventory({ player, onEquipItem, onUseItem, onDropItem, i
         <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin">
           {inventory.map((item) => {
             const slotHint = getSlotHint(item)
+            const mapItem = isMapItem(item) ? item : null
             return (
               <div key={item.id} className="group py-1.5">
                 <div className="flex items-start gap-2">
@@ -118,14 +128,34 @@ export function SidebarInventory({ player, onEquipItem, onUseItem, onDropItem, i
                     <EntityText type={item.rarity} entity={item} className="block truncate">{item.name}</EntityText>
                     <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-x-2">
                       {slotHint && <span className="text-stone-500">[{slotHint}]</span>}
-                      {item.stats?.attack && <span className="text-entity-damage">+{item.stats.attack}</span>}
-                      {item.stats?.defense && <span className="text-entity-armor">+{item.stats.defense}</span>}
-                      {item.stats?.health && <span className="text-entity-heal">+{item.stats.health}</span>}
-                      <span className="text-entity-gold">{item.value}g</span>
+                      {mapItem && (
+                        <>
+                          <span className="text-purple-400">T{mapItem.mapProps.tier}</span>
+                          <span className="text-stone-500">{mapItem.mapProps.floors}F</span>
+                          {mapItem.mapProps.modifiers.length > 0 && (
+                            <span className="text-amber-400">{mapItem.mapProps.modifiers.length} mods</span>
+                          )}
+                        </>
+                      )}
+                      {!mapItem && item.stats?.attack && <span className="text-entity-damage">+{item.stats.attack}</span>}
+                      {!mapItem && item.stats?.defense && <span className="text-entity-armor">+{item.stats.defense}</span>}
+                      {!mapItem && item.stats?.health && <span className="text-entity-heal">+{item.stats.health}</span>}
+                      {!mapItem && <span className="text-entity-gold">{item.value}g</span>}
                     </div>
                   </div>
                 </div>
                 <div className="flex gap-2 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {mapItem && canActivateMap && onActivateMap && (
+                    <button
+                      onClick={() => onActivateMap(mapItem)}
+                      className="text-xs text-purple-400 hover:text-purple-300 hover:underline font-medium"
+                    >
+                      activate
+                    </button>
+                  )}
+                  {mapItem && !canActivateMap && (
+                    <span className="text-xs text-muted-foreground/50 italic">tavern only</span>
+                  )}
                   {item.type === "potion" && onUseItem && (
                     <button
                       onClick={() => onUseItem(item)}
@@ -140,7 +170,7 @@ export function SidebarInventory({ player, onEquipItem, onUseItem, onDropItem, i
                       equip
                     </button>
                   )}
-                  {!inCombat && onDropItem && (
+                  {!inCombat && onDropItem && !mapItem && (
                     <button
                       onClick={() => onDropItem(item)}
                       className="text-xs text-destructive/70 hover:text-destructive hover:underline"
