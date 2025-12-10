@@ -4,17 +4,13 @@ import React, { useState, useCallback, useMemo, useEffect } from "react";
 
 import type {
   GameState,
-  LogEntry,
   GameChoice,
   Item,
   ItemRarity,
   Player,
   DungeonCard,
   DungeonKey,
-  StatusEffect,
-  Ability,
   PlayerClass,
-  PathOption,
   CombatStance,
   RunSummary,
   EnvironmentalEntity,
@@ -22,15 +18,8 @@ import type {
 } from "@/lib/game-types";
 import type { ChaosEvent } from "@/lib/chaos-system";
 import {
-  generateEnemy,
-  generateWeapon,
-  generateArmor,
   createDungeonKey,
   generateDungeonSelection,
-  generateTrap,
-  generateShrine,
-  generateNPC,
-  calculateDisarmChance,
   createInitialPlayer,
   createInitialRunStats,
 } from "@/lib/game-data";
