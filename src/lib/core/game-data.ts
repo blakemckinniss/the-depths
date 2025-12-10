@@ -24,6 +24,7 @@ import {
   type GenerateArmorOptions,
 } from "@/lib/items/item-generator"
 import { generateConsumable } from "@/lib/items/consumable-system"
+import { generateId } from "@/lib/core/utils"
 
 // Re-export rollRarity for backward compatibility
 export function rollRarity(): ItemRarity {
@@ -71,7 +72,7 @@ export function generateEnemy(floor: number, isBoss = false): Enemy {
   const monsterTier = Math.min(5, Math.floor(floor / 2) + 1 + (isBoss ? 1 : 0))
 
   const enemy: Enemy = {
-    id: crypto.randomUUID(),
+    id: generateId(),
     entityType: "enemy",
     name: template.name,
     health: Math.floor(template.baseHealth * floorScale),
@@ -90,7 +91,7 @@ export function generateEnemy(floor: number, isBoss = false): Enemy {
   // Generate material drops (70% chance for bosses, 40% for regular enemies)
   if (Math.random() < (isBoss ? 0.7 : 0.4)) {
     try {
-      const { generateMonsterMaterialDrops } = require("./material-system")
+      const { generateMonsterMaterialDrops } = require("../materials/material-system")
       enemy.materialDrops = generateMonsterMaterialDrops(template.name, monsterTier, floor)
     } catch {
       // Material system not available, skip
@@ -98,7 +99,7 @@ export function generateEnemy(floor: number, isBoss = false): Enemy {
   }
 
   // Apply enemy rank system - chance for Rare/Unique/etc enemies
-  const { createRankedEnemy } = require("./enemy-rank-system")
+  const { createRankedEnemy } = require("../entity/enemy-rank-system")
   return createRankedEnemy(enemy, floor)
 }
 
@@ -401,7 +402,7 @@ export function generateDungeonCard(rarity: ItemRarity, forceMystery = false): D
   requiredKeyRarity.push("master")
 
   return {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: isMystery ? "???" : theme.name,
     rarity,
     theme: isMystery ? mysteryDungeonHints[Math.floor(Math.random() * mysteryDungeonHints.length)] : theme.theme,
@@ -499,7 +500,7 @@ export function createDungeonKey(rarity: KeyRarity): DungeonKey {
 
   const data = keyData[rarity as Exclude<KeyRarity, "master">]
   return {
-    id: crypto.randomUUID(),
+    id: generateId(),
     rarity,
     name: data.name,
     description: data.description,

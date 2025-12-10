@@ -135,6 +135,7 @@ import {
   getCompanionColor,
 } from "@/lib/entity/companion-system";
 import type { Companion, Enemy, SustainedAbility } from "@/lib/core/game-types";
+import { generateId } from "@/lib/core/utils";
 import {
   activateSustained,
   deactivateSustained,
@@ -535,7 +536,7 @@ export function DungeonGame() {
 
           if (result.rewards.item) {
             const newItem: Item = {
-              id: crypto.randomUUID(),
+              id: generateId(),
               name: result.rewards.item.name || "Mysterious Object",
               entityType: "item",
               type: (result.rewards.item.type as Item["type"]) || "misc",
@@ -598,7 +599,7 @@ export function DungeonGame() {
         // Add new entity if spawned
         if (result.newEntity) {
           const newEnvEntity: EnvironmentalEntity = {
-            id: crypto.randomUUID(),
+            id: generateId(),
             name: result.newEntity.name || "Something",
             description: result.newEntity.description || "",
             entityClass:

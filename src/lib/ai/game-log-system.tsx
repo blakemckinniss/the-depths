@@ -23,6 +23,7 @@ import type {
   Ability,
   LogEntry,
 } from "@/lib/core/game-types";
+import { generateId } from "@/lib/core/utils";
 import {
   EntityText,
   EnemyText,
@@ -709,7 +710,7 @@ export function renderLogEvent(event: GameLogEvent): {
 export function createLogEntry(event: GameLogEvent): LogEntry {
   const { content, category } = renderLogEvent(event);
   return {
-    id: crypto.randomUUID(),
+    id: generateId(),
     content,
     type: category,
     timestamp: Date.now(),

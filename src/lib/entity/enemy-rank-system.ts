@@ -7,6 +7,7 @@
 
 import type { Enemy, EnemyAbility, StatusEffect, DamageType } from "@/lib/core/game-types"
 import { createStatusEffect } from "./entity-system"
+import { generateId } from "@/lib/core/utils"
 
 // =============================================================================
 // RANK DEFINITIONS
@@ -345,7 +346,7 @@ function generateRankAbilities(rank: EnemyRank, baseAttack: number, enemyName: s
 
   for (const template of selected) {
     abilities.push({
-      id: crypto.randomUUID(),
+      id: generateId(),
       name: template.name,
       description: template.description,
       damage: template.damageMultiplier > 0 ? Math.floor(baseAttack * template.damageMultiplier) : undefined,

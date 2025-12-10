@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { LogEntry } from "@/lib/core/game-types";
 import { GameLogger, createGameLogger } from "@/lib/ai/game-log-system";
+import { generateId } from "@/lib/core/utils"
 
 // ============================================================================
 // CONTEXT TYPES
@@ -65,7 +66,7 @@ export function LogProvider({ children, maxLogs = 100 }: LogProviderProps) {
   const addRawLog = useCallback(
     (content: ReactNode, type: LogEntry["type"] = "narrative") => {
       const entry: LogEntry = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         content,
         type,
         timestamp: Date.now(),

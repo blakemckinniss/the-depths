@@ -12,6 +12,7 @@
 import type { Item, ItemRarity, PlayerClass, DamageType } from "@/lib/core/game-types"
 import type { WeaponType, ArmorSlot } from "./item-taxonomy"
 import { applyEgos, type EgoItem } from "./ego-item-system"
+import { generateId } from "@/lib/core/utils"
 
 // =============================================================================
 // WEAPON SUBTYPES
@@ -741,7 +742,7 @@ export function generateWeapon(options: GenerateWeaponOptions = {}): Item | EgoI
   const variance = Math.floor(Math.random() * 3) - 1
 
   const weapon: Item = {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: generateWeaponName(subtype, rarity, damageType),
     entityType: "weapon",
     type: "weapon",
@@ -809,7 +810,7 @@ export function generateArmor(options: GenerateArmorOptions = {}): Item | EgoIte
   const variance = Math.floor(Math.random() * 2)
 
   const armor: Item = {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: generateArmorName(subtype, rarity),
     entityType: "armor",
     type: "armor",

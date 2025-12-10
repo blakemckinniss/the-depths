@@ -11,6 +11,7 @@
 
 import type { Item, ItemRarity, StatusEffect, DamageType } from "@/lib/core/game-types"
 import { createStatusEffect } from "@/lib/entity/entity-system"
+import { generateId } from "@/lib/core/utils"
 
 // =============================================================================
 // CONSUMABLE TYPES
@@ -797,7 +798,7 @@ export function generateConsumable(options: GenerateConsumableOptions = {}): Ite
   }
 
   const item: Item = {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: tier.name,
     entityType: "potion",
     type: "potion",

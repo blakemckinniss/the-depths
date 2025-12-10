@@ -1,5 +1,6 @@
 import type { EnvironmentalHazard, Player, Enemy, StatusEffect } from "@/lib/core/game-types"
 import { createStatusEffect, generateEntityId } from "@/lib/entity/entity-system"
+import { generateId } from "@/lib/core/utils"
 
 // Predefined hazard templates
 export const HAZARD_TEMPLATES: Record<string, Omit<EnvironmentalHazard, "id">> = {
@@ -151,7 +152,7 @@ export function generateHazard(floor: number, dungeonTheme?: string): Environmen
   }
 
   return {
-    id: crypto.randomUUID(),
+    id: generateId(),
     ...template,
     effects: scaledEffects,
   }

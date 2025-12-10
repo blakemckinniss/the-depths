@@ -1,4 +1,5 @@
 import type { PathOption } from "@/lib/core/game-types"
+import { generateId } from "@/lib/core/utils"
 
 // Generate branching path options for the next room
 export function generatePathOptions(floor: number, currentRoom: number, dungeonTheme?: string): PathOption[] {
@@ -16,7 +17,7 @@ export function generatePathOptions(floor: number, currentRoom: number, dungeonT
   // Occasionally add a mystery path
   if (Math.random() < 0.2) {
     paths.push({
-      id: crypto.randomUUID(),
+      id: generateId(),
       preview: "???",
       danger: "unknown",
       reward: "unknown",
@@ -57,7 +58,7 @@ function generateSinglePath(floor: number, room: number, forceSafe: boolean, the
   const previews = generatePreviewHints(danger, roomType, theme)
 
   return {
-    id: crypto.randomUUID(),
+    id: generateId(),
     preview: previews[Math.floor(Math.random() * previews.length)],
     danger,
     reward,

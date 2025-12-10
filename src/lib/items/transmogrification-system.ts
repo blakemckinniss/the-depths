@@ -7,6 +7,7 @@
 
 import type { Item, ItemRarity, DamageType, StatusEffect } from "@/lib/core/game-types"
 import type { MaterialType, ItemCategory } from "./item-taxonomy"
+import { generateId } from "@/lib/core/utils"
 
 // =============================================================================
 // ESSENCE TYPES
@@ -182,23 +183,23 @@ function determinePurity(item: Item): 1 | 2 | 3 | 4 | 5 {
 
 const MATERIAL_TABLES: Record<string, TransmogMaterial[]> = {
   weapon: [
-    { id: crypto.randomUUID(), name: "Weapon Fragments", materialType: "metal_scrap", tier: 1, quantity: 1, description: "Broken metal pieces suitable for reforging." },
-    { id: crypto.randomUUID(), name: "Steel Shards", materialType: "steel_ingot", tier: 2, quantity: 1, description: "Quality steel fragments." },
-    { id: crypto.randomUUID(), name: "Enchanted Metal", materialType: "mithril_ore", tier: 3, quantity: 1, description: "Metal infused with magical properties." },
+    { id: generateId(), name: "Weapon Fragments", materialType: "metal_scrap", tier: 1, quantity: 1, description: "Broken metal pieces suitable for reforging." },
+    { id: generateId(), name: "Steel Shards", materialType: "steel_ingot", tier: 2, quantity: 1, description: "Quality steel fragments." },
+    { id: generateId(), name: "Enchanted Metal", materialType: "mithril_ore", tier: 3, quantity: 1, description: "Metal infused with magical properties." },
   ],
   armor: [
-    { id: crypto.randomUUID(), name: "Armor Scraps", materialType: "leather_scraps", tier: 1, quantity: 1, description: "Salvageable armor pieces." },
-    { id: crypto.randomUUID(), name: "Reinforced Plates", materialType: "iron_ingot", tier: 2, quantity: 1, description: "Sturdy armor plating." },
-    { id: crypto.randomUUID(), name: "Enchanted Cloth", materialType: "silk_thread", tier: 3, quantity: 1, description: "Magically woven fabric." },
+    { id: generateId(), name: "Armor Scraps", materialType: "leather_scraps", tier: 1, quantity: 1, description: "Salvageable armor pieces." },
+    { id: generateId(), name: "Reinforced Plates", materialType: "iron_ingot", tier: 2, quantity: 1, description: "Sturdy armor plating." },
+    { id: generateId(), name: "Enchanted Cloth", materialType: "silk_thread", tier: 3, quantity: 1, description: "Magically woven fabric." },
   ],
   potion: [
-    { id: crypto.randomUUID(), name: "Alchemical Residue", materialType: "herb_bundle", tier: 1, quantity: 1, description: "Leftover alchemical compounds." },
-    { id: crypto.randomUUID(), name: "Distilled Essence", materialType: "monster_blood", tier: 2, quantity: 1, description: "Concentrated magical liquid." },
-    { id: crypto.randomUUID(), name: "Philosopher's Dust", materialType: "arcane_dust", tier: 4, quantity: 1, description: "Rare alchemical byproduct." },
+    { id: generateId(), name: "Alchemical Residue", materialType: "herb_bundle", tier: 1, quantity: 1, description: "Leftover alchemical compounds." },
+    { id: generateId(), name: "Distilled Essence", materialType: "monster_blood", tier: 2, quantity: 1, description: "Concentrated magical liquid." },
+    { id: generateId(), name: "Philosopher's Dust", materialType: "arcane_dust", tier: 4, quantity: 1, description: "Rare alchemical byproduct." },
   ],
   misc: [
-    { id: crypto.randomUUID(), name: "Mysterious Particles", materialType: "raw_crystal", tier: 1, quantity: 1, description: "Strange matter of unknown origin." },
-    { id: crypto.randomUUID(), name: "Magical Residue", materialType: "enchanting_dust", tier: 2, quantity: 1, description: "Faint magical emanations made solid." },
+    { id: generateId(), name: "Mysterious Particles", materialType: "raw_crystal", tier: 1, quantity: 1, description: "Strange matter of unknown origin." },
+    { id: generateId(), name: "Magical Residue", materialType: "enchanting_dust", tier: 2, quantity: 1, description: "Faint magical emanations made solid." },
   ],
 }
 
@@ -220,7 +221,7 @@ function extractMaterials(item: Item): TransmogMaterial[] {
 
   return [{
     ...baseMaterial,
-    id: crypto.randomUUID(),
+    id: generateId(),
     quantity,
     tier: Math.min(5, baseMaterial.tier + Math.floor(rarityBonus[item.rarity] / 2)) as 1 | 2 | 3 | 4 | 5,
   }]
@@ -311,7 +312,7 @@ function attemptUpgrade(item: Item): Item | null {
 
   return {
     ...item,
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: `Transmuted ${item.name}`,
     rarity: rarityUpgrade[item.rarity],
     value: Math.floor(item.value * mult * 1.5),
@@ -456,7 +457,7 @@ export function transmogrifyItem(
       return {
         type: "essence",
         essence: {
-          id: crypto.randomUUID(),
+          id: generateId(),
           type: essenceType,
           amount: config.essenceYield,
           purity: determinePurity(item),
@@ -498,7 +499,7 @@ export function transmogrifyItem(
         type: "unexpected",
         unexpectedItem: {
           ...unexpectedItem,
-          id: crypto.randomUUID(),
+          id: generateId(),
         },
         narration: generateNarration(item, resultType),
         goldValue: unexpectedItem.value || 100,
@@ -515,7 +516,7 @@ export function transmogrifyItem(
       return {
         type: "essence",
         essence: {
-          id: crypto.randomUUID(),
+          id: generateId(),
           type: essenceType,
           amount: config.essenceYield,
           purity: determinePurity(item),
@@ -720,7 +721,7 @@ export function craftFromEssence(
   // Generate result
   const result = {
     ...recipe.result,
-    id: crypto.randomUUID(),
+    id: generateId(),
   } as Item | StatusEffect
 
   return {

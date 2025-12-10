@@ -6,6 +6,7 @@
  * Inspired by ToME's sustained abilities.
  */
 
+import { generateId } from "@/lib/core/utils"
 import type {
   Ability,
   StatusEffect,
@@ -353,7 +354,7 @@ export const SUSTAINED_ABILITY_TEMPLATES: Omit<SustainedAbility, "id">[] = [
       resourceReserve: 15,
       activationCost: 10,
       constantEffect: {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: "Battle Stance",
         entityType: "effect",
         effectType: "buff",
@@ -386,7 +387,7 @@ export const SUSTAINED_ABILITY_TEMPLATES: Omit<SustainedAbility, "id">[] = [
       resourceReserve: 15,
       activationCost: 10,
       constantEffect: {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: "Defensive Stance",
         entityType: "effect",
         effectType: "buff",
@@ -422,7 +423,7 @@ export const SUSTAINED_ABILITY_TEMPLATES: Omit<SustainedAbility, "id">[] = [
       resourceReserve: 25,
       activationCost: 15,
       constantEffect: {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: "Mana Shield",
         entityType: "effect",
         effectType: "buff",
@@ -460,7 +461,7 @@ export const SUSTAINED_ABILITY_TEMPLATES: Omit<SustainedAbility, "id">[] = [
       resourceReserve: 30,
       activationCost: 20,
       constantEffect: {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: "Arcane Concentration",
         entityType: "effect",
         effectType: "buff",
@@ -495,7 +496,7 @@ export const SUSTAINED_ABILITY_TEMPLATES: Omit<SustainedAbility, "id">[] = [
       resourceReserve: 20,
       activationCost: 15,
       constantEffect: {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: "Shadow Cloak",
         entityType: "effect",
         effectType: "buff",
@@ -535,7 +536,7 @@ export const SUSTAINED_ABILITY_TEMPLATES: Omit<SustainedAbility, "id">[] = [
       resourceReserve: 20,
       activationCost: 15,
       constantEffect: {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: "Divine Aura",
         entityType: "effect",
         effectType: "buff",
@@ -571,7 +572,7 @@ export const SUSTAINED_ABILITY_TEMPLATES: Omit<SustainedAbility, "id">[] = [
       healthReserve: 15,
       activationCost: 5,
       constantEffect: {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: "Soul Link",
         entityType: "effect",
         effectType: "buff",
@@ -611,7 +612,7 @@ export const SUSTAINED_ABILITY_TEMPLATES: Omit<SustainedAbility, "id">[] = [
       resourceReserve: 15,
       activationCost: 10,
       constantEffect: {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: "Death Shroud",
         entityType: "effect",
         effectType: "buff",
@@ -651,7 +652,7 @@ export const SUSTAINED_ABILITY_TEMPLATES: Omit<SustainedAbility, "id">[] = [
       resourceReserve: 20,
       activationCost: 10,
       constantEffect: {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: "Inner Focus",
         entityType: "effect",
         effectType: "buff",
@@ -686,7 +687,7 @@ export const SUSTAINED_ABILITY_TEMPLATES: Omit<SustainedAbility, "id">[] = [
       resourceReserve: 25,
       activationCost: 20,
       constantEffect: {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: "Berserker Rage",
         entityType: "effect",
         effectType: "buff",
@@ -721,7 +722,7 @@ export const SUSTAINED_ABILITY_TEMPLATES: Omit<SustainedAbility, "id">[] = [
       resourceReserve: 15,
       activationCost: 10,
       constantEffect: {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: "Hunter's Mark",
         entityType: "effect",
         effectType: "buff",
@@ -748,12 +749,12 @@ export function createSustainedAbility(
 ): SustainedAbility {
   return {
     ...template,
-    id: crypto.randomUUID(),
+    id: generateId(),
     sustained: {
       ...template.sustained,
       constantEffect: {
         ...template.sustained.constantEffect,
-        id: crypto.randomUUID(),
+        id: generateId(),
       },
     },
   }

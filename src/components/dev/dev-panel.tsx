@@ -8,6 +8,7 @@ import { generateEnemy, generateWeapon, generateArmor, generatePotion } from "@/
 import { BASE_ABILITIES } from "@/lib/character/ability-system"
 import { createEnhancedEffect } from "@/lib/combat/effect-system"
 import { DevButton } from "./dev-button" // Declare the DevButton import
+import { generateId } from "@/lib/core/utils"
 
 interface DevPanelProps {
   gameState: GameState
@@ -313,7 +314,7 @@ export function DevPanel({
       }
 
       const key: DungeonKey = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         ...keyData[keyType],
       }
 
@@ -360,7 +361,7 @@ export function DevPanel({
         if (template) {
           const event: ChaosEvent = {
             ...template,
-            id: crypto.randomUUID(),
+            id: generateId(),
             turnsActive: 0,
           }
           setChaosEvents((prev) => [...prev, event])

@@ -7,6 +7,7 @@
 
 import type { Item, StatusEffect } from "@/lib/core/game-types"
 import type { RankedEnemy, EnemyRank } from "@/lib/entity/enemy-rank-system"
+import { generateId } from "@/lib/core/utils"
 
 // =============================================================================
 // VAULT TYPES
@@ -260,7 +261,7 @@ export function generateVault(floor: number, forceType?: VaultType): VaultInstan
   const definition = VAULT_DEFINITIONS[vaultType]
 
   const vault: VaultInstance = {
-    id: crypto.randomUUID(),
+    id: generateId(),
     definition,
     state: definition.requiresKey ? "locked" : "active",
     availableLoot: [], // populated by loot generator
@@ -416,7 +417,7 @@ export function completeVault(vault: VaultInstance, success: boolean): VaultRewa
 function generateVaultCurse(itemName: string): StatusEffect {
   const curses: Array<() => StatusEffect> = [
     () => ({
-      id: crypto.randomUUID(),
+      id: generateId(),
       name: "Greed's Price",
       entityType: "curse" as const,
       effectType: "debuff" as const,
@@ -425,7 +426,7 @@ function generateVaultCurse(itemName: string): StatusEffect {
       description: `The ${itemName} was claimed with greed. Gold earned is halved.`,
     }),
     () => ({
-      id: crypto.randomUUID(),
+      id: generateId(),
       name: "Weight of Avarice",
       entityType: "curse" as const,
       effectType: "debuff" as const,
@@ -434,7 +435,7 @@ function generateVaultCurse(itemName: string): StatusEffect {
       description: `The ${itemName} weighs heavily on your soul.`,
     }),
     () => ({
-      id: crypto.randomUUID(),
+      id: generateId(),
       name: "Thief's Mark",
       entityType: "curse" as const,
       effectType: "debuff" as const,
@@ -443,7 +444,7 @@ function generateVaultCurse(itemName: string): StatusEffect {
       description: `The ${itemName}'s previous owner left a mark upon you.`,
     }),
     () => ({
-      id: crypto.randomUUID(),
+      id: generateId(),
       name: "Hungering Darkness",
       entityType: "curse" as const,
       effectType: "debuff" as const,

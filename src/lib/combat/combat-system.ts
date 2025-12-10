@@ -1,5 +1,6 @@
 import type { Player, Enemy, CombatStance, DamageType, EnemyAbility, ComboTracker, StatusEffect } from "@/lib/core/game-types"
 import { calculateEffectiveStats, STATUS_EFFECTS, createStatusEffect } from "@/lib/entity/entity-system"
+import { generateId } from "@/lib/core/utils"
 
 // Stance modifiers
 export const STANCE_MODIFIERS: Record<CombatStance, { attack: number; defense: number; resourceCost: number }> = {
@@ -282,7 +283,7 @@ function getEffectForDamageType(damageType: DamageType | undefined, sourceEnemyN
 
 // Generate a contextual enemy ability based on enemy type and floor
 export function generateEnemyAbility(enemyName: string, floor: number): EnemyAbility {
-  const baseId = crypto.randomUUID()
+  const baseId = generateId()
   const damage = Math.floor(5 + floor * 3 + Math.random() * 5)
 
   // Ability templates with effects tied to damage types
