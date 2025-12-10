@@ -50,6 +50,7 @@ export const CLASSES: Record<PlayerClass, ClassDefinition> = {
     startingAbilities: ["mage_firebolt", "mage_frostshield"],
     abilityUnlocks: [
       { level: 3, abilityId: "mage_lightning" },
+      { level: 4, abilityId: "mage_arcane_analysis" }, // Foresight: reveals magical effects
       { level: 5, abilityId: "mage_blizzard" },
       { level: 8, abilityId: "mage_meteor" },
     ],
@@ -69,6 +70,7 @@ export const CLASSES: Record<PlayerClass, ClassDefinition> = {
     startingAbilities: ["rogue_backstab", "rogue_evade"],
     abilityUnlocks: [
       { level: 3, abilityId: "rogue_poison" },
+      { level: 3, abilityId: "rogue_trap_sense" }, // Foresight: reveals trap mechanics
       { level: 5, abilityId: "rogue_shadowstep" },
       { level: 8, abilityId: "rogue_assassinate" },
     ],
@@ -88,6 +90,7 @@ export const CLASSES: Record<PlayerClass, ClassDefinition> = {
     startingAbilities: ["cleric_smite", "cleric_heal"],
     abilityUnlocks: [
       { level: 3, abilityId: "cleric_sanctuary" },
+      { level: 4, abilityId: "cleric_divine_insight" }, // Foresight: reveals shrine/NPC intentions
       { level: 5, abilityId: "cleric_holyfire" },
       { level: 8, abilityId: "cleric_resurrection" },
     ],
@@ -110,6 +113,7 @@ export const CLASSES: Record<PlayerClass, ClassDefinition> = {
     startingAbilities: ["ranger_shoot", "ranger_trap"],
     abilityUnlocks: [
       { level: 3, abilityId: "ranger_multishot" },
+      { level: 3, abilityId: "ranger_hunts_instinct" }, // Foresight: reveals enemy intentions
       { level: 5, abilityId: "ranger_companion" },
       { level: 8, abilityId: "ranger_deadeye" },
     ],
@@ -778,6 +782,109 @@ export const BASE_ABILITIES: Record<string, Ability> = {
     castNarration: "You inscribe the rune of absolute doom upon your foe...",
     hitNarration: "DOOM claims its victim!",
     tags: ["shadow", "delayed", "ultimate"],
+  },
+
+  // ---- FORESIGHT ABILITIES ----
+  // These abilities grant temporary status effects that reveal outcomes
+
+  ranger_hunts_instinct: {
+    id: "ranger_hunts_instinct",
+    entityType: "ability",
+    name: "Hunt's Instinct",
+    description: "Focus your predator's instincts to sense your enemy's next move. Reveals enemy ability and damage range for 1 turn.",
+    category: "utility",
+    resourceCost: 15,
+    resourceType: "focus",
+    cooldown: 3,
+    currentCooldown: 0,
+    levelRequired: 3,
+    classRequired: ["ranger"],
+    targetType: "self",
+    isPassive: false,
+    statusEffect: {
+      name: "Hunt's Instinct",
+      effectType: "buff",
+      duration: 1,
+      description: "Your predator's instincts reveal enemy intentions",
+      grantsForesight: { context: "combat", level: "partial" },
+    },
+    castNarration: "You still your breath and let your hunter's instincts take over...",
+    tags: ["utility", "foresight", "combat-insight"],
+  },
+
+  rogue_trap_sense: {
+    id: "rogue_trap_sense",
+    entityType: "ability",
+    name: "Trap Sense",
+    description: "Your experience with traps lets you perceive their mechanisms. Reveals full trap details and grants disarm bonus for 3 turns.",
+    category: "utility",
+    resourceCost: 10,
+    resourceType: "energy",
+    cooldown: 4,
+    currentCooldown: 0,
+    levelRequired: 3,
+    classRequired: ["rogue"],
+    targetType: "self",
+    isPassive: false,
+    statusEffect: {
+      name: "Trap Sense",
+      effectType: "buff",
+      duration: 3,
+      description: "Your trap expertise reveals hidden mechanisms (+3 to disarm)",
+      grantsForesight: { context: "trap_encounter", level: "full" },
+    },
+    castNarration: "You attune your senses to the subtle signs of hidden dangers...",
+    tags: ["utility", "foresight", "trap-insight"],
+  },
+
+  mage_arcane_analysis: {
+    id: "mage_arcane_analysis",
+    entityType: "ability",
+    name: "Arcane Analysis",
+    description: "Channel your arcane knowledge to perceive magical energies. Reveals magical effects on shrines and enchanted objects for 2 turns.",
+    category: "utility",
+    resourceCost: 20,
+    resourceType: "mana",
+    cooldown: 5,
+    currentCooldown: 0,
+    levelRequired: 4,
+    classRequired: ["mage"],
+    targetType: "self",
+    isPassive: false,
+    statusEffect: {
+      name: "Arcane Analysis",
+      effectType: "buff",
+      duration: 2,
+      description: "Magical energies become visible to your sight",
+      grantsForesight: { contexts: ["shrine_choice", "environmental_interaction"], level: "full", tagFilter: ["magical", "enchanted"] },
+    },
+    castNarration: "You open your third eye to the flows of arcane energy...",
+    tags: ["utility", "foresight", "magical-insight"],
+  },
+
+  cleric_divine_insight: {
+    id: "cleric_divine_insight",
+    entityType: "ability",
+    name: "Divine Insight",
+    description: "Pray for divine guidance to perceive the true nature of shrines and the intentions of others. Lasts 2 turns.",
+    category: "utility",
+    resourceCost: 25,
+    resourceType: "faith",
+    cooldown: 5,
+    currentCooldown: 0,
+    levelRequired: 4,
+    classRequired: ["cleric"],
+    targetType: "self",
+    isPassive: false,
+    statusEffect: {
+      name: "Divine Insight",
+      effectType: "buff",
+      duration: 2,
+      description: "Divine wisdom illuminates hidden truths",
+      grantsForesight: { contexts: ["shrine_choice", "npc_interaction"], level: "full" },
+    },
+    castNarration: "You bow your head in silent prayer, and clarity washes over you...",
+    tags: ["utility", "foresight", "divine-insight"],
   },
 
   // ---- UNIVERSAL / BASIC ATTACK ----

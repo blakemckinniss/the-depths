@@ -15,6 +15,7 @@ import type {
   CurrencyType,
   Enchantment,
 } from "@/lib/items/item-taxonomy"
+import type { EntityImpact } from "@/lib/mechanics/game-mechanics-ledger"
 
 export type EntityType =
   | "enemy"
@@ -647,7 +648,7 @@ export interface PlayerResources {
 
 export type AbilityCategory = "combat" | "magic" | "utility" | "defensive" | "ultimate"
 export type DamageType = "physical" | "fire" | "ice" | "lightning" | "shadow" | "holy" | "poison" | "arcane"
-export type ResourceType = "mana" | "rage" | "energy" | "focus" | "souls"
+export type ResourceType = "mana" | "rage" | "energy" | "focus" | "souls" | "faith"
 export type CombatStance = "balanced" | "aggressive" | "defensive"
 
 export interface Ability extends GameEntity {
@@ -669,6 +670,7 @@ export interface Ability extends GameEntity {
 
   // Status effects this ability applies
   appliesEffects?: StatusEffect[]
+  statusEffect?: Partial<StatusEffect> & { grantsForesight?: ForesightGrant } // Single effect shorthand for utility abilities
 
   // Requirements
   levelRequired: number
@@ -773,12 +775,42 @@ export type GamePhase =
   | "exploring"
   | "victory"
 
+// Foresight System - Outcome visibility as earned game mechanic
+export type ForesightLevel = "hidden" | "risk" | "type" | "partial" | "full"
+
+export type ForesightSource =
+  | "perception" // High perception skill
+  | "arcana" // High arcana skill (magical effects)
+  | "wisdom" // High wisdom skill (NPC intentions)
+  | "racial" // Elf Keen Senses, etc.
+  | "ability" // Class abilities (Hunt's Instinct, Trap Sense, etc.)
+  | "effect" // Status effects (Prophetic Vision, Third Eye, Foresight)
+  | "item" // Equipment/consumables (Oracle's Amulet, Seer's Draught)
+
+export interface ForesightResult {
+  level: ForesightLevel
+  source: ForesightSource
+  sourceName?: string // "Keen Senses", "Hunt's Instinct", etc.
+  revealedImpacts?: EntityImpact[] // Which impacts the player can see
+  outcomeHint?: string // Thematic hint text shown to player
+  riskLevel?: "safe" | "risky" | "dangerous" // For 'risk' level visibility
+}
+
+// Foresight grant metadata for abilities/effects/items
+export interface ForesightGrant {
+  context?: string // Single context (e.g., "combat", "trap_encounter")
+  contexts?: string[] // Multiple contexts
+  level: ForesightLevel
+  tagFilter?: string[] // Only apply to entities with these tags
+}
+
 export interface GameChoice {
   id: string
   text: string
   action: () => void
   disabled?: boolean
   tooltip?: string
+  foresight?: ForesightResult // What the player can see about this choice's outcome
 }
 
 export interface GameState {

@@ -12,6 +12,7 @@ import type {
   PlayerClass,
   PlayerRace,
   Ability,
+  ForesightGrant,
 } from "@/lib/core/game-types"
 
 // Re-export PlayerRace for convenience
@@ -46,6 +47,7 @@ export interface RacialAbilityEffect {
   statusEffect?: Partial<StatusEffect>
   duration?: number
   special?: string // AI-defined special effect
+  grantsForesight?: ForesightGrant // Foresight visibility this ability grants
 }
 
 // =============================================================================
@@ -182,12 +184,13 @@ export const RACE_DEFINITIONS: Record<PlayerRace, RaceDefinition> = {
       {
         id: "elf_keen_senses",
         name: "Keen Senses",
-        description: "Detect traps and hidden enemies more easily.",
+        description: "Your elven senses detect traps and reveal their full danger - damage, effects, and disarm difficulty.",
         isPassive: true,
         unlockLevel: 1,
         effect: {
           type: "utility",
-          special: "Traps are revealed before triggering",
+          special: "Traps are revealed before triggering with full outcome visibility (damage, effects, difficulty)",
+          grantsForesight: { context: "trap_encounter", level: "full" },
         },
       },
       {

@@ -868,6 +868,168 @@ export const ENTITY_IMPACTS = [
 export type EntityImpact = (typeof ENTITY_IMPACTS)[number];
 
 /**
+ * ============================================================================
+ * FORESIGHT SYSTEM - Outcome visibility as earned game mechanic
+ * ============================================================================
+ *
+ * Reveal Levels:
+ *   hidden  → "???" (default, no info)
+ *   risk    → Border color only (green/yellow/red)
+ *   type    → "May deal damage" or "May grant buff"
+ *   partial → "Damage: 10-20" or "Buff: attack related"
+ *   full    → "Damage: 15, applies Burning for 3 turns"
+ */
+
+export type ChoiceContext =
+  | "environmental_interaction"
+  | "trap_encounter"
+  | "shrine_choice"
+  | "npc_interaction"
+  | "combat"
+  | "loot";
+
+/**
+ * Passive foresight from skills - checked against player stats
+ */
+export const SKILL_FORESIGHT = {
+  perception: {
+    appliesTo: ["environmental_interaction", "trap_encounter", "loot"] as ChoiceContext[],
+    thresholds: { risk: 10, type: 12, partial: 15, full: 18 },
+    narrative: "Your keen eyes notice",
+  },
+  arcana: {
+    appliesTo: ["shrine_choice", "environmental_interaction"] as ChoiceContext[],
+    thresholds: { risk: 10, type: 12, partial: 15, full: 18 },
+    tagFilter: ["magical", "enchanted", "spellbook"], // Only for magical entities
+    narrative: "Your arcane knowledge reveals",
+  },
+  wisdom: {
+    appliesTo: ["npc_interaction", "shrine_choice"] as ChoiceContext[],
+    thresholds: { risk: 10, type: 12, partial: 15, full: 18 },
+    narrative: "Your wisdom perceives",
+  },
+} as const;
+
+/**
+ * Racial foresight abilities - checked by player race
+ */
+export const RACIAL_FORESIGHT = {
+  "Keen Senses": {
+    race: "Elf",
+    appliesTo: ["trap_encounter"] as ChoiceContext[],
+    revealLevel: "full" as const,
+    narrative: "Your elven senses detect",
+  },
+} as const;
+
+/**
+ * Class ability foresight - active abilities that grant temporary visibility
+ */
+export const ABILITY_FORESIGHT = {
+  "Hunt's Instinct": {
+    class: "Ranger",
+    levelRequired: 3,
+    appliesTo: ["combat"] as ChoiceContext[],
+    revealLevel: "partial" as const,
+    cooldown: 3,
+    duration: 1, // Lasts 1 turn
+    resourceCost: { type: "focus" as const, amount: 15 },
+    narrative: "Your hunter's instinct warns you",
+  },
+  "Trap Sense": {
+    class: "Rogue",
+    levelRequired: 3,
+    appliesTo: ["trap_encounter", "environmental_interaction"] as ChoiceContext[],
+    revealLevel: "full" as const,
+    cooldown: 4,
+    duration: 3,
+    resourceCost: { type: "focus" as const, amount: 10 },
+    narrative: "Your trap sense tingles",
+  },
+  "Arcane Analysis": {
+    class: "Mage",
+    levelRequired: 4,
+    appliesTo: ["shrine_choice", "environmental_interaction"] as ChoiceContext[],
+    tagFilter: ["magical", "enchanted"],
+    revealLevel: "full" as const,
+    cooldown: 5,
+    duration: 2,
+    resourceCost: { type: "mana" as const, amount: 20 },
+    narrative: "Your arcane sight pierces the veil",
+  },
+  "Divine Insight": {
+    class: "Cleric",
+    levelRequired: 4,
+    appliesTo: ["shrine_choice", "npc_interaction"] as ChoiceContext[],
+    revealLevel: "full" as const,
+    cooldown: 5,
+    duration: 2,
+    resourceCost: { type: "faith" as const, amount: 25 },
+    narrative: "Divine wisdom illuminates",
+  },
+} as const;
+
+/**
+ * Status effect foresight - temporary effects that grant visibility
+ */
+export const EFFECT_FORESIGHT = {
+  "Prophetic Vision": {
+    appliesTo: "all" as const,
+    revealLevel: "risk" as const,
+    narrative: "Visions of possible futures flicker",
+  },
+  "Third Eye": {
+    appliesTo: ["combat", "trap_encounter"] as ChoiceContext[],
+    revealLevel: "partial" as const,
+    narrative: "Your third eye perceives",
+  },
+  "Foresight": {
+    appliesTo: "all" as const,
+    revealLevel: "full" as const,
+    narrative: "The threads of fate are clear to you",
+  },
+} as const;
+
+/**
+ * Item foresight - equipment and consumables that grant visibility
+ */
+export const ITEM_FORESIGHT = {
+  // Equipment (passive while equipped)
+  "Oracle's Amulet": {
+    type: "equipment" as const,
+    slot: "trinket",
+    appliesTo: ["trap_encounter"] as ChoiceContext[],
+    revealLevel: "full" as const,
+    passive: true,
+    narrative: "The amulet pulses warmly",
+  },
+  "Tome of Futures": {
+    type: "equipment" as const,
+    slot: "offhand",
+    appliesTo: ["shrine_choice", "npc_interaction"] as ChoiceContext[],
+    revealLevel: "partial" as const,
+    passive: true,
+    narrative: "Pages flutter with prophecy",
+  },
+  // Consumables (grant effect when used)
+  "Seer's Draught": {
+    type: "consumable" as const,
+    grantsEffect: "Third Eye",
+    effectDuration: 5,
+  },
+  "Potion of Clairvoyance": {
+    type: "consumable" as const,
+    grantsEffect: "Foresight",
+    effectDuration: 3,
+  },
+  "Scroll of Augury": {
+    type: "consumable" as const,
+    grantsEffect: "Prophetic Vision",
+    effectDuration: 10,
+  },
+} as const;
+
+/**
  * Interaction actions and what impacts they CAN produce
  * Actions are verbs - what the player DOES to the entity
  */
