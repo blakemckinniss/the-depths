@@ -9,7 +9,7 @@
  * - Floor difficulty
  */
 
-import type { Item, ItemRarity, Player, PlayerClass, DamageType, GameState } from "@/lib/core/game-types"
+import type { Item, ItemRarity, Player, PlayerClass, DamageType, GameState, MapTier } from "@/lib/core/game-types"
 import {
   generateWeapon,
   generateArmor,
@@ -26,6 +26,8 @@ import {
   checkEquippedSets,
   type SetItem,
 } from "./item-sets-system"
+import { generateMap } from "./map-generator"
+import { generateCurrencyDrop } from "./currency-generator"
 
 // =============================================================================
 // TYPES
@@ -323,6 +325,36 @@ function getThemeModifiers(dungeonTheme?: string): ThemeLootModifiers {
 
 export function generateSmartLoot(context: LootContext): LootResult {
   const { player, floor, dungeonTheme, recentLoot = [], source = "enemy", guaranteeUseful = false } = context
+
+  // === MAP DROP CHANCE ===
+  // Base 15%, +30% from bosses, scaling with floor
+  const mapDropChance = source === "boss" ? 0.45 : source === "vault" ? 0.25 : 0.15
+  if (Math.random() < mapDropChance) {
+    // Drop tier: 70% same as floor tier, 30% +1 tier
+    const baseTier = Math.min(10, Math.ceil(floor / 3)) as MapTier  // floor 1-3 = T1, 4-6 = T2, etc.
+    const dropTier = (Math.random() < 0.3 ? Math.min(10, baseTier + 1) : baseTier) as MapTier
+    const map = generateMap({ tier: dropTier })
+    return {
+      item: map,
+      reason: source === "boss" ? "Boss map drop" : "Map drop",
+      isUpgrade: false,
+    }
+  }
+
+  // === CURRENCY DROP CHANCE ===
+  // Base 8% + 2% per tier, scaling with floor
+  const tier = Math.min(10, Math.ceil(floor / 3)) as MapTier
+  const currencyDropChance = 0.08 + tier * 0.02
+  if (Math.random() < currencyDropChance) {
+    const currency = generateCurrencyDrop(tier)
+    if (currency) {
+      return {
+        item: currency,
+        reason: "Currency drop",
+        isUpgrade: false,
+      }
+    }
+  }
 
   const classProfile = player.class ? CLASS_LOOT_PROFILES[player.class] : null
   const gaps = analyzeEquipmentGaps(player, floor)

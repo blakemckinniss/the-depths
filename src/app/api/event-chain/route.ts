@@ -227,6 +227,8 @@ export async function POST(req: Request) {
     companions: context.companions,
     currentHazard: context.currentHazard,
     recentEvents: context.recentEvents,
+    dungeonModifiers: context.dungeonModifiers,
+    mapMetadata: context.mapMetadata,
     includeMechanics: [...getMechanicsForEvent(eventType)],
   });
 

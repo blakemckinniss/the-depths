@@ -249,6 +249,11 @@ function buildContext(state: GameState, extras: Record<string, unknown> = {}) {
     dungeonName: state.currentDungeon?.name,
     dungeonTheme: state.currentDungeon?.theme,
     dungeonRarity: state.currentDungeon?.rarity,
+    dungeonModifiers: state.currentDungeon?.modifiers?.map((m) => ({
+      name: m.name,
+      description: m.description,
+    })),
+    mapMetadata: state.currentDungeon?.mapMetadata,
     playerWeapon: state.player.equipment.weapon?.name,
     playerArmor: state.player.equipment.armor?.name,
     companions: activeCompanions.map((c) => c.name).join(", ") || "none",

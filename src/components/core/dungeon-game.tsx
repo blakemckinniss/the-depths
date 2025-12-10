@@ -111,7 +111,9 @@ import { AbilityBar } from "@/components/combat/ability-bar";
 import { ComboDisplay } from "@/components/combat/combo-display";
 import { SpellBar } from "@/components/combat/spell-bar";
 import { PathSelect } from "@/components/world/path-select";
+import { UtilityBar } from "@/components/world/utility-bar";
 import { HazardDisplay } from "@/components/world/hazard-display";
+import { extractPlayerCapabilities } from "@/lib/mechanics/player-capabilities";
 import { TrapInteraction } from "@/components/encounters/trap-interaction";
 import { ShrineInteraction } from "@/components/encounters/shrine-interaction";
 import { NPCDialogue } from "@/components/encounters/npc-dialogue";
@@ -2207,7 +2209,7 @@ export function DungeonGame() {
       // Remove map from inventory (consumed)
       dispatch({ type: "REMOVE_ITEM", payload: map.id });
 
-      // Initialize dungeon run
+      // Initialize dungeon run (dungeon.floors contains the total floor count)
       dispatch({
         type: "LOAD_STATE",
         payload: {
@@ -2215,7 +2217,6 @@ export function DungeonGame() {
           phase: "exploring",
           currentDungeon: dungeon,
           floor: 1,
-          maxFloor: map.mapProps.floors,
           player: {
             ...gameState.player,
             inventory: gameState.player.inventory.filter((i) => i.id !== map.id),
@@ -2243,8 +2244,9 @@ export function DungeonGame() {
       }
 
       // Remove one currency from stack (or remove item if stack=1)
-      if (currency.stackSize > 1) {
-        const updatedCurrency = { ...currency, stackSize: currency.stackSize - 1 };
+      const currentStack = currency.stackSize ?? 1;
+      if (currentStack > 1) {
+        const updatedCurrency = { ...currency, stackSize: currentStack - 1 };
         dispatch({
           type: "LOAD_STATE",
           payload: {
@@ -2633,6 +2635,107 @@ export function DungeonGame() {
     return options;
   }, [gameState.activeNPC, gameState.player.stats.gold]);
 
+  // Extract player capabilities for utility bar (always-on spells like Teleport)
+  const playerCapabilities = useMemo(() => {
+    if (!gameState.player) return { always: [], situational: [], utilityTypes: [], summary: "" };
+    return extractPlayerCapabilities(gameState.player, { inCombat: gameState.inCombat });
+  }, [gameState.player, gameState.inCombat]);
+
+  // Handler for always-on utility capabilities (Teleport, etc.)
+  const handleUtilityCapability = useCallback((capability: import("@/lib/mechanics/player-capabilities").PlayerCapability) => {
+    if (!capability.available) return;
+
+    // Handle spells
+    if (capability.source === "spell" && gameState.player.spellBook) {
+      const spell = gameState.player.spellBook.spells.find(s => s.id === capability.sourceId);
+      if (!spell) return;
+
+      // Deduct resource cost if spell has one
+      if (spell.resourceCost > 0 && gameState.player.resources) {
+        const newResourceAmount = Math.max(0, gameState.player.resources.current - spell.resourceCost);
+        dispatch({
+          type: "UPDATE_PLAYER",
+          payload: {
+            resources: {
+              ...gameState.player.resources,
+              current: newResourceAmount,
+            },
+          },
+        });
+      }
+
+      // Set cooldown if spell has one
+      if (spell.cooldown) {
+        const newCooldowns = {
+          ...gameState.player.spellBook.cooldowns,
+          [spell.id]: spell.cooldown,
+        };
+        dispatch({
+          type: "UPDATE_PLAYER",
+          payload: {
+            spellBook: {
+              ...gameState.player.spellBook,
+              cooldowns: newCooldowns,
+            },
+          },
+        });
+      }
+
+      addLog(
+        <span className="text-violet-400">
+          You cast <EntityText type="rare">{spell.name}</EntityText>
+          {capability.utilityType === "teleport" && " and prepare to teleport..."}
+        </span>,
+        "effect",
+      );
+
+      // Handle specific utility types
+      if (capability.utilityType === "teleport") {
+        // For now, teleport triggers path selection refresh
+        // Future: could open a destination selector
+        addLog(
+          <span className="text-stone-400 text-sm">
+            The spell awaits your destination choice...
+          </span>,
+          "system",
+        );
+      }
+    }
+
+    // Handle items
+    if (capability.source === "item") {
+      const item = gameState.player.inventory.find(i => i.id === capability.sourceId);
+      if (!item) return;
+
+      addLog(
+        <span className="text-amber-400">
+          You use <EntityText type="uncommon">{item.name}</EntityText>
+        </span>,
+        "narrative",
+      );
+
+      // Consume if consumable
+      if (item.category === "consumable") {
+        dispatch({ type: "REMOVE_ITEM", payload: item.id });
+      }
+    }
+
+    // Handle abilities
+    if (capability.source === "ability") {
+      const ability = gameState.player.abilities.find(a => a.id === capability.sourceId);
+      if (!ability) return;
+
+      dispatch({ type: "USE_ABILITY", payload: ability.id });
+
+      addLog(
+        <span className="text-cyan-400">
+          You activate <EntityText type="uncommon">{ability.name}</EntityText>
+        </span>,
+        "effect",
+      );
+    }
+  }, [gameState.player, gameState.inCombat, addLog, dispatch]);
+
   // === INVENTORY HANDLERS ===
   const handleEquipItem = useCallback(
     (item: Item) => {
@@ -2929,6 +3032,10 @@ export function DungeonGame() {
             onEnterDungeons={enterDungeonSelect}
             onRestoreHealth={handleRestoreHealth}
             onBuyKey={handleBuyKey}
+            onBuyMap={handleBuyMap}
+            onBuyCurrency={handleBuyCurrency}
+            onActivateMap={handleActivateMap}
+            onApplyCurrency={handleApplyCurrency}
             onLevelUpAbility={handleLevelUpAbility}
             onTransmogrify={handleTransmogrify}
             onCraftFromEssence={handleCraftFromEssence}
@@ -3100,6 +3207,15 @@ export function DungeonGame() {
               <PathSelect
                 paths={gameState.pathOptions}
                 onSelectPath={handleSelectPath}
+                disabled={isProcessing}
+              />
+            )}
+
+            {/* Utility bar for always-on capabilities (Teleport, etc.) */}
+            {!gameState.inCombat && playerCapabilities.always.length > 0 && (
+              <UtilityBar
+                capabilities={playerCapabilities.always}
+                onUse={handleUtilityCapability}
                 disabled={isProcessing}
               />
             )}

@@ -307,6 +307,10 @@ export function buildSystemPrompt(context: {
   companions?: string;
   currentHazard?: string;
   recentEvents?: string;
+  /** Map modifiers active on this dungeon run */
+  dungeonModifiers?: Array<{ name: string; description: string }>;
+  /** Map tier (1-10) and quality (0-20) for scaling */
+  mapMetadata?: { tier: number; quality: number };
   /** Set to true to include item mechanics rules (for loot generation) */
   includeItemMechanics?: boolean;
   /**
@@ -350,6 +354,25 @@ export function buildSystemPrompt(context: {
   }
   if (context.recentEvents) {
     parts.push(`Recent events: ${context.recentEvents}`);
+  }
+
+  // Inject map modifiers as binding constraints for AI
+  if (context.dungeonModifiers && context.dungeonModifiers.length > 0) {
+    parts.push("");
+    parts.push("=== ACTIVE MAP MODIFIERS (MANDATORY) ===");
+    parts.push("These modifiers MUST influence all generated content:");
+    context.dungeonModifiers.forEach((mod) => {
+      parts.push(`• ${mod.name}: ${mod.description}`);
+    });
+    parts.push("Adapt encounters, atmosphere, and difficulty to reflect these modifiers.");
+  }
+
+  // Include map metadata for scaling context
+  if (context.mapMetadata) {
+    parts.push(`Map Tier: ${context.mapMetadata.tier}/10 (higher = harder enemies, better loot)`);
+    if (context.mapMetadata.quality > 0) {
+      parts.push(`Quality Bonus: +${context.mapMetadata.quality}% (improved rewards)`);
+    }
   }
 
   // Comprehensive mode includes ALL mechanics

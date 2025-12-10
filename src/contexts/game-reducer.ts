@@ -497,17 +497,35 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     }
 
     case "TICK_COOLDOWNS": {
-      const updatedCooldowns: Record<string, number> = {};
+      // Tick ability cooldowns
+      const updatedAbilityCooldowns: Record<string, number> = {};
       for (const [id, cd] of Object.entries(state.player.abilityCooldowns)) {
         if (cd > 0) {
-          updatedCooldowns[id] = cd - 1;
+          updatedAbilityCooldowns[id] = cd - 1;
         }
       }
+
+      // Tick spell cooldowns if player has a spellbook
+      let updatedSpellBook = state.player.spellBook;
+      if (updatedSpellBook?.cooldowns) {
+        const updatedSpellCooldowns: Record<string, number> = {};
+        for (const [id, cd] of Object.entries(updatedSpellBook.cooldowns)) {
+          if (cd > 0) {
+            updatedSpellCooldowns[id] = cd - 1;
+          }
+        }
+        updatedSpellBook = {
+          ...updatedSpellBook,
+          cooldowns: updatedSpellCooldowns,
+        };
+      }
+
       return {
         ...state,
         player: {
           ...state.player,
-          abilityCooldowns: updatedCooldowns,
+          abilityCooldowns: updatedAbilityCooldowns,
+          spellBook: updatedSpellBook,
         },
       };
     }

@@ -16,8 +16,8 @@ interface TavernProps {
   onEnterDungeons: () => void
   onRestoreHealth: (cost: number, amount: number) => void
   onBuyKey: (keyRarity: "common" | "uncommon" | "rare") => void  // Legacy - will be removed
-  onBuyMap?: (tier: MapTier) => void
-  onBuyCurrency?: (currencyId: string) => void
+  onBuyMap?: (tier: MapTier, price: number) => void
+  onBuyCurrency?: (currencyId: string, price: number) => void
   onActivateMap?: (map: MapItem) => void
   onApplyCurrency?: (currency: CraftingCurrency, map: MapItem) => void
   onLevelUpAbility?: (abilityId: string) => void
@@ -232,7 +232,7 @@ export function Tavern({ player, floor, onEnterDungeons, onRestoreHealth, onBuyK
             <div className="space-y-3">
               <div className="text-stone-500 text-xs uppercase">Purchase Maps</div>
               <button
-                onClick={() => onBuyMap?.(1)}
+                onClick={() => onBuyMap?.(1, 20)}
                 disabled={player.stats.gold < 20 || !onBuyMap}
                 className="w-full py-3 bg-stone-700/40 hover:bg-stone-600/50 text-stone-300 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-4"
               >
@@ -241,7 +241,7 @@ export function Tavern({ player, floor, onEnterDungeons, onRestoreHealth, onBuyK
               </button>
 
               <button
-                onClick={() => onBuyMap?.(2)}
+                onClick={() => onBuyMap?.(2, 50)}
                 disabled={player.stats.gold < 50 || !onBuyMap}
                 className="w-full py-3 bg-stone-700/40 hover:bg-stone-600/50 text-stone-300 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-4"
               >
@@ -250,7 +250,7 @@ export function Tavern({ player, floor, onEnterDungeons, onRestoreHealth, onBuyK
               </button>
 
               <button
-                onClick={() => onBuyMap?.(3)}
+                onClick={() => onBuyMap?.(3, 100)}
                 disabled={player.stats.gold < 100 || !onBuyMap}
                 className="w-full py-3 bg-stone-700/40 hover:bg-stone-600/50 text-stone-300 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-4"
               >
@@ -264,7 +264,7 @@ export function Tavern({ player, floor, onEnterDungeons, onRestoreHealth, onBuyK
               <div className="text-stone-500 text-xs uppercase">Crafting Orbs</div>
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => onBuyCurrency?.("orb_transmutation")}
+                  onClick={() => onBuyCurrency?.("orb_transmutation", 5)}
                   disabled={player.stats.gold < 5 || !onBuyCurrency}
                   className="py-2 bg-stone-700/30 hover:bg-stone-600/40 text-stone-300 rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-3"
                 >
@@ -272,7 +272,7 @@ export function Tavern({ player, floor, onEnterDungeons, onRestoreHealth, onBuyK
                   <EntityText type="gold">5g</EntityText>
                 </button>
                 <button
-                  onClick={() => onBuyCurrency?.("orb_alteration")}
+                  onClick={() => onBuyCurrency?.("orb_alteration", 8)}
                   disabled={player.stats.gold < 8 || !onBuyCurrency}
                   className="py-2 bg-stone-700/30 hover:bg-stone-600/40 text-stone-300 rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-3"
                 >
@@ -280,7 +280,7 @@ export function Tavern({ player, floor, onEnterDungeons, onRestoreHealth, onBuyK
                   <EntityText type="gold">8g</EntityText>
                 </button>
                 <button
-                  onClick={() => onBuyCurrency?.("orb_alchemy")}
+                  onClick={() => onBuyCurrency?.("orb_alchemy", 25)}
                   disabled={player.stats.gold < 25 || !onBuyCurrency}
                   className="py-2 bg-cyan-900/30 hover:bg-cyan-800/40 text-cyan-300 rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-3"
                 >
@@ -288,7 +288,7 @@ export function Tavern({ player, floor, onEnterDungeons, onRestoreHealth, onBuyK
                   <EntityText type="gold">25g</EntityText>
                 </button>
                 <button
-                  onClick={() => onBuyCurrency?.("orb_chaos")}
+                  onClick={() => onBuyCurrency?.("orb_chaos", 50)}
                   disabled={player.stats.gold < 50 || !onBuyCurrency}
                   className="py-2 bg-purple-900/30 hover:bg-purple-800/40 text-purple-300 rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between px-3"
                 >
