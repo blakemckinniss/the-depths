@@ -509,7 +509,47 @@ export interface Player extends GameEntity {
   stance: CombatStance
   combo: ComboTracker
   sustainedAbilities: SustainedAbility[] // Toggle abilities that reserve resources while active
+  spellBook: SpellBook // Learned spells from tomes, events, etc.
 }
+
+// Spell Book - player's collection of learned spells
+export interface SpellBook {
+  spells: Spell[]
+  favorites: string[] // Quick-access spell IDs
+  recentlyCast: string[] // Last 5 spells cast
+  cooldowns: Record<string, number> // spellId -> turns remaining
+}
+
+// Re-export Spell type (actual implementation in magic/spell-system.ts)
+export interface Spell extends GameEntity {
+  entityType: "ability"
+  school: SpellSchool
+  usageContext: SpellUsageContext
+  effectType: SpellEffectType
+  targetType: SpellTargetType
+  requiresTarget: boolean
+  resourceCost: number
+  resourceType: ResourceType
+  healthCost?: number
+  cooldown: number
+  damage?: { base: number; scaling?: { stat: string; ratio: number }; type: DamageType }
+  healing?: { base: number; scaling?: { stat: string; ratio: number } }
+  appliesEffects?: StatusEffect[]
+  utilityEffect?: { type: string; value?: number; duration?: number }
+  levelRequired: number
+  source?: SpellSource
+  powerLevel: number
+  rarity: ItemRarity
+  tags: string[]
+  incantation?: string
+  castNarration?: string
+}
+
+export type SpellSchool = "fire" | "ice" | "lightning" | "earth" | "holy" | "shadow" | "nature" | "spirit" | "arcane" | "illusion" | "enchantment" | "transmutation" | "blood" | "void" | "temporal" | "universal"
+export type SpellUsageContext = "combat_only" | "exploration" | "anytime" | "targeted"
+export type SpellEffectType = "damage" | "heal" | "buff" | "debuff" | "summon" | "utility" | "transmute" | "control" | "ward"
+export type SpellTargetType = "self" | "enemy" | "ally" | "all_enemies" | "all_allies" | "item" | "npc" | "environment" | "location"
+export type SpellSource = "tome" | "scroll_study" | "shrine" | "npc" | "event" | "discovery" | "quest" | "innate" | "curse" | "artifact"
 
 // Re-export for convenience (actual type is in sustained-ability-system.ts)
 import type { SustainedAbility } from "@/lib/character/sustained-ability-system"

@@ -302,6 +302,7 @@ export function DungeonGame() {
     isProcessing,
     setIsProcessing,
     addLog,
+    clearLogs,
     setActiveLootContainer,
     setNpcDialogue,
   });

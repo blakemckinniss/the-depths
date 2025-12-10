@@ -53,6 +53,7 @@ interface UseNavigationOptions {
   isProcessing: boolean;
   setIsProcessing: (processing: boolean) => void;
   addLog: AddLogFn;
+  clearLogs: () => void;
   setActiveLootContainer: (container: LootContainer | null) => void;
   setNpcDialogue: (dialogue: string) => void;
 }
@@ -68,6 +69,7 @@ export function useNavigation({
   isProcessing,
   setIsProcessing,
   addLog,
+  clearLogs,
   setActiveLootContainer,
   setNpcDialogue,
 }: UseNavigationOptions) {
@@ -216,6 +218,9 @@ export function useNavigation({
     async (path: PathOption) => {
       if (isProcessing) return;
       setIsProcessing(true);
+
+      // Clear logs from previous room - each room starts fresh
+      clearLogs();
 
       dispatch({ type: "SET_PATH_OPTIONS", payload: null });
 
@@ -655,7 +660,7 @@ export function useNavigation({
 
       setIsProcessing(false);
     },
-    [state, isProcessing, addLog, dispatch, logger, setActiveLootContainer, setNpcDialogue, setIsProcessing],
+    [state, isProcessing, addLog, clearLogs, dispatch, logger, setActiveLootContainer, setNpcDialogue, setIsProcessing],
   );
 
   return {

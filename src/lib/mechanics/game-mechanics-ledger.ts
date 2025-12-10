@@ -858,6 +858,11 @@ export const ENTITY_IMPACTS = [
   "modify_stat",       // Permanent stat increase/decrease
   "grant_ability",     // Learn new ability
   "advance_quest",     // Quest/story progression
+
+  // Spell/Magic changes
+  "grant_spell",       // Teach player a new spell
+  "cast_spell",        // Trigger a spell effect
+  "dispel_effect",     // Remove magical effects
 ] as const;
 
 export type EntityImpact = (typeof ENTITY_IMPACTS)[number];
@@ -893,6 +898,13 @@ export const ACTION_POTENTIAL_IMPACTS: Record<string, readonly EntityImpact[]> =
   "tame": ["spawn_companion", "damage_player", "apply_debuff"],
   "feed": ["spawn_companion", "consume_item", "apply_buff"],
   "approach": ["spawn_companion", "spawn_enemy", "damage_player", "apply_debuff"],
+
+  // Spell/Magic actions
+  "study": ["grant_spell", "grant_xp", "apply_buff", "apply_debuff", "consume_entity"],
+  "read_tome": ["grant_spell", "grant_xp", "reveal_secret", "apply_buff", "apply_debuff"],
+  "cast_spell": ["damage_player", "heal_player", "apply_buff", "apply_debuff", "cast_spell", "dispel_effect", "transform_entity", "reveal_secret"],
+  "meditate": ["grant_spell", "apply_buff", "heal_player", "remove_effect"],
+  "pray": ["grant_spell", "apply_buff", "heal_player", "remove_effect", "reveal_secret"],
 } as const;
 
 /**
@@ -912,7 +924,10 @@ export const TAG_ENABLED_IMPACTS: Record<string, readonly EntityImpact[]> = {
   "trapped": ["trigger_trap", "damage_player", "apply_debuff"],
 
   // Magical tags
-  "magical": ["apply_buff", "apply_debuff", "heal_player", "damage_player", "transform_entity", "grant_ability", "modify_stat"],
+  "magical": ["apply_buff", "apply_debuff", "heal_player", "damage_player", "transform_entity", "grant_ability", "grant_spell", "modify_stat", "dispel_effect"],
+  "teachable": ["grant_spell", "grant_ability", "grant_xp"],
+  "spellbook": ["grant_spell", "reveal_secret"],
+  "enchanted": ["apply_buff", "apply_debuff", "cast_spell", "grant_spell"],
 
   // Creature tags
   "tameable": ["spawn_companion"],
@@ -1036,6 +1051,135 @@ export function getEntityEmbeddingFormat(): string {
   return `Embed interactive entities using {entity:NAME:CLASS:TAG1,TAG2} format.
 Classes: ${ENTITY_CLASSES.join(", ")}
 Tags: ${ENTITY_TAGS.join(", ")}`;
+}
+
+// =============================================================================
+// SPELL SYSTEM CAPABILITIES
+// Defines what spells can do - AI generates within these constraints
+// =============================================================================
+
+/**
+ * Spell schools - magical traditions/sources
+ */
+export const SPELL_SCHOOLS = [
+  "fire", "ice", "lightning", "earth",   // Elemental
+  "holy", "shadow", "nature", "spirit",  // Divine/Spiritual
+  "arcane", "illusion", "enchantment", "transmutation", // Arcane
+  "blood", "void", "temporal", "universal", // Special
+] as const;
+
+/**
+ * When spells can be used
+ */
+export const SPELL_USAGE_CONTEXTS = [
+  "combat_only",  // Only during combat (damage, combat buffs)
+  "exploration",  // Only outside combat (reveal, light, detect)
+  "anytime",      // Combat or exploration (heal, buff, teleport)
+  "targeted",     // Requires specific target (transmute item, charm NPC)
+] as const;
+
+/**
+ * What spells can do
+ */
+export const SPELL_EFFECT_TYPES = [
+  "damage",    // Deal damage to enemies
+  "heal",      // Restore health
+  "buff",      // Apply positive status effect
+  "debuff",    // Apply negative status effect
+  "summon",    // Create companion/minion
+  "utility",   // Non-combat effect (light, reveal, teleport)
+  "transmute", // Transform target (item to gold, etc.)
+  "control",   // Mind control (charm, fear, dominate)
+  "ward",      // Protection/barrier
+] as const;
+
+/**
+ * Spell target types
+ */
+export const SPELL_TARGET_TYPES = [
+  "self",        // Cast on self
+  "enemy",       // Single enemy
+  "ally",        // Companion
+  "all_enemies", // All enemies in combat
+  "all_allies",  // Self + companions
+  "item",        // Cast on item (transmute, identify)
+  "npc",         // Cast on NPC (charm)
+  "environment", // Cast on room (light, ward)
+  "location",    // Teleport destination
+] as const;
+
+/**
+ * How spells are learned
+ */
+export const SPELL_SOURCES = [
+  "tome",         // Reading a tome/spellbook
+  "scroll_study", // Studying a scroll (consumed)
+  "shrine",       // Shrine blessing
+  "npc",          // Taught by NPC
+  "event",        // Game event (discovery, vision)
+  "discovery",    // Found through exploration
+  "quest",        // Quest reward
+  "innate",       // Born with it (race)
+  "curse",        // Cursed with knowledge
+  "artifact",     // Bound to artifact
+] as const;
+
+/**
+ * Utility spell effects the engine can process
+ */
+export const SPELL_UTILITY_EFFECTS = [
+  "light",           // Illuminate area
+  "reveal_traps",    // Show hidden traps
+  "reveal_secrets",  // Show hidden paths/items
+  "teleport",        // Move to location
+  "unlock",          // Open locked doors/chests
+  "identify",        // Reveal item properties
+  "transmute_gold",  // Convert item to gold
+  "transmute_item",  // Convert item to another
+  "charm",           // Make NPC friendly
+  "dominate",        // Control enemy
+  "fear",            // Make enemy flee
+  "ward_area",       // Protect room
+  "summon_companion",// Create ally
+  "banish",          // Remove enemy
+  "dispel",          // Remove magical effects
+  "scry",            // See future rooms
+  "restore_item",    // Repair broken item
+] as const;
+
+/**
+ * Generate AI prompt for spell creation
+ */
+export function generateSpellMechanicsPrompt(): string {
+  return `SPELL SYSTEM CAPABILITIES:
+Create spells using these building blocks.
+
+SCHOOLS: ${SPELL_SCHOOLS.join(", ")}
+USAGE CONTEXTS: ${SPELL_USAGE_CONTEXTS.join(", ")}
+EFFECT TYPES: ${SPELL_EFFECT_TYPES.join(", ")}
+TARGET TYPES: ${SPELL_TARGET_TYPES.join(", ")}
+UTILITY EFFECTS: ${SPELL_UTILITY_EFFECTS.join(", ")}
+
+SPELL STRUCTURE:
+- school: Magical tradition
+- usageContext: When it can be used
+- effectType: Primary effect category
+- targetType: What it targets
+- resourceCost: Mana/energy cost (5-50)
+- cooldown: Turns between uses (0-10)
+- damage/healing: Base values + scaling
+- appliesEffects: Status effects to apply
+- utilityEffect: For utility spells
+- powerLevel: 1-10 for balance
+- levelRequired: Player level needed
+
+POWER GUIDELINES:
+1-3: Basic spells, low cost, no cooldown
+4-6: Moderate power, medium cost, short cooldown
+7-9: Powerful, high cost, longer cooldown
+10: Legendary, major impact
+
+Be creative but balanced within the power level.`;
 }
 
 // =============================================================================

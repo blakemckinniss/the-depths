@@ -562,6 +562,12 @@ export const createInitialPlayer = (): Player => ({
     activeCombo: undefined,
   },
   sustainedAbilities: [],
+  spellBook: {
+    spells: [],
+    favorites: [],
+    recentlyCast: [],
+    cooldowns: {},
+  },
 })
 
 export const createInitialRunStats = (): RunSummary => ({
