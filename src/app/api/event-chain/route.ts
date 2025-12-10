@@ -3,12 +3,12 @@ import {
   buildSystemPrompt,
   AI_CONFIG,
   entityCache,
-} from "@/lib/ai-utils";
+} from "@/lib/ai/ai-utils";
 import {
   generateEntitySystemPrompt,
   ENTITY_CLASSES,
   ENTITY_TAGS,
-} from "@/lib/game-mechanics-ledger";
+} from "@/lib/mechanics/game-mechanics-ledger";
 import {
   roomEventSchema,
   combatRoundSchema,
@@ -26,7 +26,7 @@ import {
   generateEffectSchema,
   effectComboSchema,
   ambientEffectSchema,
-} from "@/lib/ai-schemas";
+} from "@/lib/ai/ai-schemas";
 
 export async function POST(req: Request) {
   const body = await req.json();

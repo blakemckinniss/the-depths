@@ -4,8 +4,8 @@
  * Analyzes unknown items and reveals their true nature
  */
 
-import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai-utils"
-import { generateMechanicsPrompt } from "@/lib/game-mechanics-ledger"
+import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai/ai-utils"
+import { generateMechanicsPrompt } from "@/lib/mechanics/game-mechanics-ledger"
 import { z } from "zod"
 import { NextResponse } from "next/server"
 

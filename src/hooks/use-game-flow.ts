@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback } from "react";
-import type { GameState, PlayerClass } from "@/lib/game-types";
+import type { GameState, PlayerClass } from "@/lib/core/game-types";
 import type { Dispatch } from "react";
 import type { GameAction } from "@/contexts/game-reducer";
-import type { GameLogger } from "@/lib/game-log-system";
+import type { GameLogger } from "@/lib/ai/game-log-system";
 import { createInitialGameState } from "@/contexts/game-context";
-import { initializePlayerClass, CLASSES } from "@/lib/ability-system";
-import { createInitialPlayer, createInitialRunStats } from "@/lib/game-data";
+import { initializePlayerClass, CLASSES } from "@/lib/character/ability-system";
+import { createInitialPlayer, createInitialRunStats } from "@/lib/core/game-data";
 
 // ============================================================================
 // TYPES

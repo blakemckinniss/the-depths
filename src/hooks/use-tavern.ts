@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback } from "react";
-import type { GameState, DungeonKey, KeyRarity } from "@/lib/game-types";
+import type { GameState, DungeonKey, KeyRarity } from "@/lib/core/game-types";
 import type { Dispatch } from "react";
 import type { GameAction } from "@/contexts/game-reducer";
-import type { GameLogger } from "@/lib/game-log-system";
-import { createDungeonKey } from "@/lib/game-data";
+import type { GameLogger } from "@/lib/ai/game-log-system";
+import { createDungeonKey } from "@/lib/core/game-data";
 
 // ============================================================================
 // CONSTANTS

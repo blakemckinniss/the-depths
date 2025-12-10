@@ -8,7 +8,7 @@
  * - Dungeon-themed loot
  */
 
-import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai-utils";
+import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai/ai-utils";
 import {
   generateMechanicsPrompt,
   generateEconomyPrompt,
@@ -18,7 +18,7 @@ import {
   getFloorStatRange,
   getFloorRarityDistribution,
   CONTAINER_TRAP_CHANCE,
-} from "@/lib/game-mechanics-ledger";
+} from "@/lib/mechanics/game-mechanics-ledger";
 import { z } from "zod";
 import { NextResponse } from "next/server";
 

@@ -8,13 +8,13 @@ import type {
   DungeonKey,
   EnvironmentalHazard,
   Enemy,
-} from "@/lib/game-types";
+} from "@/lib/core/game-types";
 import type { Dispatch } from "react";
 import type { GameAction } from "@/contexts/game-reducer";
-import type { GameLogger, LogCategory } from "@/lib/game-log-system";
-import type { LootContainer } from "@/lib/ai-drops-system";
-import { generatePathOptions, getPathRewardMultiplier } from "@/lib/path-system";
-import { generateHazard, applyHazardToEnemy } from "@/lib/hazard-system";
+import type { GameLogger, LogCategory } from "@/lib/ai/game-log-system";
+import type { LootContainer } from "@/lib/ai/ai-drops-system";
+import { generatePathOptions, getPathRewardMultiplier } from "@/lib/world/path-system";
+import { generateHazard, applyHazardToEnemy } from "@/lib/world/hazard-system";
 import {
   generateDungeonSelection,
   generateEnemy,
@@ -23,14 +23,14 @@ import {
   generateTrap,
   generateShrine,
   generateNPC,
-} from "@/lib/game-data";
-import { generateEnemyAbility } from "@/lib/combat-system";
+} from "@/lib/core/game-data";
+import { generateEnemyAbility } from "@/lib/combat/combat-system";
 import {
   generateLootContainer,
   enhanceEnemyWithLore,
   generateNPCDialogue,
-} from "@/lib/ai-drops-system";
-import { EntityText, ItemText } from "@/components/entity-text";
+} from "@/lib/ai/ai-drops-system";
+import { EntityText, ItemText } from "@/components/narrative/entity-text";
 
 // ============================================================================
 // TYPES

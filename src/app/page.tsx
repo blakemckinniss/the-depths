@@ -1,5 +1,5 @@
-import { DungeonGame } from "@/components/dungeon-game"
-import { ErrorBoundary } from "@/components/error-boundary"
+import { DungeonGame } from "@/components/core/dungeon-game"
+import { ErrorBoundary } from "@/components/core/error-boundary"
 
 export default function Home() {
   return (

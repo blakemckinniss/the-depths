@@ -147,7 +147,7 @@ import {
   type ChaosSeverity,
   type ChaosEventType,
   type SkillDifficulty,
-} from "../game-mechanics-ledger";
+} from "../mechanics/game-mechanics-ledger";
 
 // =============================================================================
 // SECTION 1: CONSTANT INTEGRITY TESTS

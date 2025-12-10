@@ -1,4 +1,4 @@
-import { generateWithAI, AI_CONFIG, entityCache, getItemMechanicsPrompt } from "@/lib/ai-utils"
+import { generateWithAI, AI_CONFIG, entityCache, getItemMechanicsPrompt } from "@/lib/ai/ai-utils"
 import {
   itemSchema,
   enemySchema,
@@ -10,7 +10,7 @@ import {
   roomNarrationSchema,
   combatNarrationSchema,
   eventOutcomeSchema,
-} from "@/lib/ai-schemas"
+} from "@/lib/ai/ai-schemas"
 
 // Get mechanics prompt once at module load
 const ITEM_MECHANICS = getItemMechanicsPrompt()

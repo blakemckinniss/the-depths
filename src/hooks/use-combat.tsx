@@ -10,7 +10,7 @@ import type {
   StatusEffect,
   DamageType,
   Item,
-} from "@/lib/game-types";
+} from "@/lib/core/game-types";
 import {
   selectCompanionAction,
   calculateCompanionDamage,
@@ -20,8 +20,8 @@ import {
   useCompanionAbility,
   processCompanionCooldowns,
   removeCompanionFromParty,
-} from "@/lib/companion-system";
-import { getBossVictoryRewards } from "@/lib/ai-drops-system";
+} from "@/lib/entity/companion-system";
+import { getBossVictoryRewards } from "@/lib/ai/ai-drops-system";
 
 // Response types for AI narrative generation
 interface CombatResponse {
@@ -35,14 +35,14 @@ interface VictoryResponse {
 }
 import type { Dispatch } from "react";
 import type { GameAction } from "@/contexts/game-reducer";
-import { calculateEffectiveStats } from "@/lib/entity-system";
+import { calculateEffectiveStats } from "@/lib/entity/entity-system";
 import {
   executeAbility,
   regenerateResource,
   tickCooldowns,
   getClassAbilitiesForLevel,
   CLASSES,
-} from "@/lib/ability-system";
+} from "@/lib/character/ability-system";
 import {
   calculateDamageWithType,
   checkForCombo,
@@ -50,7 +50,7 @@ import {
   selectEnemyAbility,
   tickEnemyAbilities,
   STANCE_MODIFIERS,
-} from "@/lib/combat-system";
+} from "@/lib/combat/combat-system";
 import {
   triggerTurnEnd,
   triggerOnAttack,
@@ -58,14 +58,14 @@ import {
   triggerOnCriticalHit,
   triggerOnDamageTaken,
   triggerOnKill,
-} from "@/lib/effect-system";
+} from "@/lib/combat/effect-system";
 import {
   applyHazardToPlayer,
   tickHazard,
   removeHazardEffects,
-} from "@/lib/hazard-system";
-import type { GameLogger, LogCategory } from "@/lib/game-log-system";
-import { EntityText } from "@/components/entity-text";
+} from "@/lib/world/hazard-system";
+import type { GameLogger, LogCategory } from "@/lib/ai/game-log-system";
+import { EntityText } from "@/components/narrative/entity-text";
 
 // ============================================================================
 // TYPES

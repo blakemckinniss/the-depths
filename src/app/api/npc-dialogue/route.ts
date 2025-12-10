@@ -5,14 +5,14 @@
  * role, and current game state
  */
 
-import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai-utils";
+import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai/ai-utils";
 import {
   generateMechanicsPrompt,
   getDispositionLabel,
   getHealthDescriptor,
   DISPOSITION_RANGES,
   NPC_ROLES,
-} from "@/lib/game-mechanics-ledger";
+} from "@/lib/mechanics/game-mechanics-ledger";
 import { z } from "zod";
 import { NextResponse } from "next/server";
 

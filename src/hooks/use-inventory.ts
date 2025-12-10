@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback } from "react";
-import type { GameState, Item, StatusEffect } from "@/lib/game-types";
+import type { GameState, Item, StatusEffect } from "@/lib/core/game-types";
 import type { Dispatch } from "react";
 import type { GameAction } from "@/contexts/game-reducer";
-import type { GameLogger } from "@/lib/game-log-system";
+import type { GameLogger } from "@/lib/ai/game-log-system";
 
 // ============================================================================
 // TYPES

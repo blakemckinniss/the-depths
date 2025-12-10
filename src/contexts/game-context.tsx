@@ -8,9 +8,9 @@ import {
   type ReactNode,
   type Dispatch,
 } from "react";
-import type { GameState } from "@/lib/game-types";
+import type { GameState } from "@/lib/core/game-types";
 import { gameReducer, type GameAction, gameActions } from "./game-reducer";
-import { createInitialPlayer, createInitialRunStats } from "@/lib/game-data";
+import { createInitialPlayer, createInitialRunStats } from "@/lib/core/game-data";
 
 // ============================================================================
 // INITIAL STATE
@@ -109,6 +109,9 @@ function createBoundActions(dispatch: Dispatch<GameAction>) {
       dispatch(gameActions.setPathOptions(paths)),
     setDungeon: (dungeon: Parameters<typeof gameActions.setDungeon>[0]) =>
       dispatch(gameActions.setDungeon(dungeon)),
+    setAvailableDungeons: (
+      dungeons: Parameters<typeof gameActions.setAvailableDungeons>[0],
+    ) => dispatch(gameActions.setAvailableDungeons(dungeons)),
 
     // Encounters
     setActiveNPC: (npc: Parameters<typeof gameActions.setActiveNPC>[0]) =>

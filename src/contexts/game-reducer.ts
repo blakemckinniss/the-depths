@@ -20,7 +20,7 @@ import type {
   Companion,
   DungeonKey,
   RunSummary,
-} from "@/lib/game-types";
+} from "@/lib/core/game-types";
 
 // ============================================================================
 // ACTION TYPES
@@ -87,6 +87,7 @@ type NavigationAction =
   | { type: "SET_FLOOR"; payload: number }
   | { type: "SET_PATH_OPTIONS"; payload: PathOption[] | null }
   | { type: "SET_DUNGEON"; payload: DungeonCard | null }
+  | { type: "SET_AVAILABLE_DUNGEONS"; payload: DungeonCard[] }
   | { type: "CLEAR_DUNGEON" }
   | { type: "SET_HAZARD"; payload: EnvironmentalHazard | null };
 
@@ -588,6 +589,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         currentDungeon: action.payload,
       };
 
+    case "SET_AVAILABLE_DUNGEONS":
+      return {
+        ...state,
+        availableDungeons: action.payload,
+      };
+
     case "CLEAR_DUNGEON":
       return {
         ...state,
@@ -896,6 +903,10 @@ export const gameActions = {
   setDungeon: (dungeon: DungeonCard | null): GameAction => ({
     type: "SET_DUNGEON",
     payload: dungeon,
+  }),
+  setAvailableDungeons: (dungeons: DungeonCard[]): GameAction => ({
+    type: "SET_AVAILABLE_DUNGEONS",
+    payload: dungeons,
   }),
 
   // Encounters

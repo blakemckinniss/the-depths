@@ -7,8 +7,8 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import type { ParsedNarrative } from "@/lib/game-types";
-import type { LootContainer } from "@/lib/ai-drops-system";
+import type { ParsedNarrative } from "@/lib/core/game-types";
+import type { LootContainer } from "@/lib/ai/ai-drops-system";
 
 // ============================================================================
 // UI STATE TYPES

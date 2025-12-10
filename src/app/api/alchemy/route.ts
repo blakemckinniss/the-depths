@@ -8,8 +8,8 @@
  * - Enchantment suggestions
  */
 
-import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai-utils"
-import { generateCraftingMechanicsPrompt, generateMechanicsPrompt } from "@/lib/game-mechanics-ledger"
+import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai/ai-utils"
+import { generateCraftingMechanicsPrompt, generateMechanicsPrompt } from "@/lib/mechanics/game-mechanics-ledger"
 import { z } from "zod"
 import { NextResponse } from "next/server"
 

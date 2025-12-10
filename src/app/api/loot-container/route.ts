@@ -7,7 +7,7 @@
  * - Open with dramatic AI-generated reveal
  */
 
-import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai-utils";
+import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai/ai-utils";
 import {
   generateMechanicsPrompt,
   generateEconomyPrompt,
@@ -17,7 +17,7 @@ import {
   BASE_RARITY_CHANCES,
   CONTAINER_LOOT_COUNTS,
   CONTAINER_TYPES,
-} from "@/lib/game-mechanics-ledger";
+} from "@/lib/mechanics/game-mechanics-ledger";
 import { z } from "zod";
 import { NextResponse } from "next/server";
 

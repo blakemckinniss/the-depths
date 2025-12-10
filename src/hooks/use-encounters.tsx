@@ -9,14 +9,14 @@ import type {
   Item,
   StatusEffect,
   Enemy,
-} from "@/lib/game-types";
+} from "@/lib/core/game-types";
 import type { Dispatch } from "react";
 import type { GameAction } from "@/contexts/game-reducer";
-import type { GameLogger, LogCategory } from "@/lib/game-log-system";
-import type { LootContainer } from "@/lib/ai-drops-system";
-import { calculateDisarmChance } from "@/lib/game-data";
-import { STATUS_EFFECTS } from "@/lib/entity-system";
-import { EntityText, ItemText } from "@/components/entity-text";
+import type { GameLogger, LogCategory } from "@/lib/ai/game-log-system";
+import type { LootContainer } from "@/lib/ai/ai-drops-system";
+import { calculateDisarmChance } from "@/lib/core/game-data";
+import { STATUS_EFFECTS } from "@/lib/entity/entity-system";
+import { EntityText, ItemText } from "@/components/narrative/entity-text";
 
 // ============================================================================
 // TYPES

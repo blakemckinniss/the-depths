@@ -1,4 +1,4 @@
-import { generateWithAI, buildSystemPrompt, AI_CONFIG, entityCache } from "@/lib/ai-utils"
+import { generateWithAI, buildSystemPrompt, AI_CONFIG, entityCache } from "@/lib/ai/ai-utils"
 import {
   roomSchema,
   enemyEncounterSchema,
@@ -12,7 +12,7 @@ import {
   playerDeathSchema,
   descendSchema,
   emptyRoomSchema,
-} from "@/lib/ai-schemas"
+} from "@/lib/ai/ai-schemas"
 
 export async function POST(req: Request) {
   const body = await req.json()

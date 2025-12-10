@@ -8,8 +8,8 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import type { LogEntry } from "@/lib/game-types";
-import { GameLogger, createGameLogger } from "@/lib/game-log-system";
+import type { LogEntry } from "@/lib/core/game-types";
+import { GameLogger, createGameLogger } from "@/lib/ai/game-log-system";
 
 // ============================================================================
 // CONTEXT TYPES
