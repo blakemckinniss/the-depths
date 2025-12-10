@@ -326,6 +326,16 @@ export type CurrencyType =
   | "token_merchant"
   | "token_guild"
   | "ancient_coin"
+  // Map crafting currencies (PoE-style orbs)
+  | "orb_transmutation" // Normal → Magic (1-2 mods)
+  | "orb_alteration"    // Reroll magic map mods
+  | "orb_augmentation"  // Add 1 modifier to magic map
+  | "orb_alchemy"       // Normal → Rare (3-5 mods)
+  | "orb_chaos"         // Reroll all rare map mods
+  | "orb_scouring"      // Strip all modifiers → Normal
+  | "orb_blessed"       // Add +1-5% quality
+  | "orb_divine"        // Reroll modifier values (keep mods)
+  | "orb_exalted"       // Add high-tier modifier to rare map
 
 // =============================================================================
 // CATEGORY METADATA
