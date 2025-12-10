@@ -21,6 +21,7 @@ import type {
   EventMemory,
   DungeonKey,
   RunSummary,
+  EquipmentSlot,
 } from "@/lib/core/game-types";
 
 // ============================================================================
@@ -45,8 +46,8 @@ type PlayerAction =
 type InventoryAction =
   | { type: "ADD_ITEM"; payload: Item }
   | { type: "REMOVE_ITEM"; payload: string } // item ID
-  | { type: "EQUIP_ITEM"; payload: { item: Item; slot: "weapon" | "armor" } }
-  | { type: "UNEQUIP_ITEM"; payload: "weapon" | "armor" }
+  | { type: "EQUIP_ITEM"; payload: { item: Item; slot: EquipmentSlot | "weapon" | "armor" } }
+  | { type: "UNEQUIP_ITEM"; payload: EquipmentSlot | "weapon" | "armor" }
   | { type: "ADD_KEY"; payload: DungeonKey }
   | { type: "REMOVE_KEY"; payload: string }; // key ID
 

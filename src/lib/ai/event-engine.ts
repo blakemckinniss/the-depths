@@ -326,3 +326,703 @@ export class EntityRelationTracker {
     return this.relations.slice(-count)
   }
 }
+
+// =============================================================================
+// ENTITY LINK MANAGER
+// Manages active mechanical bonds between entities
+// =============================================================================
+
+export class EntityLinkManager {
+  private links: Map<string, EntityLink> = new Map()
+
+  createLink(
+    linkType: EntityLinkType,
+    sourceId: string,
+    targetId: string,
+    options: Partial<Omit<EntityLink, "id" | "linkType" | "sourceId" | "targetId">> = {}
+  ): EntityLink {
+    const link: EntityLink = {
+      id: generateEntityId("link"),
+      linkType,
+      sourceId,
+      targetId,
+      bidirectional: options.bidirectional ?? false,
+      strength: options.strength ?? 100,
+      condition: options.condition,
+      effect: options.effect,
+      narrativeHook: options.narrativeHook,
+      createdBy: options.createdBy ?? "unknown",
+      permanent: options.permanent ?? false,
+      breakCondition: options.breakCondition,
+    }
+    this.links.set(link.id, link)
+    return link
+  }
+
+  breakLink(linkId: string): boolean {
+    return this.links.delete(linkId)
+  }
+
+  getLinksForEntity(entityId: string): EntityLink[] {
+    return Array.from(this.links.values()).filter(
+      (link) => link.sourceId === entityId || (link.bidirectional && link.targetId === entityId)
+    )
+  }
+
+  getLinksOfType(linkType: EntityLinkType): EntityLink[] {
+    return Array.from(this.links.values()).filter((link) => link.linkType === linkType)
+  }
+
+  getLinkBetween(entityA: string, entityB: string): EntityLink | undefined {
+    return Array.from(this.links.values()).find(
+      (link) =>
+        (link.sourceId === entityA && link.targetId === entityB) ||
+        (link.bidirectional && link.sourceId === entityB && link.targetId === entityA)
+    )
+  }
+
+  // Process link effects when source entity dies
+  processDeathTriggers(deadEntityId: string): { affectedEntities: string[]; effects: string[] } {
+    const affectedEntities: string[] = []
+    const effects: string[] = []
+
+    for (const link of this.links.values()) {
+      if (link.sourceId === deadEntityId) {
+        // Source died - check for death triggers on target
+        if (link.linkType === "soul_bound") {
+          affectedEntities.push(link.targetId)
+          effects.push(`Soul-bound entity ${link.targetId} perishes`)
+        } else if (link.linkType === "death_trigger" && link.effect?.onSourceDeath) {
+          affectedEntities.push(link.targetId)
+          effects.push(link.effect.onSourceDeath)
+        } else if (link.linkType === "power_source") {
+          affectedEntities.push(link.targetId)
+          effects.push(`${link.targetId} loses its power source`)
+        }
+      }
+
+      if (link.targetId === deadEntityId && link.effect?.onTargetDeath) {
+        affectedEntities.push(link.sourceId)
+        effects.push(link.effect.onTargetDeath)
+      }
+    }
+
+    return { affectedEntities, effects }
+  }
+
+  // Process damage sharing
+  processDamageShare(entityId: string, damage: number): { sharedWith: string; sharedDamage: number }[] {
+    const shares: { sharedWith: string; sharedDamage: number }[] = []
+
+    for (const link of this.links.values()) {
+      if (link.linkType === "damage_share" && link.sourceId === entityId) {
+        const shareRatio = link.effect?.damageShare ?? 0.5
+        shares.push({
+          sharedWith: link.targetId,
+          sharedDamage: Math.floor(damage * shareRatio),
+        })
+      }
+      if (link.linkType === "life_linked" && (link.sourceId === entityId || link.targetId === entityId)) {
+        const other = link.sourceId === entityId ? link.targetId : link.sourceId
+        shares.push({
+          sharedWith: other,
+          sharedDamage: Math.floor(damage * (link.strength / 100)),
+        })
+      }
+    }
+
+    return shares
+  }
+
+  getAllLinks(): EntityLink[] {
+    return Array.from(this.links.values())
+  }
+
+  clear(): void {
+    this.links.clear()
+  }
+
+  serialize(): EntityLink[] {
+    return Array.from(this.links.values())
+  }
+
+  deserialize(links: EntityLink[]): void {
+    this.links.clear()
+    for (const link of links) {
+      this.links.set(link.id, link)
+    }
+  }
+}
+
+// =============================================================================
+// RULE MODIFIER MANAGER
+// Manages active TCG-style rule modifiers on entities
+// =============================================================================
+
+export class RuleModifierManager {
+  private modifiers: Map<string, ActiveRuleModifier[]> = new Map() // entityId -> modifiers
+
+  grantModifier(
+    entityId: string,
+    key: RuleModifierKey,
+    source: string,
+    sourceType: ActiveRuleModifier["sourceType"],
+    duration: ActiveRuleModifier["duration"],
+    options: Partial<Pick<ActiveRuleModifier, "usesRemaining" | "conditions" | "narrativeHook">> = {}
+  ): ActiveRuleModifier {
+    const modifier: ActiveRuleModifier = {
+      key,
+      source,
+      sourceType,
+      duration,
+      usesRemaining: options.usesRemaining,
+      conditions: options.conditions,
+      narrativeHook: options.narrativeHook,
+    }
+
+    const existing = this.modifiers.get(entityId) ?? []
+    existing.push(modifier)
+    this.modifiers.set(entityId, existing)
+
+    return modifier
+  }
+
+  revokeModifier(entityId: string, key: RuleModifierKey): boolean {
+    const existing = this.modifiers.get(entityId)
+    if (!existing) return false
+
+    const index = existing.findIndex((m) => m.key === key)
+    if (index === -1) return false
+
+    existing.splice(index, 1)
+    return true
+  }
+
+  revokeAllFromSource(entityId: string, source: string): number {
+    const existing = this.modifiers.get(entityId)
+    if (!existing) return 0
+
+    const before = existing.length
+    const filtered = existing.filter((m) => m.source !== source)
+    this.modifiers.set(entityId, filtered)
+    return before - filtered.length
+  }
+
+  getModifiersForEntity(entityId: string): ActiveRuleModifier[] {
+    return this.modifiers.get(entityId) ?? []
+  }
+
+  hasModifier(entityId: string, key: RuleModifierKey): boolean {
+    const mods = this.modifiers.get(entityId)
+    return mods?.some((m) => m.key === key) ?? false
+  }
+
+  getModifierEffect(entityId: string, key: RuleModifierKey): typeof RULE_MODIFIERS[RuleModifierKey] | undefined {
+    if (this.hasModifier(entityId, key)) {
+      return RULE_MODIFIERS[key]
+    }
+    return undefined
+  }
+
+  // Check if entity has any modifier that grants a specific effect
+  hasEffect(entityId: string, effectKey: string): boolean {
+    const mods = this.modifiers.get(entityId) ?? []
+    return mods.some((m) => {
+      const def = RULE_MODIFIERS[m.key]
+      return effectKey in def.effect
+    })
+  }
+
+  // Decrement turn-based durations, remove expired
+  processTurnEnd(entityId: string): RuleModifierKey[] {
+    const expired: RuleModifierKey[] = []
+    const mods = this.modifiers.get(entityId)
+    if (!mods) return expired
+
+    const remaining = mods.filter((m) => {
+      if (typeof m.duration === "number") {
+        m.duration--
+        if (m.duration <= 0) {
+          expired.push(m.key)
+          return false
+        }
+      }
+      return true
+    })
+
+    this.modifiers.set(entityId, remaining)
+    return expired
+  }
+
+  // Remove combat-only modifiers
+  processCombatEnd(entityId: string): RuleModifierKey[] {
+    const expired: RuleModifierKey[] = []
+    const mods = this.modifiers.get(entityId)
+    if (!mods) return expired
+
+    const remaining = mods.filter((m) => {
+      if (m.duration === "combat") {
+        expired.push(m.key)
+        return false
+      }
+      return true
+    })
+
+    this.modifiers.set(entityId, remaining)
+    return expired
+  }
+
+  // Use a limited-use modifier
+  useModifier(entityId: string, key: RuleModifierKey): boolean {
+    const mods = this.modifiers.get(entityId)
+    const mod = mods?.find((m) => m.key === key)
+    if (!mod || mod.usesRemaining === undefined) return false
+
+    mod.usesRemaining--
+    if (mod.usesRemaining <= 0) {
+      this.revokeModifier(entityId, key)
+    }
+    return true
+  }
+
+  clear(): void {
+    this.modifiers.clear()
+  }
+
+  serialize(): Record<string, ActiveRuleModifier[]> {
+    return Object.fromEntries(this.modifiers)
+  }
+
+  deserialize(data: Record<string, ActiveRuleModifier[]>): void {
+    this.modifiers = new Map(Object.entries(data))
+  }
+}
+
+// =============================================================================
+// DM OPERATION EXECUTOR
+// Executes DM operations and produces game state changes
+// =============================================================================
+
+export interface DMOperationResult {
+  success: boolean
+  error?: string
+  outcome?: EventOutcome
+  narrative?: string
+  entitiesAffected: string[]
+  linksCreated?: EntityLink[]
+  linksRemoved?: string[]
+  modifiersGranted?: { entityId: string; modifier: ActiveRuleModifier }[]
+  modifiersRevoked?: { entityId: string; key: RuleModifierKey }[]
+  entitiesTransformed?: { entityId: string; fromType: string; toType: string }[]
+  entitiesSpawned?: GameEntity[]
+  entitiesRemoved?: string[]
+}
+
+export class DMOperationExecutor {
+  constructor(
+    private linkManager: EntityLinkManager,
+    private ruleManager: RuleModifierManager
+  ) {}
+
+  execute(request: DMOperationRequest, state: GameState): DMOperationResult {
+    const result: DMOperationResult = {
+      success: false,
+      entitiesAffected: [],
+    }
+
+    try {
+      switch (request.operation) {
+        case "transform_entity":
+          return this.executeTransformEntity(request, state)
+        case "create_link":
+          return this.executeCreateLink(request, state)
+        case "break_link":
+          return this.executeBreakLink(request, state)
+        case "grant_rule_modifier":
+          return this.executeGrantRuleModifier(request, state)
+        case "revoke_rule_modifier":
+          return this.executeRevokeRuleModifier(request, state)
+        case "spawn_entity":
+          return this.executeSpawnEntity(request, state)
+        case "banish_entity":
+          return this.executeBanishEntity(request, state)
+        case "merge_entities":
+          return this.executeMergeEntities(request, state)
+        case "evolve_entity":
+          return this.executeEvolveEntity(request, state)
+        case "corrupt_entity":
+          return this.executeCorruptEntity(request, state)
+        case "purify_entity":
+          return this.executePurifyEntity(request, state)
+        default:
+          return {
+            success: false,
+            error: `Unknown operation: ${request.operation}`,
+            entitiesAffected: [],
+          }
+      }
+    } catch (error) {
+      result.error = error instanceof Error ? error.message : "Unknown error"
+      return result
+    }
+  }
+
+  private executeTransformEntity(request: DMOperationRequest, state: GameState): DMOperationResult {
+    const [targetId] = request.targets
+    const toType = request.parameters.toType as string
+
+    // Find entity in room entities or current enemy
+    const entity = this.findEntity(targetId, state)
+    if (!entity) {
+      return { success: false, error: `Entity ${targetId} not found`, entitiesAffected: [] }
+    }
+
+    const fromType = entity.entityType
+    if (!isValidTransformation(fromType, toType)) {
+      return {
+        success: false,
+        error: `Cannot transform ${fromType} to ${toType}`,
+        entitiesAffected: [],
+      }
+    }
+
+    return {
+      success: true,
+      narrative: request.narrative,
+      entitiesAffected: [targetId],
+      entitiesTransformed: [{ entityId: targetId, fromType, toType }],
+    }
+  }
+
+  private executeCreateLink(request: DMOperationRequest, state: GameState): DMOperationResult {
+    const [sourceId, targetId] = request.targets
+    const linkType = request.parameters.linkType as EntityLinkType
+
+    const source = this.findEntity(sourceId, state)
+    const target = this.findEntity(targetId, state)
+
+    if (!source || !target) {
+      return { success: false, error: "Source or target entity not found", entitiesAffected: [] }
+    }
+
+    if (!isValidLinkForEntities(linkType, source.entityType, target.entityType)) {
+      return {
+        success: false,
+        error: `Invalid link type ${linkType} for ${source.entityType} -> ${target.entityType}`,
+        entitiesAffected: [],
+      }
+    }
+
+    const link = this.linkManager.createLink(linkType, sourceId, targetId, {
+      strength: (request.parameters.strength as number) ?? 100,
+      bidirectional: request.parameters.bidirectional as boolean,
+      createdBy: request.source,
+      narrativeHook: request.narrative,
+      permanent: request.constraints?.reversible === false,
+      effect: request.parameters.effect as EntityLink["effect"],
+    })
+
+    return {
+      success: true,
+      narrative: request.narrative,
+      entitiesAffected: [sourceId, targetId],
+      linksCreated: [link],
+    }
+  }
+
+  private executeBreakLink(request: DMOperationRequest, state: GameState): DMOperationResult {
+    const linkId = request.parameters.linkId as string
+
+    if (this.linkManager.breakLink(linkId)) {
+      return {
+        success: true,
+        narrative: request.narrative,
+        entitiesAffected: request.targets,
+        linksRemoved: [linkId],
+      }
+    }
+
+    return { success: false, error: `Link ${linkId} not found`, entitiesAffected: [] }
+  }
+
+  private executeGrantRuleModifier(request: DMOperationRequest, state: GameState): DMOperationResult {
+    const [targetId] = request.targets
+    const modifierKey = request.parameters.modifierKey as RuleModifierKey
+
+    if (!RULE_MODIFIERS[modifierKey]) {
+      return { success: false, error: `Unknown modifier: ${modifierKey}`, entitiesAffected: [] }
+    }
+
+    const duration = request.constraints?.duration ?? "combat"
+    const modifier = this.ruleManager.grantModifier(
+      targetId,
+      modifierKey,
+      request.source,
+      (request.parameters.sourceType as ActiveRuleModifier["sourceType"]) ?? "event",
+      duration as ActiveRuleModifier["duration"],
+      { narrativeHook: request.narrative }
+    )
+
+    return {
+      success: true,
+      narrative: request.narrative,
+      entitiesAffected: [targetId],
+      modifiersGranted: [{ entityId: targetId, modifier }],
+    }
+  }
+
+  private executeRevokeRuleModifier(request: DMOperationRequest, state: GameState): DMOperationResult {
+    const [targetId] = request.targets
+    const modifierKey = request.parameters.modifierKey as RuleModifierKey
+
+    if (this.ruleManager.revokeModifier(targetId, modifierKey)) {
+      return {
+        success: true,
+        narrative: request.narrative,
+        entitiesAffected: [targetId],
+        modifiersRevoked: [{ entityId: targetId, key: modifierKey }],
+      }
+    }
+
+    return { success: false, error: `Modifier ${modifierKey} not found on ${targetId}`, entitiesAffected: [] }
+  }
+
+  private executeSpawnEntity(request: DMOperationRequest, state: GameState): DMOperationResult {
+    const entityData = request.parameters.entity as GameEntity
+    if (!entityData) {
+      return { success: false, error: "No entity data provided", entitiesAffected: [] }
+    }
+
+    // Ensure entity has an ID
+    if (!entityData.id) {
+      entityData.id = generateEntityId(entityData.entityType)
+    }
+
+    return {
+      success: true,
+      narrative: request.narrative,
+      entitiesAffected: [entityData.id],
+      entitiesSpawned: [entityData],
+    }
+  }
+
+  private executeBanishEntity(request: DMOperationRequest, state: GameState): DMOperationResult {
+    const [targetId] = request.targets
+    const entity = this.findEntity(targetId, state)
+
+    if (!entity) {
+      return { success: false, error: `Entity ${targetId} not found`, entitiesAffected: [] }
+    }
+
+    return {
+      success: true,
+      narrative: request.narrative,
+      entitiesAffected: [targetId],
+      entitiesRemoved: [targetId],
+    }
+  }
+
+  private executeMergeEntities(request: DMOperationRequest, state: GameState): DMOperationResult {
+    const [baseId, ...mergeIds] = request.targets
+    const base = this.findEntity(baseId, state)
+
+    if (!base) {
+      return { success: false, error: `Base entity ${baseId} not found`, entitiesAffected: [] }
+    }
+
+    for (const mergeId of mergeIds) {
+      const mergeEntity = this.findEntity(mergeId, state)
+      if (!mergeEntity) {
+        return { success: false, error: `Merge entity ${mergeId} not found`, entitiesAffected: [] }
+      }
+      if (!canMergeEntities(base.entityType, mergeEntity.entityType)) {
+        return {
+          success: false,
+          error: `Cannot merge ${base.entityType} with ${mergeEntity.entityType}`,
+          entitiesAffected: [],
+        }
+      }
+    }
+
+    return {
+      success: true,
+      narrative: request.narrative,
+      entitiesAffected: [baseId, ...mergeIds],
+      entitiesRemoved: mergeIds,
+      // The actual merge creates a transformed base entity
+      entitiesTransformed: [{ entityId: baseId, fromType: base.entityType, toType: base.entityType }],
+    }
+  }
+
+  private executeEvolveEntity(request: DMOperationRequest, state: GameState): DMOperationResult {
+    const [targetId] = request.targets
+    const entity = this.findEntity(targetId, state)
+
+    if (!entity) {
+      return { success: false, error: `Entity ${targetId} not found`, entitiesAffected: [] }
+    }
+
+    const evolution = request.parameters.evolution as { toType: string; mutations: EntityMutation[] }
+
+    return {
+      success: true,
+      narrative: request.narrative,
+      entitiesAffected: [targetId],
+      entitiesTransformed: evolution?.toType
+        ? [{ entityId: targetId, fromType: entity.entityType, toType: evolution.toType }]
+        : undefined,
+    }
+  }
+
+  private executeCorruptEntity(request: DMOperationRequest, state: GameState): DMOperationResult {
+    const [targetId] = request.targets
+    const entity = this.findEntity(targetId, state)
+
+    if (!entity) {
+      return { success: false, error: `Entity ${targetId} not found`, entitiesAffected: [] }
+    }
+
+    // Corruption applies the "corrupted" mutation effects
+    const corruptionEffects = MUTATION_EFFECTS.corrupted
+
+    return {
+      success: true,
+      narrative: request.narrative ?? `${entity.name} is corrupted by dark energy`,
+      entitiesAffected: [targetId],
+      outcome: {
+        success: true,
+        effectsApplied: [
+          {
+            id: generateEntityId("effect"),
+            name: "Corruption",
+            entityType: "curse",
+            effectType: "debuff",
+            duration: -1, // Permanent until purified
+            modifiers: { attack: corruptionEffects.statMods.attack ?? 0 },
+            description: corruptionEffects.description,
+          } as StatusEffect,
+        ],
+        stateChanges: { [`${targetId}_corrupted`]: true },
+      },
+    }
+  }
+
+  private executePurifyEntity(request: DMOperationRequest, state: GameState): DMOperationResult {
+    const [targetId] = request.targets
+    const entity = this.findEntity(targetId, state)
+
+    if (!entity) {
+      return { success: false, error: `Entity ${targetId} not found`, entitiesAffected: [] }
+    }
+
+    return {
+      success: true,
+      narrative: request.narrative ?? `${entity.name} is cleansed of corruption`,
+      entitiesAffected: [targetId],
+      outcome: {
+        success: true,
+        effectsRemoved: ["Corruption"],
+        stateChanges: { [`${targetId}_corrupted`]: false },
+      },
+    }
+  }
+
+  private findEntity(entityId: string, state: GameState): GameEntity | undefined {
+    // Check player
+    if (state.player.id === entityId) return state.player
+
+    // Check current enemy
+    if (state.currentEnemy?.id === entityId) return state.currentEnemy
+
+    // Check current boss
+    if (state.currentBoss?.id === entityId) return state.currentBoss
+
+    // Check room entities
+    const roomEntity = state.roomEntities.find((e) => e.id === entityId)
+    if (roomEntity) return roomEntity
+
+    // Check companions
+    const companion = state.player.party?.active?.find((c) => c.id === entityId)
+    if (companion) return companion
+
+    // Check active NPC/Shrine/Trap
+    if (state.activeNPC?.id === entityId) return state.activeNPC
+    if (state.activeShrine?.id === entityId) return state.activeShrine
+    if (state.activeTrap?.id === entityId) return state.activeTrap
+
+    return undefined
+  }
+}
+
+// =============================================================================
+// DM CONTEXT - Extended event context with DM capabilities
+// =============================================================================
+
+export interface DMContext extends EventContext {
+  linkManager: EntityLinkManager
+  ruleManager: RuleModifierManager
+  executor: DMOperationExecutor
+  activeLinks: EntityLink[]
+  activeModifiers: Record<string, ActiveRuleModifier[]>
+}
+
+export function buildDMContext(
+  state: GameState,
+  linkManager: EntityLinkManager,
+  ruleManager: RuleModifierManager,
+  executor: DMOperationExecutor
+): DMContext {
+  return {
+    ...buildEventContext(state),
+    linkManager,
+    ruleManager,
+    executor,
+    activeLinks: linkManager.getAllLinks(),
+    activeModifiers: ruleManager.serialize(),
+  }
+}
+
+// =============================================================================
+// GLOBAL DM INSTANCE (singleton for game session)
+// =============================================================================
+
+let dmLinkManager: EntityLinkManager | null = null
+let dmRuleManager: RuleModifierManager | null = null
+let dmExecutor: DMOperationExecutor | null = null
+
+export function initializeDMSystem(): {
+  linkManager: EntityLinkManager
+  ruleManager: RuleModifierManager
+  executor: DMOperationExecutor
+} {
+  dmLinkManager = new EntityLinkManager()
+  dmRuleManager = new RuleModifierManager()
+  dmExecutor = new DMOperationExecutor(dmLinkManager, dmRuleManager)
+
+  return {
+    linkManager: dmLinkManager,
+    ruleManager: dmRuleManager,
+    executor: dmExecutor,
+  }
+}
+
+export function getDMSystem(): {
+  linkManager: EntityLinkManager
+  ruleManager: RuleModifierManager
+  executor: DMOperationExecutor
+} | null {
+  if (!dmLinkManager || !dmRuleManager || !dmExecutor) return null
+  return {
+    linkManager: dmLinkManager,
+    ruleManager: dmRuleManager,
+    executor: dmExecutor,
+  }
+}
+
+export function resetDMSystem(): void {
+  dmLinkManager?.clear()
+  dmRuleManager?.clear()
+  dmLinkManager = null
+  dmRuleManager = null
+  dmExecutor = null
+}

@@ -1580,7 +1580,8 @@ export function DungeonGame() {
   const equipItem = useCallback(
     (item: Item) => {
       // Determine the equipment slot based on item properties
-      let slot: string | null = null;
+      type EquipSlot = "mainHand" | "offHand" | "head" | "chest" | "legs" | "feet" | "hands" | "ring1" | "ring2" | "amulet" | "cloak" | "belt" | "weapon" | "armor"
+      let slot: EquipSlot | null = null;
 
       if (item.type === "weapon" || item.category === "weapon") {
         // Check if it's a shield (goes to offHand)
