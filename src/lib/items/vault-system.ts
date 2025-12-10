@@ -5,9 +5,13 @@
  * Vaults are risky but offer the best loot in the game.
  */
 
-import type { Item, StatusEffect } from "@/lib/core/game-types"
-import type { RankedEnemy, EnemyRank } from "@/lib/entity/enemy-rank-system"
+import type { Item, ItemRarity, StatusEffect } from "@/lib/core/game-types"
+import type { EnemyRank } from "@/lib/entity/enemy-rank-system"
+import { createRankedEnemy, type RankedEnemy } from "@/lib/entity/enemy-rank-system"
 import { generateId } from "@/lib/core/utils"
+import { generateEnemy } from "@/lib/core/game-data"
+import { generateWeapon, generateArmor } from "@/lib/items/item-generator"
+import { generateConsumable } from "@/lib/items/consumable-system"
 
 // =============================================================================
 // VAULT TYPES
@@ -221,6 +225,92 @@ export interface VaultEvent {
 }
 
 // =============================================================================
+// VAULT GENERATION HELPERS
+// =============================================================================
+
+/**
+ * Determine minimum item rarity based on vault loot multiplier
+ */
+function getVaultMinRarity(lootMultiplier: number): ItemRarity {
+  if (lootMultiplier >= 5) return "legendary"
+  if (lootMultiplier >= 3) return "rare"
+  if (lootMultiplier >= 2) return "uncommon"
+  return "common"
+}
+
+/**
+ * Generate loot items for a vault based on type and floor
+ */
+function generateVaultLootItems(definition: VaultDefinition, floor: number): Item[] {
+  const items: Item[] = []
+  const minRarity = getVaultMinRarity(definition.lootMultiplier)
+
+  // Determine item count based on vault type and danger level
+  const baseCount = Math.floor(2 + definition.dangerLevel)
+  const itemCount = Math.floor(baseCount * (definition.lootMultiplier / 2))
+
+  for (let i = 0; i < itemCount; i++) {
+    // Roll for rarity, ensuring minimum
+    let rarity: ItemRarity = minRarity
+    const roll = Math.random()
+    if (roll < 0.1 && minRarity !== "legendary") rarity = "legendary"
+    else if (roll < 0.3 && minRarity !== "legendary" && minRarity !== "rare") rarity = "rare"
+
+    // Generate item based on vault type
+    let item: Item
+    if (definition.type === "alchemist_lab") {
+      // Alchemist labs give consumables
+      item = generateConsumable({})
+    } else if (definition.type === "ancient_armory") {
+      // Armories give weapons/armor
+      item = Math.random() < 0.5
+        ? generateWeapon({ floor, rarity }) as Item
+        : generateArmor({ floor, rarity }) as Item
+    } else {
+      // Other vaults give mixed loot
+      const itemType = Math.random()
+      if (itemType < 0.4) {
+        item = generateWeapon({ floor, rarity }) as Item
+      } else if (itemType < 0.8) {
+        item = generateArmor({ floor, rarity }) as Item
+      } else {
+        item = generateConsumable({})
+      }
+    }
+
+    items.push(item)
+  }
+
+  return items
+}
+
+/**
+ * Generate a guardian enemy for the vault
+ */
+function generateVaultGuardian(definition: VaultDefinition, floor: number): RankedEnemy {
+  const baseEnemy = generateEnemy(floor, definition.enemyRankMin === "boss" || definition.enemyRankMin === "elite_boss")
+  return createRankedEnemy(baseEnemy, floor, definition.enemyRankMin)
+}
+
+/**
+ * Generate wave enemies for wave-based vaults
+ */
+function generateWaveEnemies(definition: VaultDefinition, floor: number, waveNumber: number): RankedEnemy[] {
+  const enemies: RankedEnemy[] = []
+  // More enemies in later waves
+  const enemyCount = 1 + Math.floor(waveNumber / 2)
+
+  for (let i = 0; i < enemyCount; i++) {
+    const baseEnemy = generateEnemy(floor)
+    // Later waves have stronger enemies
+    const rank: EnemyRank = waveNumber >= 4 ? "unique" : waveNumber >= 2 ? "rare" : definition.enemyRankMin
+    enemies.push(createRankedEnemy(baseEnemy, floor, rank))
+  }
+
+  return enemies
+}
+
+// =============================================================================
 // VAULT GENERATION
 // =============================================================================
 
@@ -260,15 +350,23 @@ export function generateVault(floor: number, forceType?: VaultType): VaultInstan
   const vaultType = forceType ?? selectVaultType(floor)
   const definition = VAULT_DEFINITIONS[vaultType]
 
+  // Generate loot based on vault type
+  const lootItems = generateVaultLootItems(definition, floor)
+
+  // Determine if vault has a guardian (most vaults do, except time_locked which is loot-only)
+  const hasGuardian = definition.type !== "time_locked"
+  const guardian = hasGuardian ? generateVaultGuardian(definition, floor) : undefined
+
   const vault: VaultInstance = {
     id: generateId(),
     definition,
     state: definition.requiresKey ? "locked" : "active",
-    availableLoot: [], // populated by loot generator
+    availableLoot: lootItems,
     collectedLoot: [],
     totalGold: Math.floor(50 * floor * definition.lootMultiplier),
     collectedGold: 0,
-    guardianDefeated: false,
+    guardian,
+    guardianDefeated: !hasGuardian, // No guardian = already "defeated"
     cursesApplied: [],
     specialEvents: [],
     enteredAt: 0,
@@ -279,17 +377,14 @@ export function generateVault(floor: number, forceType?: VaultType): VaultInstan
     vault.turnsRemaining = definition.timeLimit
   }
 
-  // Add waves if applicable
+  // Add waves if applicable (demon_rift, trial_chamber)
   if (definition.waveCount) {
-    vault.waves = []
     vault.currentWave = 0
-    for (let i = 0; i < definition.waveCount; i++) {
-      vault.waves.push({
-        waveNumber: i + 1,
-        enemies: [], // populated when wave starts
-        completed: false,
-      })
-    }
+    vault.waves = Array.from({ length: definition.waveCount }, (_, i) => ({
+      waveNumber: i + 1,
+      enemies: generateWaveEnemies(definition, floor, i + 1),
+      completed: false,
+    }))
   }
 
   return vault
