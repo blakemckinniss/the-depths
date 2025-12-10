@@ -88,6 +88,7 @@ import type { EssenceCraftRecipe } from "@/lib/items/transmogrification-system";
 import type { AlchemyResult } from "@/lib/ai/ai-alchemy-system";
 import { gameActions } from "@/contexts/game-reducer";
 import { calculateForesight } from "@/lib/mechanics/foresight-system";
+import { cn } from "@/lib/core/utils";
 import {
   EntityText,
   EnemyText,
@@ -113,6 +114,7 @@ import { SpellBar } from "@/components/combat/spell-bar";
 import { PathSelect } from "@/components/world/path-select";
 import { UtilityBar } from "@/components/world/utility-bar";
 import { HazardDisplay } from "@/components/world/hazard-display";
+import { EnvironmentalIndicator } from "@/components/world/environmental-indicator";
 import { extractPlayerCapabilities } from "@/lib/mechanics/player-capabilities";
 import { TrapInteraction } from "@/components/encounters/trap-interaction";
 import { ShrineInteraction } from "@/components/encounters/shrine-interaction";
@@ -3120,17 +3122,62 @@ export function DungeonGame() {
           <div className="flex-1 flex flex-col p-4">
             {/* Location Header */}
             {gameState.currentDungeon && (
-              <div className="flex items-center justify-center gap-4 mb-3 pb-2 border-b border-border/30">
-                <span className="text-xs text-muted-foreground">
-                  <EntityText type="location">{gameState.currentDungeon.name}</EntityText>
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Floor <EntityText type="location">{gameState.floor}</EntityText>
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Room <span className="text-foreground">{gameState.currentRoom}</span>
-                </span>
+              <div className="mb-3 pb-2 border-b border-border/30">
+                {/* Primary info row */}
+                <div className="flex items-center justify-center gap-4 flex-wrap">
+                  <span className="text-xs text-muted-foreground">
+                    <EntityText type="location">{gameState.currentDungeon.name}</EntityText>
+                  </span>
+                  {/* Map tier badge */}
+                  {gameState.currentDungeon.mapMetadata && (
+                    <span className={cn(
+                      "text-[10px] px-1.5 py-0.5 rounded border",
+                      gameState.currentDungeon.mapMetadata.tier <= 3
+                        ? "text-stone-400 border-stone-600/50 bg-stone-800/30"
+                        : gameState.currentDungeon.mapMetadata.tier <= 6
+                          ? "text-amber-400 border-amber-600/50 bg-amber-900/20"
+                          : gameState.currentDungeon.mapMetadata.tier <= 10
+                            ? "text-red-400 border-red-600/50 bg-red-900/20"
+                            : "text-purple-400 border-purple-600/50 bg-purple-900/20"
+                    )}>
+                      T{gameState.currentDungeon.mapMetadata.tier}
+                      {gameState.currentDungeon.mapMetadata.quality > 0 && (
+                        <span className="text-entity-item ml-1">+{gameState.currentDungeon.mapMetadata.quality}%</span>
+                      )}
+                    </span>
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    Floor <EntityText type="location">{gameState.floor}</EntityText>
+                    <span className="text-stone-600">/{gameState.currentDungeon.floors}</span>
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Room <span className="text-foreground">{gameState.currentRoom}</span>
+                  </span>
+                </div>
+                {/* Active modifiers row */}
+                {gameState.currentDungeon.modifiers && gameState.currentDungeon.modifiers.length > 0 && (
+                  <div className="flex items-center justify-center gap-1.5 mt-1.5 flex-wrap">
+                    {gameState.currentDungeon.modifiers.map((mod) => (
+                      <span
+                        key={mod.id}
+                        className="text-[9px] px-1.5 py-0.5 rounded bg-violet-900/30 text-violet-300 border border-violet-700/40"
+                        title={mod.description}
+                      >
+                        {mod.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
+            )}
+
+            {/* Environmental Indicator - shows dungeon theme hazards */}
+            {gameState.currentDungeon && !gameState.inCombat && (
+              <EnvironmentalIndicator
+                dungeon={gameState.currentDungeon}
+                activeEffects={gameState.player.activeEffects}
+                className="mb-3"
+              />
             )}
 
             {/* Game Log + Choices */}

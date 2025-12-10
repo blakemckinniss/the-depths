@@ -215,10 +215,15 @@ export function SidebarStats({ player }: SidebarStatsProps) {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <h2 className="text-primary font-semibold tracking-wide truncate">{player.name}</h2>
-            <div className="flex items-center gap-1.5 mt-0.5">
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-[10px] text-stone-400 bg-stone-800/50 px-1.5 py-0.5 rounded">
                 Lv.{stats.level}
               </span>
+              {player.raceName && (
+                <span className="text-[10px] text-amber-400/80 bg-amber-900/20 px-1.5 py-0.5 rounded border border-amber-800/30">
+                  {player.raceName}
+                </span>
+              )}
               {classDef && (
                 <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded bg-stone-800/50", classDef.color)}>
                   {classDef.name}
@@ -257,6 +262,22 @@ export function SidebarStats({ player }: SidebarStatsProps) {
             </div>
           </div>
         )}
+      </div>
+
+      {/* ═══ BASE ATTRIBUTES ═══ */}
+      <div className="grid grid-cols-3 gap-1 py-1.5 px-2 bg-stone-800/20 rounded border border-stone-700/20 mb-2">
+        <div className="flex items-center justify-between">
+          <span className="text-red-400/60 text-[9px]">STR</span>
+          <span className="text-[10px] text-red-400 tabular-nums">{stats.strength}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-blue-400/60 text-[9px]">INT</span>
+          <span className="text-[10px] text-blue-400 tabular-nums">{stats.intelligence}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-green-400/60 text-[9px]">DEX</span>
+          <span className="text-[10px] text-green-400 tabular-nums">{stats.dexterity}</span>
+        </div>
       </div>
 
       {/* ═══ COMBAT STATS (Always visible, compact 2-col) ═══ */}
@@ -396,6 +417,59 @@ export function SidebarStats({ player }: SidebarStatsProps) {
           {player.abilities.length > 6 && (
             <span className="text-stone-500 text-[9px]">+{player.abilities.length - 6} more</span>
           )}
+        </Section>
+      )}
+
+      {/* ═══ RACIAL ABILITIES ═══ */}
+      {player.racialAbilities.length > 0 && (
+        <Section title="Racial Traits" icon="◈" color="text-amber-500/70" className="mb-3">
+          <div className="space-y-1">
+            {player.racialAbilities.map((ability) => {
+              const isOnCooldown = (ability.currentCooldown ?? 0) > 0
+              const isLocked = ability.unlockLevel > stats.level
+
+              return (
+                <div
+                  key={ability.id}
+                  className={cn(
+                    "flex items-center gap-1.5 px-1.5 py-0.5 rounded border transition-colors text-[10px]",
+                    isLocked
+                      ? "border-stone-700/20 bg-stone-800/10 opacity-40"
+                      : isOnCooldown
+                        ? "border-stone-700/30 bg-stone-800/20 opacity-60"
+                        : "border-amber-800/30 bg-amber-900/10"
+                  )}
+                  title={ability.description}
+                >
+                  {/* Passive/Active indicator */}
+                  <span className={cn(
+                    "text-[8px] shrink-0",
+                    ability.isPassive ? "text-emerald-400/70" : "text-amber-400/70"
+                  )}>
+                    {ability.isPassive ? "○" : "◆"}
+                  </span>
+
+                  {/* Ability name */}
+                  <span className={cn(
+                    "truncate flex-1 min-w-0",
+                    isLocked ? "text-stone-600" : "text-amber-300/80"
+                  )}>
+                    {ability.name}
+                  </span>
+
+                  {/* Lock indicator */}
+                  {isLocked && (
+                    <span className="text-[9px] text-stone-600 shrink-0">Lv.{ability.unlockLevel}</span>
+                  )}
+
+                  {/* Cooldown indicator */}
+                  {!isLocked && isOnCooldown && (
+                    <span className="text-[9px] text-orange-400/70 shrink-0">{ability.currentCooldown}t</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </Section>
       )}
 

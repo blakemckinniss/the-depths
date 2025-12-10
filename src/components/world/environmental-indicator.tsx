@@ -1,13 +1,16 @@
 "use client"
 
 import { getEnvironmentType, getDungeonAmbientEffects } from "@/lib/world/environmental-effects"
-import type { DungeonCard } from "@/lib/core/game-types"
+import type { DungeonCard, StatusEffect } from "@/lib/core/game-types"
 import type { EnhancedStatusEffect } from "@/lib/combat/effect-system"
 import { cn } from "@/lib/core/utils"
 
+// Accept either StatusEffect or EnhancedStatusEffect
+type AnyStatusEffect = StatusEffect | EnhancedStatusEffect
+
 interface EnvironmentalIndicatorProps {
   dungeon: DungeonCard | null
-  activeEffects: EnhancedStatusEffect[]
+  activeEffects: AnyStatusEffect[]
   className?: string
 }
 
@@ -18,7 +21,13 @@ export function EnvironmentalIndicator({ dungeon, activeEffects, className }: En
   const ambientEffects = getDungeonAmbientEffects(dungeon)
 
   // Count environmental effects currently active on player
-  const activeEnvEffects = activeEffects.filter((e) => e.sourceType === "environment")
+  // Check for sourceType (EnhancedStatusEffect) or fallback to checking name patterns
+  const activeEnvEffects = activeEffects.filter((e) => {
+    if ("sourceType" in e) return e.sourceType === "environment"
+    // Fallback: check if name suggests environmental origin
+    const envPatterns = ["poison", "burn", "frost", "curse", "decay", "toxic"]
+    return envPatterns.some(p => e.name.toLowerCase().includes(p))
+  })
 
   const getEnvColor = (type: string) => {
     switch (type) {
@@ -88,18 +97,22 @@ export function EnvironmentalIndicator({ dungeon, activeEffects, className }: En
       {/* Active environmental debuffs */}
       {activeEnvEffects.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">
-          {activeEnvEffects.map((effect) => (
-            <span
-              key={effect.id}
-              className={cn(
-                "text-[10px] px-1.5 py-0.5 rounded",
-                effect.effectType === "debuff" ? "bg-red-500/20 text-red-400" : "bg-emerald-500/20 text-emerald-400",
-              )}
-            >
-              {effect.name}
-              {effect.currentStacks > 1 && ` x${effect.currentStacks}`}
-            </span>
-          ))}
+          {activeEnvEffects.map((effect) => {
+            // Handle both stacks (StatusEffect) and currentStacks (EnhancedStatusEffect)
+            const stacks = "currentStacks" in effect ? effect.currentStacks : (effect.stacks ?? 1)
+            return (
+              <span
+                key={effect.id}
+                className={cn(
+                  "text-[10px] px-1.5 py-0.5 rounded",
+                  effect.effectType === "debuff" ? "bg-red-500/20 text-red-400" : "bg-emerald-500/20 text-emerald-400",
+                )}
+              >
+                {effect.name}
+                {stacks > 1 && ` x${stacks}`}
+              </span>
+            )
+          })}
         </div>
       )}
     </div>
