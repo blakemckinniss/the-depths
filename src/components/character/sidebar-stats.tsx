@@ -1,6 +1,6 @@
 "use client"
 
-import type { Player, Item, EquipmentSlot } from "@/lib/core/game-types"
+import type { Player, Item, EquipmentSlot, ItemRarity } from "@/lib/core/game-types"
 import { EntityText } from "@/components/narrative/entity-text"
 import { StatBar } from "./stat-bar"
 import { StatusEffectsDisplay } from "@/components/effects/status-effects-display"
@@ -17,21 +17,21 @@ interface SidebarStatsProps {
 const SLOT_ICONS: Record<EquipmentSlot, string> = {
   mainHand: "⚔",
   offHand: "🛡",
-  head: "👑",
-  chest: "🎽",
-  legs: "👖",
-  feet: "👢",
-  hands: "🧤",
-  ring1: "💍",
-  ring2: "💍",
-  amulet: "📿",
-  cloak: "🧣",
-  belt: "📦",
+  head: "◇",
+  chest: "◈",
+  legs: "▽",
+  feet: "△",
+  hands: "◊",
+  ring1: "○",
+  ring2: "○",
+  amulet: "◎",
+  cloak: "▷",
+  belt: "□",
 }
 
 const SLOT_LABELS: Record<EquipmentSlot, string> = {
-  mainHand: "Main Hand",
-  offHand: "Off Hand",
+  mainHand: "Weapon",
+  offHand: "Off-Hand",
   head: "Head",
   chest: "Chest",
   legs: "Legs",
@@ -44,16 +44,64 @@ const SLOT_LABELS: Record<EquipmentSlot, string> = {
   belt: "Belt",
 }
 
-function EquipSlot({ slot, item }: { slot: EquipmentSlot; item: Item | null }) {
+// Rarity-based styling for equipment slots
+const RARITY_SLOT_STYLES: Record<ItemRarity, string> = {
+  common: "border-stone-600/40 bg-stone-800/20",
+  uncommon: "border-entity-item/50 bg-entity-item/5",
+  rare: "border-entity-rare/60 bg-entity-rare/10",
+  legendary: "border-entity-legendary/70 bg-entity-legendary/15 shadow-[inset_0_0_8px_rgba(255,180,50,0.1)]",
+}
+
+const RARITY_ICON_STYLES: Record<ItemRarity, string> = {
+  common: "text-stone-500",
+  uncommon: "text-entity-item/70",
+  rare: "text-entity-rare/80",
+  legendary: "text-entity-legendary/90",
+}
+
+function EquipSlot({ slot, item, compact = false }: { slot: EquipmentSlot; item: Item | null; compact?: boolean }) {
+  const rarity = item?.rarity || "common"
+
+  if (compact) {
+    // Ultra-compact mode for accessories
+    return (
+      <div
+        className={cn(
+          "flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors",
+          item ? RARITY_SLOT_STYLES[rarity] : "border-stone-700/30 bg-stone-800/10"
+        )}
+        title={item ? `${item.name} (${rarity})` : SLOT_LABELS[slot]}
+      >
+        <span className={cn("text-[10px]", item ? RARITY_ICON_STYLES[rarity] : "text-stone-600")}>
+          {SLOT_ICONS[slot]}
+        </span>
+        {item ? (
+          <EntityText type={rarity} entity={item} className="text-[10px] truncate max-w-[60px]">
+            {item.name}
+          </EntityText>
+        ) : (
+          <span className="text-stone-600 text-[10px]">{SLOT_LABELS[slot]}</span>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div className="flex items-center gap-1.5 py-0.5">
-      <span className="text-xs opacity-60 w-4">{SLOT_ICONS[slot]}</span>
+    <div
+      className={cn(
+        "flex items-center gap-2 px-2 py-1 rounded border transition-all",
+        item ? RARITY_SLOT_STYLES[rarity] : "border-stone-700/30 bg-stone-800/10"
+      )}
+    >
+      <span className={cn("text-xs w-4 text-center", item ? RARITY_ICON_STYLES[rarity] : "text-stone-600")}>
+        {SLOT_ICONS[slot]}
+      </span>
       {item ? (
-        <EntityText type={item.rarity} entity={item} className="text-xs truncate flex-1">
+        <EntityText type={rarity} entity={item} className="text-xs truncate flex-1">
           {item.name}
         </EntityText>
       ) : (
-        <span className="text-muted-foreground/40 text-xs italic">{SLOT_LABELS[slot]}</span>
+        <span className="text-stone-600/60 text-xs italic flex-1">{SLOT_LABELS[slot]}</span>
       )}
     </div>
   )
@@ -65,6 +113,51 @@ function StatLine({ label, value, color, labelColor, suffix = "" }: { label: str
     <div className="flex justify-between items-center">
       <span className={cn("text-xs", labelColor || "text-muted-foreground")}>{label}</span>
       <span className={cn("text-xs", color)}>{typeof value === "number" && value > 0 ? `+${value}` : value}{suffix}</span>
+    </div>
+  )
+}
+
+// Section wrapper with subtle visual grouping
+function Section({
+  title,
+  icon,
+  children,
+  color = "text-muted-foreground",
+  className
+}: {
+  title: string
+  icon?: string
+  children: React.ReactNode
+  color?: string
+  className?: string
+}) {
+  return (
+    <div className={cn("space-y-2", className)}>
+      <div className={cn("flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-medium", color)}>
+        {icon && <span className="opacity-60">{icon}</span>}
+        <span>{title}</span>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+// Compact stat display in a single row
+function StatPair({
+  label,
+  value,
+  suffix = "",
+  color
+}: {
+  label: string
+  value: number | string
+  suffix?: string
+  color?: string
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-stone-500 text-[10px]">{label}</span>
+      <span className={cn("text-xs tabular-nums", color)}>{value}{suffix}</span>
     </div>
   )
 }
@@ -88,30 +181,54 @@ export function SidebarStats({ player }: SidebarStatsProps) {
   const totalAttackBonus = equipmentSlots.reduce((sum, slot) => sum + (equipment[slot]?.stats?.attack ?? 0), 0)
   const totalDefenseBonus = equipmentSlots.reduce((sum, slot) => sum + (equipment[slot]?.stats?.defense ?? 0), 0)
 
+  // Count equipped items by rarity for summary
+  const equippedItems = equipmentSlots.map(s => equipment[s]).filter(Boolean)
+  const rarityCounts = {
+    legendary: equippedItems.filter(i => i?.rarity === "legendary").length,
+    rare: equippedItems.filter(i => i?.rarity === "rare").length,
+    uncommon: equippedItems.filter(i => i?.rarity === "uncommon").length,
+    common: equippedItems.filter(i => i?.rarity === "common").length,
+  }
+
+  // Check if we have any advanced stats to show
+  const hasOffensiveStats = stats.critChance > 0 || stats.critDamage > 1.5 || stats.vampirism > 0
+  const hasDefensiveStats = stats.dodgeChance > 0 || stats.blockChance > 0 || stats.thorns > 0
+  const hasUtilityStats = stats.luck > 0 || stats.magicFind > 0 || stats.expBonus > 0 || stats.healthRegen > 0 || stats.resourceRegen > 0
+
   return (
-    <div className="h-full flex flex-col py-4 px-3 space-y-4 text-sm overflow-y-auto scrollbar-thin">
-      {/* Character Header */}
-      <div>
-        <h2 className="text-primary font-medium tracking-wide mb-1">{player.name}</h2>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Level {stats.level}</span>
-          {classDef && <span className={cn("text-xs font-medium", classDef.color)}>{classDef.name}</span>}
+    <div className="h-full flex flex-col py-3 px-2.5 text-sm overflow-y-auto scrollbar-thin">
+      {/* ═══ CHARACTER HEADER ═══ */}
+      <div className="mb-3 pb-3 border-b border-stone-700/50">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-primary font-semibold tracking-wide truncate">{player.name}</h2>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] text-stone-400 bg-stone-800/50 px-1.5 py-0.5 rounded">
+                Lv.{stats.level}
+              </span>
+              {classDef && (
+                <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded bg-stone-800/50", classDef.color)}>
+                  {classDef.name}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Vitals */}
-      <div className="space-y-2">
+      {/* ═══ VITALS ═══ */}
+      <div className="space-y-1.5 mb-3">
         <StatBar label="HP" current={stats.health} max={effectiveStats.maxHealth} color="health" compact />
         <StatBar label="XP" current={stats.experience} max={stats.experienceToLevel} color="exp" compact />
         {player.resources.max > 0 && (
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-xs">
+          <div className="space-y-0.5">
+            <div className="flex items-center justify-between text-[10px]">
               <span className={cn("uppercase font-medium", resourceColor)}>{player.resources.type}</span>
-              <span className="text-muted-foreground tabular-nums">
+              <span className="text-stone-400 tabular-nums">
                 {player.resources.current}/{player.resources.max}
               </span>
             </div>
-            <div className="h-1.5 bg-stone-800 rounded-full overflow-hidden">
+            <div className="h-1 bg-stone-800 rounded-full overflow-hidden">
               <div
                 className={cn(
                   "h-full transition-all duration-300",
@@ -129,200 +246,177 @@ export function SidebarStats({ player }: SidebarStatsProps) {
         )}
       </div>
 
-      <div className="h-px bg-border/50" />
-
-      {/* Core Stats */}
-      <div className="space-y-1.5">
-        <h3 className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Combat</h3>
-        <div className="flex justify-between items-center">
-          <span className="text-orange-400/80 text-xs">Attack</span>
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-muted-foreground">{stats.attack}</span>
-            {totalAttackBonus > 0 && <span className="text-xs text-entity-weapon">+{totalAttackBonus}</span>}
-            {activeEffects.some((e) => e.modifiers.attack) && (
-              <span
-                className={`text-xs ${activeEffects.reduce((a, e) => a + (e.modifiers.attack ?? 0), 0) > 0 ? "text-sky-400" : "text-purple-400"}`}
-              >
-                {activeEffects.reduce((a, e) => a + (e.modifiers.attack ?? 0), 0) > 0 ? "+" : ""}
-                {activeEffects.reduce((a, e) => a + (e.modifiers.attack ?? 0), 0)}
-              </span>
-            )}
-            <span className={cn(attackAnim)}>
-              <EntityText type="damage">{effectiveStats.attack}</EntityText>
-            </span>
-          </div>
+      {/* ═══ COMBAT STATS (Always visible, compact 2-col) ═══ */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 py-2 px-2 bg-stone-800/30 rounded border border-stone-700/30 mb-3">
+        <div className="flex items-center justify-between">
+          <span className="text-orange-400/70 text-[10px]">ATK</span>
+          <span className={cn("text-xs font-medium text-orange-400 tabular-nums", attackAnim)}>
+            {effectiveStats.attack}
+            {totalAttackBonus > 0 && <span className="text-entity-weapon text-[10px]">+{totalAttackBonus}</span>}
+          </span>
         </div>
-        <div className="flex justify-between items-center">
-          <span className="text-blue-400/80 text-xs">Defense</span>
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-muted-foreground">{stats.defense}</span>
-            {totalDefenseBonus > 0 && <span className="text-xs text-entity-armor">+{totalDefenseBonus}</span>}
-            {activeEffects.some((e) => e.modifiers.defense) && (
-              <span
-                className={`text-xs ${activeEffects.reduce((a, e) => a + (e.modifiers.defense ?? 0), 0) > 0 ? "text-sky-400" : "text-purple-400"}`}
-              >
-                {activeEffects.reduce((a, e) => a + (e.modifiers.defense ?? 0), 0) > 0 ? "+" : ""}
-                {activeEffects.reduce((a, e) => a + (e.modifiers.defense ?? 0), 0)}
-              </span>
-            )}
-            <span className={cn(defenseAnim)}>
-              <EntityText type="armor">{effectiveStats.defense}</EntityText>
-            </span>
-          </div>
+        <div className="flex items-center justify-between">
+          <span className="text-blue-400/70 text-[10px]">DEF</span>
+          <span className={cn("text-xs font-medium text-blue-400 tabular-nums", defenseAnim)}>
+            {effectiveStats.defense}
+            {totalDefenseBonus > 0 && <span className="text-entity-armor text-[10px]">+{totalDefenseBonus}</span>}
+          </span>
         </div>
-        <StatLine label="Speed" value={stats.speed} labelColor="text-cyan-400/80" color="text-cyan-400" />
+        <div className="flex items-center justify-between">
+          <span className="text-cyan-400/70 text-[10px]">SPD</span>
+          <span className="text-xs text-cyan-400 tabular-nums">{stats.speed}</span>
+        </div>
+        {stats.critChance > 0 && (
+          <div className="flex items-center justify-between">
+            <span className="text-amber-400/70 text-[10px]">CRIT</span>
+            <span className="text-xs text-amber-400 tabular-nums">{Math.floor(stats.critChance * 100)}%</span>
+          </div>
+        )}
       </div>
 
-      {/* Offensive Stats */}
-      {(stats.critChance > 0 || stats.critDamage > 1.5 || stats.vampirism > 0) && (
-        <div className="space-y-1.5">
-          <h3 className="text-xs text-orange-500/60 uppercase tracking-wider mb-2">Offense</h3>
-          {stats.critChance > 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-orange-400/70 text-xs">Crit Chance</span>
-              <span className="text-orange-400 text-xs">{Math.floor(stats.critChance * 100)}%</span>
-            </div>
-          )}
-          {stats.critDamage > 1.5 && (
-            <div className="flex justify-between items-center">
-              <span className="text-orange-300/70 text-xs">Crit Damage</span>
-              <span className="text-orange-300 text-xs">{Math.floor(stats.critDamage * 100)}%</span>
-            </div>
-          )}
-          {stats.vampirism > 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-red-400/70 text-xs">Vampirism</span>
-              <span className="text-red-400 text-xs">{Math.floor(stats.vampirism * 100)}%</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Defensive Stats */}
-      {(stats.dodgeChance > 0 || stats.blockChance > 0 || stats.thorns > 0) && (
-        <div className="space-y-1.5">
-          <h3 className="text-xs text-blue-500/60 uppercase tracking-wider mb-2">Defense</h3>
-          {stats.dodgeChance > 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-cyan-400/70 text-xs">Dodge</span>
-              <span className="text-cyan-400 text-xs">{Math.floor(stats.dodgeChance * 100)}%</span>
-            </div>
-          )}
-          {stats.blockChance > 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-blue-400/70 text-xs">Block</span>
-              <span className="text-blue-400 text-xs">{Math.floor(stats.blockChance * 100)}%</span>
-            </div>
-          )}
-          {stats.thorns > 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-amber-500/70 text-xs">Thorns</span>
-              <span className="text-amber-500 text-xs">{stats.thorns}</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Utility Stats */}
-      {(stats.luck > 0 || stats.magicFind > 0 || stats.expBonus > 0 || stats.healthRegen > 0 || stats.resourceRegen > 0) && (
-        <div className="space-y-1.5">
-          <h3 className="text-xs text-emerald-500/60 uppercase tracking-wider mb-2">Utility</h3>
-          {stats.luck > 0 && <StatLine label="Luck" value={stats.luck} labelColor="text-green-400/70" color="text-green-400" />}
-          {stats.magicFind > 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-purple-400/70 text-xs">Magic Find</span>
-              <span className="text-purple-400 text-xs">+{Math.floor(stats.magicFind * 100)}%</span>
-            </div>
-          )}
-          {stats.expBonus > 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-yellow-400/70 text-xs">Exp Bonus</span>
-              <span className="text-yellow-400 text-xs">+{Math.floor(stats.expBonus * 100)}%</span>
-            </div>
-          )}
-          {stats.healthRegen > 0 && <StatLine label="HP Regen" value={stats.healthRegen} labelColor="text-emerald-400/70" color="text-entity-heal" suffix="/turn" />}
-          {stats.resourceRegen > 0 && <StatLine label="Resource Regen" value={stats.resourceRegen} labelColor="text-blue-400/70" color="text-blue-400" suffix="/turn" />}
-        </div>
-      )}
-
-      {/* Abilities */}
-      {player.abilities.length > 0 && (
-        <>
-          <div className="h-px bg-border/50" />
-          <div className="space-y-2">
-            <h3 className="text-xs text-muted-foreground uppercase tracking-wider">Abilities</h3>
-            <div className="space-y-1">
-              {player.abilities.slice(0, 4).map((ability) => {
-                const cooldown = player.abilityCooldowns[ability.id] || 0
-                return (
-                  <div key={ability.id} className="flex items-center justify-between text-xs">
-                    <EntityText
-                      type="ability"
-                      entity={ability}
-                      className={cn("truncate", cooldown > 0 ? "text-stone-500" : "text-stone-300")}
-                    >
-                      {ability.name}
-                    </EntityText>
-                    {cooldown > 0 && <span className="text-stone-500 text-[10px]">{cooldown}t</span>}
-                  </div>
-                )
-              })}
-              {player.abilities.length > 4 && (
-                <span className="text-stone-500 text-[10px]">+{player.abilities.length - 4} more</span>
-              )}
-            </div>
+      {/* ═══ EQUIPMENT (Moved up for prominence) ═══ */}
+      <Section title="Equipment" icon="◈" color="text-stone-400" className="mb-3">
+        {/* Gear summary badges */}
+        {equippedItems.length > 0 && (
+          <div className="flex gap-1 flex-wrap mb-1.5">
+            {rarityCounts.legendary > 0 && (
+              <span className="text-[9px] px-1 py-0.5 rounded bg-entity-legendary/20 text-entity-legendary border border-entity-legendary/30">
+                {rarityCounts.legendary} Leg
+              </span>
+            )}
+            {rarityCounts.rare > 0 && (
+              <span className="text-[9px] px-1 py-0.5 rounded bg-entity-rare/20 text-entity-rare border border-entity-rare/30">
+                {rarityCounts.rare} Rare
+              </span>
+            )}
+            {rarityCounts.uncommon > 0 && (
+              <span className="text-[9px] px-1 py-0.5 rounded bg-entity-item/20 text-entity-item border border-entity-item/30">
+                {rarityCounts.uncommon} Unc
+              </span>
+            )}
           </div>
-        </>
-      )}
+        )}
 
-      {/* Status Effects */}
-      {activeEffects.length > 0 && (
-        <>
-          <div className="h-px bg-border/50" />
-          <StatusEffectsDisplay effects={activeEffects} compact />
-        </>
-      )}
-
-      {/* Party */}
-      {party && (party.active.length > 0 || party.reserve.length > 0) && (
-        <>
-          <div className="h-px bg-border/50" />
-          <PartyPanel party={party} compact />
-        </>
-      )}
-
-      <div className="h-px bg-border/50" />
-
-      {/* Equipment Grid */}
-      <div className="space-y-2">
-        <h3 className="text-xs text-muted-foreground uppercase tracking-wider">Equipment</h3>
-
-        {/* Weapons Row */}
-        <div className="grid grid-cols-2 gap-x-2">
+        {/* Weapons - prominent display */}
+        <div className="grid grid-cols-2 gap-1.5 mb-1.5">
           <EquipSlot slot="mainHand" item={equipment.mainHand} />
           <EquipSlot slot="offHand" item={equipment.offHand} />
         </div>
 
-        {/* Armor Slots */}
-        <div className="space-y-0.5">
-          <EquipSlot slot="head" item={equipment.head} />
-          <EquipSlot slot="chest" item={equipment.chest} />
-          <EquipSlot slot="hands" item={equipment.hands} />
-          <EquipSlot slot="legs" item={equipment.legs} />
-          <EquipSlot slot="feet" item={equipment.feet} />
+        {/* Armor - 3x2 grid for compactness */}
+        <div className="grid grid-cols-3 gap-1 mb-1.5">
+          <EquipSlot slot="head" item={equipment.head} compact />
+          <EquipSlot slot="chest" item={equipment.chest} compact />
+          <EquipSlot slot="hands" item={equipment.hands} compact />
+          <EquipSlot slot="legs" item={equipment.legs} compact />
+          <EquipSlot slot="feet" item={equipment.feet} compact />
+          <EquipSlot slot="belt" item={equipment.belt} compact />
         </div>
 
-        {/* Accessories */}
-        <div className="grid grid-cols-2 gap-x-2">
-          <EquipSlot slot="ring1" item={equipment.ring1} />
-          <EquipSlot slot="ring2" item={equipment.ring2} />
+        {/* Accessories - horizontal row */}
+        <div className="flex gap-1 flex-wrap">
+          <EquipSlot slot="ring1" item={equipment.ring1} compact />
+          <EquipSlot slot="ring2" item={equipment.ring2} compact />
+          <EquipSlot slot="amulet" item={equipment.amulet} compact />
+          <EquipSlot slot="cloak" item={equipment.cloak} compact />
         </div>
-        <div className="space-y-0.5">
-          <EquipSlot slot="amulet" item={equipment.amulet} />
-          <EquipSlot slot="cloak" item={equipment.cloak} />
-          <EquipSlot slot="belt" item={equipment.belt} />
+      </Section>
+
+      {/* ═══ STATUS EFFECTS (Important - show early if active) ═══ */}
+      {activeEffects.length > 0 && (
+        <div className="mb-3 p-2 bg-stone-800/40 rounded border border-stone-700/40">
+          <StatusEffectsDisplay effects={activeEffects} compact />
         </div>
-      </div>
+      )}
+
+      {/* ═══ ABILITIES ═══ */}
+      {player.abilities.length > 0 && (
+        <Section title="Abilities" icon="★" color="text-cyan-500/70" className="mb-3">
+          <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+            {player.abilities.slice(0, 6).map((ability) => {
+              const cooldown = player.abilityCooldowns[ability.id] || 0
+              return (
+                <div key={ability.id} className="flex items-center justify-between text-[10px] min-w-0">
+                  <EntityText
+                    type="ability"
+                    entity={ability}
+                    className={cn("truncate", cooldown > 0 ? "text-stone-500" : "text-stone-300")}
+                  >
+                    {ability.name}
+                  </EntityText>
+                  {cooldown > 0 && <span className="text-stone-500 ml-1 shrink-0">{cooldown}t</span>}
+                </div>
+              )
+            })}
+          </div>
+          {player.abilities.length > 6 && (
+            <span className="text-stone-500 text-[9px]">+{player.abilities.length - 6} more</span>
+          )}
+        </Section>
+      )}
+
+      {/* ═══ ADVANCED STATS (Collapsible area for secondary stats) ═══ */}
+      {(hasOffensiveStats || hasDefensiveStats || hasUtilityStats) && (
+        <div className="space-y-2 pt-2 border-t border-stone-700/30">
+          {/* Offensive */}
+          {hasOffensiveStats && (
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+              {stats.critDamage > 1.5 && (
+                <StatPair label="Crit Dmg" value={`${Math.floor(stats.critDamage * 100)}%`} color="text-orange-300" />
+              )}
+              {stats.vampirism > 0 && (
+                <StatPair label="Lifesteal" value={`${Math.floor(stats.vampirism * 100)}%`} color="text-red-400" />
+              )}
+            </div>
+          )}
+
+          {/* Defensive */}
+          {hasDefensiveStats && (
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+              {stats.dodgeChance > 0 && (
+                <StatPair label="Dodge" value={`${Math.floor(stats.dodgeChance * 100)}%`} color="text-cyan-400" />
+              )}
+              {stats.blockChance > 0 && (
+                <StatPair label="Block" value={`${Math.floor(stats.blockChance * 100)}%`} color="text-blue-400" />
+              )}
+              {stats.thorns > 0 && (
+                <StatPair label="Thorns" value={stats.thorns} color="text-amber-500" />
+              )}
+            </div>
+          )}
+
+          {/* Utility */}
+          {hasUtilityStats && (
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+              {stats.luck > 0 && (
+                <StatPair label="Luck" value={`+${stats.luck}`} color="text-green-400" />
+              )}
+              {stats.magicFind > 0 && (
+                <StatPair label="MF" value={`+${Math.floor(stats.magicFind * 100)}%`} color="text-purple-400" />
+              )}
+              {stats.expBonus > 0 && (
+                <StatPair label="XP Bonus" value={`+${Math.floor(stats.expBonus * 100)}%`} color="text-yellow-400" />
+              )}
+              {stats.healthRegen > 0 && (
+                <StatPair label="HP/turn" value={`+${stats.healthRegen}`} color="text-entity-heal" />
+              )}
+              {stats.resourceRegen > 0 && (
+                <StatPair label="Res/turn" value={`+${stats.resourceRegen}`} color="text-blue-400" />
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ PARTY ═══ */}
+      {party && (party.active.length > 0 || party.reserve.length > 0) && (
+        <div className="mt-3 pt-2 border-t border-stone-700/30">
+          <PartyPanel party={party} compact />
+        </div>
+      )}
+
+      {/* Spacer for scroll comfort */}
+      <div className="flex-1 min-h-4" />
     </div>
   )
 }
