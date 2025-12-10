@@ -89,10 +89,16 @@ export function SidebarInventory({ player, onEquipItem, onUseItem, onDropItem, i
     )
   }
 
-  const { inventory } = player
+  const { inventory, stats } = player
 
   return (
     <div className="h-full flex flex-col py-6 px-4 text-sm">
+      {/* Gold Display */}
+      <div className="flex items-center justify-between mb-4 pb-3 border-b border-border/50">
+        <span className="text-muted-foreground text-xs">Gold</span>
+        <EntityText type="gold">{stats.gold}</EntityText>
+      </div>
+
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-primary font-medium tracking-wide">Backpack</h2>
         <span className="text-xs text-muted-foreground">{inventory.length}/20</span>

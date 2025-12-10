@@ -5,12 +5,21 @@ import {
   useContext,
   useReducer,
   useCallback,
+  useEffect,
   type ReactNode,
   type Dispatch,
 } from "react";
 import type { GameState } from "@/lib/core/game-types";
 import { gameReducer, type GameAction, gameActions } from "./game-reducer";
 import { createInitialPlayer, createInitialRunStats } from "@/lib/core/game-data";
+import {
+  initializeDMSystem,
+  resetDMSystem,
+  getDMSystem,
+  type EntityLinkManager,
+  type RuleModifierManager,
+  type DMOperationExecutor,
+} from "@/lib/ai/event-engine";
 
 // ============================================================================
 // INITIAL STATE
@@ -53,11 +62,19 @@ export function createInitialGameState(): GameState {
 // CONTEXT TYPES
 // ============================================================================
 
+interface DMSystem {
+  linkManager: EntityLinkManager;
+  ruleManager: RuleModifierManager;
+  executor: DMOperationExecutor;
+}
+
 interface GameContextValue {
   state: GameState;
   dispatch: Dispatch<GameAction>;
   // Convenience action dispatchers
   actions: typeof boundActions;
+  // DM Operations system
+  dmSystem: DMSystem | null;
 }
 
 // Pre-bound action creators for convenience
@@ -165,8 +182,24 @@ export function GameProvider({ children, initialState }: GameProviderProps) {
   // Create bound actions that are stable across renders
   const actions = useCallback(() => createBoundActions(dispatch), [])();
 
+  // Initialize DM system on mount
+  useEffect(() => {
+    // Initialize if not already initialized
+    if (!getDMSystem()) {
+      initializeDMSystem();
+    }
+
+    // Cleanup on unmount
+    return () => {
+      resetDMSystem();
+    };
+  }, []);
+
+  // Get current DM system (may be null during SSR)
+  const dmSystem = getDMSystem();
+
   return (
-    <GameContext.Provider value={{ state, dispatch, actions }}>
+    <GameContext.Provider value={{ state, dispatch, actions, dmSystem }}>
       {children}
     </GameContext.Provider>
   );
@@ -200,6 +233,12 @@ export function useGameDispatch() {
 export function useGameActions() {
   const { actions } = useGame();
   return actions;
+}
+
+// Convenience hook for DM system
+export function useDMSystem() {
+  const { dmSystem } = useGame();
+  return dmSystem;
 }
 
 // ============================================================================

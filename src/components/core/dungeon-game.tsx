@@ -136,7 +136,7 @@ import {
   getBondTier,
   getCompanionColor,
 } from "@/lib/entity/companion-system";
-import type { Companion, Enemy, SustainedAbility } from "@/lib/core/game-types";
+import type { Companion, Enemy, SustainedAbility, EquipmentSlot } from "@/lib/core/game-types";
 import { generateId } from "@/lib/core/utils";
 import {
   activateSustained,
@@ -1580,8 +1580,7 @@ export function DungeonGame() {
   const equipItem = useCallback(
     (item: Item) => {
       // Determine the equipment slot based on item properties
-      type EquipSlot = "mainHand" | "offHand" | "head" | "chest" | "legs" | "feet" | "hands" | "ring1" | "ring2" | "amulet" | "cloak" | "belt" | "weapon" | "armor"
-      let slot: EquipSlot | null = null;
+      let slot: EquipmentSlot | "weapon" | "armor" | null = null;
 
       if (item.type === "weapon" || item.category === "weapon") {
         // Check if it's a shield (goes to offHand)
@@ -2062,11 +2061,7 @@ export function DungeonGame() {
       {/* Left Sidebar - Stats (shown after class select) */}
       {gameState.phase !== "title" && !showClassSelect && gameState.player && (
         <div className="hidden lg:block w-64 bg-stone-900/50 sticky top-0 h-screen overflow-y-auto">
-          <SidebarStats
-            player={gameState.player}
-            floor={gameState.floor} // Corrected to gameState.floor
-            currentRoom={gameState.currentRoom}
-          />
+          <SidebarStats player={gameState.player} />
         </div>
       )}
 
@@ -2115,6 +2110,21 @@ export function DungeonGame() {
           />
         ) : (
           <div className="flex-1 flex flex-col p-4">
+            {/* Location Header */}
+            {gameState.currentDungeon && (
+              <div className="flex items-center justify-center gap-4 mb-3 pb-2 border-b border-border/30">
+                <span className="text-xs text-muted-foreground">
+                  <EntityText type="location">{gameState.currentDungeon.name}</EntityText>
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Floor <EntityText type="location">{gameState.floor}</EntityText>
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Room <span className="text-foreground">{gameState.currentRoom}</span>
+                </span>
+              </div>
+            )}
+
             {/* Game Log */}
             <div className="flex-1 overflow-hidden">
               {currentNarrative ? (

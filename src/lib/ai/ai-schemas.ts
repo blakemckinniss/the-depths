@@ -1,5 +1,11 @@
 import { z } from "zod"
-import { getMechanicsHint } from "@/lib/mechanics/game-mechanics-ledger"
+import {
+  getMechanicsHint,
+  DM_OPERATIONS,
+  ENTITY_LINK_TYPES,
+  ENTITY_MUTATIONS,
+  RULE_MODIFIERS,
+} from "@/lib/mechanics/game-mechanics-ledger"
 
 // Get mechanics hint for schema descriptions
 const ITEM_DESC_HINT = getMechanicsHint()
@@ -505,6 +511,148 @@ export const emptyRoomSchema = z.object({
 })
 
 // ============================================
+// DM OPERATIONS SCHEMAS
+// TCG-style creative operations for AI Dungeon Master
+// ============================================
+
+// Entity transformation request
+export const entityTransformationSchema = z.object({
+  targetEntityId: z.string().describe("ID of entity to transform"),
+  toType: z.enum(["companion", "npc", "item", "boss", "enemy", "environmental", "shrine", "trap", "gold"])
+    .describe("What to transform into (must be valid for source type)"),
+  narrative: z.string().describe("1-2 sentences describing the transformation"),
+  preserveStats: z.boolean().default(true).describe("Whether to scale stats to new form"),
+  newName: z.string().nullish().describe("New name for transformed entity"),
+  mutations: z.array(z.enum(ENTITY_MUTATIONS as unknown as [string, ...string[]]))
+    .nullish()
+    .describe("Mutations to apply to new form"),
+})
+
+// Entity link creation
+export const entityLinkSchema = z.object({
+  sourceEntityId: z.string().describe("Source entity ID"),
+  targetEntityId: z.string().describe("Target entity ID"),
+  linkType: z.enum(ENTITY_LINK_TYPES as unknown as [string, ...string[]])
+    .describe("Type of mechanical bond"),
+  strength: z.number().min(1).max(100).default(100).describe("Link strength (affects magnitude)"),
+  bidirectional: z.boolean().default(false).describe("Does link work both ways?"),
+  narrative: z.string().describe("Story explanation for this bond"),
+  breakCondition: z.string().nullish().describe("How can this link be broken?"),
+  onSourceDeath: z.string().nullish().describe("What happens to target when source dies"),
+  onTargetDeath: z.string().nullish().describe("What happens to source when target dies"),
+})
+
+// Rule modifier grant
+export const ruleModifierGrantSchema = z.object({
+  targetEntityId: z.string().describe("Entity receiving the modifier"),
+  modifierKey: z.enum(Object.keys(RULE_MODIFIERS) as [string, ...string[]])
+    .describe("Which TCG-style rule modifier to grant"),
+  source: z.string().describe("What grants this (shrine, curse, item, etc.)"),
+  sourceType: z.enum(["item", "shrine", "curse", "boss", "event", "spell", "companion"])
+    .describe("Category of source"),
+  duration: z.union([
+    z.number().describe("Number of turns"),
+    z.enum(["permanent", "floor", "dungeon", "combat"])
+  ]).describe("How long it lasts"),
+  usesRemaining: z.number().nullish().describe("Limited uses (null = unlimited)"),
+  narrative: z.string().describe("How the effect manifests narratively"),
+})
+
+// Entity spawn request
+export const entitySpawnSchema = z.object({
+  entityType: z.enum(["enemy", "companion", "npc", "item", "trap", "shrine", "environmental"])
+    .describe("Type of entity to spawn"),
+  name: z.string().describe("Entity name"),
+  description: z.string().describe("1-2 sentence description"),
+  narrative: z.string().describe("How entity appears/manifests"),
+  tier: z.enum(["minion", "standard", "elite", "boss"]).nullish()
+    .describe("Power tier for enemies"),
+  mutations: z.array(z.enum(ENTITY_MUTATIONS as unknown as [string, ...string[]]))
+    .nullish()
+    .describe("Mutations to apply"),
+  linkedTo: z.string().nullish().describe("Entity ID to auto-link to"),
+  linkType: z.enum(ENTITY_LINK_TYPES as unknown as [string, ...string[]])
+    .nullish()
+    .describe("Link type if linkedTo specified"),
+})
+
+// Entity mutation application
+export const entityMutationSchema = z.object({
+  targetEntityId: z.string().describe("Entity to mutate"),
+  mutations: z.array(z.enum(ENTITY_MUTATIONS as unknown as [string, ...string[]]))
+    .min(1)
+    .describe("Mutations to apply"),
+  narrative: z.string().describe("How the mutation manifests"),
+  permanent: z.boolean().default(false).describe("Is mutation permanent?"),
+  source: z.string().describe("What caused the mutation"),
+})
+
+// Entity merge/absorption
+export const entityMergeSchema = z.object({
+  baseEntityId: z.string().describe("Primary entity (survives)"),
+  mergeEntityIds: z.array(z.string()).min(1).describe("Entities to merge into base"),
+  resultName: z.string().describe("Name of merged entity"),
+  resultDescription: z.string().describe("Description of merged form"),
+  narrative: z.string().describe("How the merge happens"),
+  unstable: z.boolean().default(false).describe("Can merged entity split back?"),
+  splitCondition: z.string().nullish().describe("When it splits if unstable"),
+})
+
+// Comprehensive DM operation request (AI chooses operation)
+export const dmOperationRequestSchema = z.object({
+  operation: z.enum(DM_OPERATIONS as unknown as [string, ...string[]])
+    .describe("Which DM operation to perform"),
+  targets: z.array(z.string()).describe("Entity IDs affected"),
+  parameters: z.record(z.unknown()).describe("Operation-specific parameters"),
+  narrative: z.string().describe("Story justification for this operation"),
+  powerLevel: z.number().min(1).max(10).default(5)
+    .describe("Power level (affects balance constraints)"),
+  duration: z.union([
+    z.number(),
+    z.enum(["permanent", "floor", "dungeon", "combat", "turn"])
+  ]).nullish().describe("How long effect lasts"),
+  reversible: z.boolean().default(true).describe("Can this be undone?"),
+})
+
+// DM creative event - AI suggests an operation based on context
+export const dmCreativeEventSchema = z.object({
+  eventType: z.enum([
+    "transformation",    // Entity becomes something else
+    "link_creation",     // Bond between entities
+    "rule_modification", // TCG-style effect granted
+    "spawn",            // New entity appears
+    "merge",            // Entities combine
+    "mutation",         // Entity gains traits
+    "banishment",       // Entity removed
+    "evolution",        // Entity upgrades
+    "corruption",       // Dark transformation
+    "purification",     // Cleanse corruption
+  ]).describe("Category of creative event"),
+
+  // The specific operation data (based on eventType)
+  transformation: entityTransformationSchema.nullish(),
+  link: entityLinkSchema.nullish(),
+  ruleModifier: ruleModifierGrantSchema.nullish(),
+  spawn: entitySpawnSchema.nullish(),
+  merge: entityMergeSchema.nullish(),
+  mutation: entityMutationSchema.nullish(),
+
+  // Shared fields
+  triggerCondition: z.string().describe("What triggered this event"),
+  narrativeSetup: z.string().describe("1-2 sentences building to the event"),
+  narrativePayoff: z.string().describe("1-2 sentences of the event happening"),
+  playerChoice: z.object({
+    prompt: z.string().describe("What choice player has"),
+    acceptText: z.string().describe("Accept button text"),
+    rejectText: z.string().describe("Reject button text"),
+    acceptConsequence: z.string().describe("What happens on accept"),
+    rejectConsequence: z.string().describe("What happens on reject"),
+  }).nullish().describe("Optional player choice for this event"),
+
+  foreshadowing: z.string().nullish().describe("Hint at future consequences"),
+})
+
+// ============================================
 // TYPE EXPORTS
 // ============================================
 
@@ -521,3 +669,13 @@ export type VictoryGeneration = z.infer<typeof victorySchema>
 export type CompanionRecruitGeneration = z.infer<typeof companionRecruitSchema>
 export type UnknownItemUseGeneration = z.infer<typeof unknownItemUseSchema>
 export type GenerateEffectGeneration = z.infer<typeof generateEffectSchema>
+
+// DM Operations types
+export type EntityTransformationRequest = z.infer<typeof entityTransformationSchema>
+export type EntityLinkRequest = z.infer<typeof entityLinkSchema>
+export type RuleModifierGrantRequest = z.infer<typeof ruleModifierGrantSchema>
+export type EntitySpawnRequest = z.infer<typeof entitySpawnSchema>
+export type EntityMutationRequest = z.infer<typeof entityMutationSchema>
+export type EntityMergeRequest = z.infer<typeof entityMergeSchema>
+export type DMOperationRequest = z.infer<typeof dmOperationRequestSchema>
+export type DMCreativeEvent = z.infer<typeof dmCreativeEventSchema>

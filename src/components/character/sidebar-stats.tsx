@@ -8,12 +8,10 @@ import { PartyPanel } from "@/components/party/party-panel"
 import { calculateEffectiveStats } from "@/lib/entity/entity-system"
 import { getResourceColor, CLASSES } from "@/lib/character/ability-system"
 import { cn } from "@/lib/core/utils"
-import { useValueChange, useResourceChange, useGoldChange } from "@/hooks/use-value-change"
+import { useValueChange, useResourceChange } from "@/hooks/use-value-change"
 
 interface SidebarStatsProps {
   player: Player
-  floor: number
-  currentRoom: number
 }
 
 const SLOT_ICONS: Record<EquipmentSlot, string> = {
@@ -61,17 +59,17 @@ function EquipSlot({ slot, item }: { slot: EquipmentSlot; item: Item | null }) {
   )
 }
 
-function StatLine({ label, value, color, suffix = "" }: { label: string; value: number | string; color?: string; suffix?: string }) {
+function StatLine({ label, value, color, labelColor, suffix = "" }: { label: string; value: number | string; color?: string; labelColor?: string; suffix?: string }) {
   if (typeof value === "number" && value === 0) return null
   return (
     <div className="flex justify-between items-center">
-      <span className="text-muted-foreground text-xs">{label}</span>
+      <span className={cn("text-xs", labelColor || "text-muted-foreground")}>{label}</span>
       <span className={cn("text-xs", color)}>{typeof value === "number" && value > 0 ? `+${value}` : value}{suffix}</span>
     </div>
   )
 }
 
-export function SidebarStats({ player, floor, currentRoom }: SidebarStatsProps) {
+export function SidebarStats({ player }: SidebarStatsProps) {
   const { stats, equipment, activeEffects, party } = player
   const effectiveStats = calculateEffectiveStats(player)
   const classDef = player.class ? CLASSES[player.class] : null
@@ -82,7 +80,6 @@ export function SidebarStats({ player, floor, currentRoom }: SidebarStatsProps) 
     player.resources.current,
     player.resources.type as "mana" | "rage" | "energy" | "focus" | "souls"
   )
-  const goldAnim = useGoldChange(stats.gold)
   const attackAnim = useValueChange(effectiveStats.attack)
   const defenseAnim = useValueChange(effectiveStats.defense)
 
@@ -247,26 +244,6 @@ export function SidebarStats({ player, floor, currentRoom }: SidebarStatsProps) 
           {stats.resourceRegen > 0 && <StatLine label="Resource Regen" value={stats.resourceRegen} color="text-blue-400" suffix="/turn" />}
         </div>
       )}
-
-      <div className="h-px bg-border/50" />
-
-      {/* Location & Gold */}
-      <div className="space-y-1.5">
-        <div className="flex justify-between">
-          <span className="text-muted-foreground text-xs">Gold</span>
-          <span className={cn(goldAnim)}>
-            <EntityText type="gold">{stats.gold}</EntityText>
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground text-xs">Floor</span>
-          <EntityText type="location">{floor}</EntityText>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground text-xs">Room</span>
-          <span className="text-xs">{currentRoom}</span>
-        </div>
-      </div>
 
       {/* Abilities */}
       {player.abilities.length > 0 && (

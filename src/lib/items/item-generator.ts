@@ -160,7 +160,7 @@ export const WEAPON_PROFILES: Record<WeaponSubtype, WeaponProfile> = {
 // ARMOR SUBTYPES
 // =============================================================================
 
-export type ArmorSubtype = "helmet" | "chest" | "gloves" | "boots" | "shield" | "cloak"
+export type ArmorSubtype = "helmet" | "chest" | "leggings" | "gloves" | "boots" | "shield" | "cloak" | "belt"
 
 export interface ArmorProfile {
   subtype: ArmorSubtype
@@ -230,6 +230,25 @@ export const ARMOR_PROFILES: Record<ArmorSubtype, ArmorProfile> = {
     magicPenalty: 0,
     bonusStats: { dodge: 0.03, resistance: 5 },
     classAffinity: ["mage", "warlock", "necromancer", "rogue"],
+  },
+  leggings: {
+    subtype: "leggings",
+    slot: "legs",
+    baseDefense: 4,
+    weight: "mail",
+    movementPenalty: 0,
+    magicPenalty: 0,
+    classAffinity: ["warrior", "paladin", "ranger", "barbarian"],
+  },
+  belt: {
+    subtype: "belt",
+    slot: "belt",
+    baseDefense: 1,
+    weight: "leather",
+    movementPenalty: 0,
+    magicPenalty: 0,
+    bonusStats: { health: 5 },
+    classAffinity: ["warrior", "barbarian", "monk", "ranger"],
   },
 }
 
@@ -583,6 +602,18 @@ const ARMOR_NAMES: Record<ArmorSubtype, Record<ItemRarity, NamePool>> = {
     rare: { prefixes: ["Shadow", "Ethereal", "Arcane"], bases: ["Shadowcloak", "Veil", "Mantle of Power"], suffixes: ["of Invisibility", "of Protection", ""] },
     legendary: { prefixes: ["Divine", "Void", "Death's"], bases: ["Cloak of Invisibility", "Void Shroud", "Mantle of the Gods"], suffixes: ["of Absolute Shadow", "", ""] },
   },
+  leggings: {
+    common: { prefixes: ["Worn", "Patched", "Simple"], bases: ["Pants", "Leggings", "Breeches"], suffixes: ["", "", ""] },
+    uncommon: { prefixes: ["Chain", "Scale", "Reinforced"], bases: ["Legguards", "Greaves", "Cuisses"], suffixes: ["of Protection", "", ""] },
+    rare: { prefixes: ["Enchanted", "Mithril", "Dragon"], bases: ["War Leggings", "Plate Greaves", "Dragon Cuisses"], suffixes: ["of Stability", "of Power", ""] },
+    legendary: { prefixes: ["Divine", "Void", "Titan's"], bases: ["Godlegs", "Eternity Greaves", "Legs of the Colossus"], suffixes: ["of Infinite Strength", "", ""] },
+  },
+  belt: {
+    common: { prefixes: ["Worn", "Simple", "Old"], bases: ["Belt", "Sash", "Strap"], suffixes: ["", "", ""] },
+    uncommon: { prefixes: ["Leather", "Studded", "Reinforced"], bases: ["Girdle", "Waistguard", "Cincture"], suffixes: ["of Vitality", "", ""] },
+    rare: { prefixes: ["Enchanted", "Dragon", "Blessed"], bases: ["War Belt", "Dragon Girdle", "Holy Cincture"], suffixes: ["of Endurance", "of Strength", ""] },
+    legendary: { prefixes: ["Divine", "Void", "Titan's"], bases: ["Godbelt", "Eternity Girdle", "Belt of the Titans"], suffixes: ["of Infinite Vitality", "", ""] },
+  },
 }
 
 // =============================================================================
@@ -693,7 +724,7 @@ function rollWeaponSubtype(): WeaponSubtype {
 function rollArmorSubtype(): ArmorSubtype {
   const subtypes = Object.keys(ARMOR_PROFILES) as ArmorSubtype[]
   const weights: Record<ArmorSubtype, number> = {
-    chest: 25, helmet: 20, boots: 18, gloves: 15, shield: 12, cloak: 10,
+    chest: 20, helmet: 16, leggings: 16, boots: 14, gloves: 12, shield: 10, cloak: 8, belt: 4,
   }
 
   const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0)
@@ -896,4 +927,87 @@ export function isWeaponSubtype(subtype: string): subtype is WeaponSubtype {
 
 export function isArmorSubtype(subtype: string): subtype is ArmorSubtype {
   return subtype in ARMOR_PROFILES
+}
+
+// =============================================================================
+// TRINKET GENERATION
+// =============================================================================
+
+export type TrinketSubtype = "ring" | "amulet"
+
+interface TrinketProfile {
+  subtype: TrinketSubtype
+  baseStats: {
+    attack?: number
+    defense?: number
+    health?: number
+    critChance?: number
+    dodgeChance?: number
+  }
+}
+
+const TRINKET_PROFILES: Record<TrinketSubtype, TrinketProfile> = {
+  ring: {
+    subtype: "ring",
+    baseStats: { attack: 2, critChance: 0.02 },
+  },
+  amulet: {
+    subtype: "amulet",
+    baseStats: { defense: 1, health: 5 },
+  },
+}
+
+const TRINKET_NAMES: Record<TrinketSubtype, Record<ItemRarity, NamePool>> = {
+  ring: {
+    common: { prefixes: ["Simple", "Plain", "Copper"], bases: ["Ring", "Band", "Loop"], suffixes: ["", "", ""] },
+    uncommon: { prefixes: ["Silver", "Enchanted", "Gemmed"], bases: ["Ring", "Signet", "Band"], suffixes: ["of Power", "", ""] },
+    rare: { prefixes: ["Golden", "Runed", "Arcane"], bases: ["Ring of Power", "Seal", "Circle"], suffixes: ["of Might", "of the Magi", ""] },
+    legendary: { prefixes: ["Divine", "Void", "Eternal"], bases: ["Ring of Eternity", "Band of the Gods", "Seal of Power"], suffixes: ["of Omnipotence", "", ""] },
+  },
+  amulet: {
+    common: { prefixes: ["Simple", "Plain", "Wooden"], bases: ["Amulet", "Pendant", "Necklace"], suffixes: ["", "", ""] },
+    uncommon: { prefixes: ["Silver", "Enchanted", "Blessed"], bases: ["Talisman", "Charm", "Medallion"], suffixes: ["of Protection", "", ""] },
+    rare: { prefixes: ["Golden", "Runed", "Holy"], bases: ["Amulet of Power", "Sacred Pendant", "Mystic Talisman"], suffixes: ["of the Guardian", "of Life", ""] },
+    legendary: { prefixes: ["Divine", "Void", "Eternal"], bases: ["Heart of the Gods", "Amulet of Eternity", "Divine Pendant"], suffixes: ["of Immortality", "", ""] },
+  },
+}
+
+function generateTrinketName(subtype: TrinketSubtype, rarity: ItemRarity): string {
+  const pool = TRINKET_NAMES[subtype][rarity]
+  const prefix = pool.prefixes[Math.floor(Math.random() * pool.prefixes.length)]
+  const base = pool.bases[Math.floor(Math.random() * pool.bases.length)]
+  const suffix = pool.suffixes[Math.floor(Math.random() * pool.suffixes.length)]
+  return `${prefix} ${base}${suffix ? " " + suffix : ""}`.trim()
+}
+
+export interface GenerateTrinketOptions {
+  rarity?: ItemRarity
+  subtype?: TrinketSubtype
+  floor?: number
+}
+
+export function generateTrinket(options: GenerateTrinketOptions = {}): Item {
+  const rarity = options.rarity ?? rollRarity(options.floor ?? 0)
+  const subtype = options.subtype ?? (Math.random() < 0.6 ? "ring" : "amulet")
+  const profile = TRINKET_PROFILES[subtype]
+  const rarityMult = RARITY_MULTIPLIERS[rarity]
+  const floorMult = 1 + (options.floor ?? 0) * FLOOR_SCALING
+
+  const stats: Item["stats"] = {}
+  if (profile.baseStats.attack) stats.attack = Math.floor(profile.baseStats.attack * rarityMult * floorMult)
+  if (profile.baseStats.defense) stats.defense = Math.floor(profile.baseStats.defense * rarityMult * floorMult)
+  if (profile.baseStats.health) stats.health = Math.floor(profile.baseStats.health * rarityMult * floorMult)
+
+  return {
+    id: generateId(),
+    entityType: "item",
+    name: generateTrinketName(subtype, rarity),
+    type: "misc",
+    category: "trinket",
+    subtype,
+    rarity,
+    stats,
+    value: Math.floor(20 * rarityMult * floorMult),
+    description: `A ${rarity} ${subtype} that provides minor bonuses.`,
+  }
 }
