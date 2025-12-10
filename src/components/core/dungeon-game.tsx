@@ -74,6 +74,7 @@ import {
   getInteractionsForEntity,
   getAvailableInteractions,
 } from "@/lib/world/environmental-system";
+import { executeItemUse } from "@/lib/items/item-execution";
 import {
   EntityText,
   EnemyText,
@@ -2005,6 +2006,41 @@ export function DungeonGame() {
     [equipItem],
   );
 
+  const handleUseItem = useCallback(
+    (item: Item) => {
+      const result = executeItemUse(item, gameState);
+
+      // Dispatch all actions
+      for (const action of result.actions) {
+        dispatch(action);
+      }
+
+      // Log the result
+      if (result.narration) {
+        addLog(
+          <span>
+            <EntityText type="potion">{item.name}</EntityText>:{" "}
+            <EntityText type={result.success ? "heal" : "damage"}>
+              {result.narration}
+            </EntityText>
+          </span>,
+          result.success ? "loot" : "system"
+        );
+      }
+
+      // Log effects applied
+      for (const effect of result.effectsApplied) {
+        addLog(
+          <span>
+            <EntityText type="blessing">+ {effect.name}</EntityText>: {effect.description}
+          </span>,
+          "effect"
+        );
+      }
+    },
+    [gameState, dispatch, addLog],
+  );
+
   // === RENDER HELPERS ===
   const renderInteractiveEntities = useCallback(() => {
     const activeEntities = gameState.roomEnvironmentalEntities.filter(
@@ -2361,6 +2397,8 @@ export function DungeonGame() {
             <SidebarInventory
               player={gameState.player}
               onEquipItem={handleEquipItem}
+              onUseItem={handleUseItem}
+              inCombat={gameState.inCombat}
             />
             <SidebarKeys keys={gameState.player.keys} />
           </div>
