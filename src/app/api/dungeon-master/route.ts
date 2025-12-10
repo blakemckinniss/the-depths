@@ -1,4 +1,4 @@
-import { generateWithAI, buildSystemPrompt, AI_CONFIG, entityCache } from "@/lib/ai/ai-utils"
+import { generateWithAI, buildSystemPrompt, AI_CONFIG, entityCache, type MechanicsArea } from "@/lib/ai/ai-utils"
 import {
   roomSchema,
   enemyEncounterSchema,
@@ -18,14 +18,47 @@ export async function POST(req: Request) {
   const body = await req.json()
   const { type, context } = body
 
+  // Get mechanics areas relevant to each narration type
+  const getMechanicsForType = (narrativeType: string): MechanicsArea[] => {
+    switch (narrativeType) {
+      case "room":
+      case "empty_room":
+        return ["events", "paths", "progression", "chaos"];
+      case "enemy_encounter":
+      case "player_attack":
+      case "enemy_attack":
+        return ["combat", "enemies", "levels", "effects"];
+      case "victory":
+        return ["combat", "economy", "levels", "effects", "items"];
+      case "loot":
+      case "gold_discovery":
+        return ["items", "economy"];
+      case "flee_success":
+      case "flee_fail":
+        return ["combat", "skills"];
+      case "player_death":
+        // Death is a dramatic moment - give comprehensive context
+        return ["combat", "enemies", "levels", "progression"];
+      case "descend":
+        return ["progression", "events", "chaos"];
+      default:
+        return ["events", "levels"];
+    }
+  };
+
   const system = buildSystemPrompt({
-    dungeonName: "Depths of Shadowmire",
-    dungeonTheme: "cursed ancient dungeon",
+    dungeonName: context.dungeonName || "Depths of Shadowmire",
+    dungeonTheme: context.dungeonTheme || "cursed ancient dungeon",
     floor: context.floor,
     room: context.roomNumber,
     playerLevel: context.playerLevel,
     playerHealth: context.playerHealth,
     maxHealth: context.maxHealth,
+    playerClass: context.playerClass,
+    companions: context.companions,
+    currentHazard: context.currentHazard,
+    recentEvents: context.recentEvents,
+    includeMechanics: getMechanicsForType(type),
   })
 
   // Temperature based on narration type

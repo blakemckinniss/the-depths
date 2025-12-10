@@ -1,4 +1,4 @@
-import { generateWithAI, AI_CONFIG, entityCache, getItemMechanicsPrompt } from "@/lib/ai/ai-utils"
+import { generateWithAI, AI_CONFIG, entityCache, getItemMechanicsPrompt, getCombinedMechanicsPrompt, type MechanicsArea } from "@/lib/ai/ai-utils"
 import {
   itemSchema,
   enemySchema,
@@ -19,12 +19,38 @@ export async function POST(req: Request) {
   const body = await req.json()
   const { type, context } = body
 
+  // Get mechanics prompt based on entity type
+  const getMechanicsForType = (entityType: string): MechanicsArea[] => {
+    switch (entityType) {
+      case "enemy":
+      case "boss":
+        return ["enemies", "levels", "combat", "effects"];
+      case "companion":
+        return ["companions", "levels", "effects"];
+      case "item":
+        return ["items", "effects", "economy"];
+      case "trap":
+        return ["skills", "effects"];
+      case "shrine":
+        return ["effects", "economy"];
+      case "npc":
+        return ["economy", "companions"];
+      default:
+        return ["levels"];
+    }
+  };
+
+  const mechanicsPrompt = getCombinedMechanicsPrompt(getMechanicsForType(type), context.floor);
+
   const baseSystem = `You are a dark fantasy dungeon master generating entities and narration for a roguelike dungeon crawler.
 Your tone is atmospheric, terse, and evocative - inspired by classic MUD games and dark fantasy.
 Keep all responses brief and punchy. Use vivid, visceral imagery. Avoid purple prose.
 Never use emojis. Never break character. Never mention game mechanics directly.
 The setting is cursed ancient dungeons filled with monsters, traps, and dark magic.
-Theme context: ${context.dungeonTheme || "ancient cursed dungeon"}`
+Theme context: ${context.dungeonTheme || "ancient cursed dungeon"}
+
+=== MECHANICS KNOWLEDGE ===
+${mechanicsPrompt}`
 
   // Extended system prompt for item generation
   const itemSystem = `${baseSystem}

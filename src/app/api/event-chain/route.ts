@@ -3,6 +3,7 @@ import {
   buildSystemPrompt,
   AI_CONFIG,
   entityCache,
+  type MechanicsArea,
 } from "@/lib/ai/ai-utils";
 import {
   generateEntitySystemPrompt,
@@ -32,6 +33,31 @@ export async function POST(req: Request) {
   const body = await req.json();
   const { eventType, context } = body;
 
+  // Build system prompt with relevant mechanics for this event type
+  const getMechanicsForEvent = (eventType: string) => {
+    switch (eventType) {
+      case "combat_round":
+      case "victory":
+        return ["combat", "enemies", "levels", "effects"] as const;
+      case "companion_recruit":
+      case "companion_action":
+      case "companion_moment":
+        return ["companions", "levels", "effects"] as const;
+      case "room_event":
+      case "path_preview":
+        return ["events", "paths", "chaos", "progression"] as const;
+      case "generate_effect":
+      case "effect_combo":
+      case "ambient_effect":
+        return ["effects", "chaos"] as const;
+      case "environmental_interaction":
+      case "unknown_item_use":
+        return ["skills", "effects", "items"] as const;
+      default:
+        return ["events", "levels"] as const;
+    }
+  };
+
   const system = buildSystemPrompt({
     dungeonName: context.dungeonName,
     dungeonTheme: context.dungeonTheme,
@@ -44,6 +70,7 @@ export async function POST(req: Request) {
     companions: context.companions,
     currentHazard: context.currentHazard,
     recentEvents: context.recentEvents,
+    includeMechanics: [...getMechanicsForEvent(eventType)],
   });
 
   switch (eventType) {
