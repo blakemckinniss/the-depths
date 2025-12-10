@@ -254,8 +254,7 @@ export interface Companion extends GameEntity {
     attack: number
     defense: number
     speed: number // turn order modifier
-    level?: number // companion level for scaling
-    experience?: number // accumulated XP
+    level: number // companion level (inherited from source, does not change)
   }
 
   // AI-generated abilities (1-4)
@@ -683,6 +682,7 @@ export interface GameState {
 
 export interface Enemy extends GameEntity {
   entityType: "enemy"
+  level: number // Entity level for combat/XP scaling
   health: number
   maxHealth: number
   attack: number

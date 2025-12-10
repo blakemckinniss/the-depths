@@ -13,6 +13,7 @@ import type {
 } from "@/lib/core/game-types"
 import { generateEntityId, STATUS_EFFECTS } from "./entity-system"
 import type { RoomEventResponse, CompanionRecruitResponse } from "@/lib/hooks/use-event-chain"
+import { calculateEntityLevel, ENTITY_LEVEL_CONFIG } from "@/lib/mechanics/game-mechanics-ledger"
 
 // Convert AI tier to stats multiplier
 function tierToMultiplier(tier: string): number {
@@ -27,6 +28,22 @@ function tierToMultiplier(tier: string): number {
       return 2
     default:
       return 1
+  }
+}
+
+// Convert AI tier to rank for level calculation
+function tierToRank(tier: string): keyof typeof ENTITY_LEVEL_CONFIG.rankBonus {
+  switch (tier) {
+    case "minion":
+      return "normal"
+    case "standard":
+      return "normal"
+    case "elite":
+      return "rare"
+    case "boss":
+      return "boss"
+    default:
+      return "normal"
   }
 }
 
@@ -72,11 +89,16 @@ export function createEnemyFromAI(
     ? (validDamageTypes.find((t) => aiData.weakness?.toLowerCase().includes(t)) as DamageType | undefined)
     : undefined
 
+  // Calculate level based on floor and tier
+  const rank = tierToRank(aiData.tier)
+  const level = calculateEntityLevel(floor, rank)
+
   return {
     id: generateEntityId("enemy"),
     entityType: "enemy",
     name: aiData.name,
     description: aiData.description,
+    level,
     health: Math.floor(base.health * mult * floorScale),
     maxHealth: Math.floor(base.health * mult * floorScale),
     attack: Math.floor(base.attack * mult * floorScale),
@@ -228,8 +250,11 @@ export function createNPCFromAI(aiData: NonNullable<RoomEventResponse["npc"]>, f
   }
 }
 
-export function createCompanionFromAI(aiData: CompanionRecruitResponse, floor: number): Companion {
+export function createCompanionFromAI(aiData: CompanionRecruitResponse, floor: number, sourceEnemyLevel?: number): Companion {
   const floorScale = 1 + (floor - 1) * 0.1
+
+  // Companion level: inherit from source enemy if tamed, otherwise calculate from floor
+  const level = sourceEnemyLevel ?? calculateEntityLevel(floor, "normal")
 
   // Convert AI abilities to game abilities
   const abilities: CompanionAbility[] = aiData.abilities.map((a, i) => ({
@@ -261,6 +286,7 @@ export function createCompanionFromAI(aiData: CompanionRecruitResponse, floor: n
       attack: Math.floor(aiData.stats.attack * floorScale),
       defense: Math.floor(aiData.stats.defense * floorScale),
       speed: aiData.stats.speed,
+      level,
     },
     abilities,
     combatBehavior: {
@@ -293,7 +319,7 @@ export function createCompanionFromAI(aiData: CompanionRecruitResponse, floor: n
 }
 
 // Create companion from rescued NPC or AI data (fallback)
-export function createCompanionFromNPC(npc: NPC): Companion {
+export function createCompanionFromNPC(npc: NPC, playerLevel = 1): Companion {
   const roleStats = {
     merchant: { health: 20, attack: 3, defense: 2, style: "passive" as const },
     quest_giver: { health: 25, attack: 5, defense: 3, style: "support" as const },
@@ -303,6 +329,9 @@ export function createCompanionFromNPC(npc: NPC): Companion {
   }
 
   const stats = roleStats[npc.role] || roleStats.trapped
+
+  // Rescued NPCs are player level - 1 (minimum 1)
+  const level = Math.max(1, playerLevel - 1)
 
   return {
     id: generateEntityId("companion"),
@@ -318,6 +347,7 @@ export function createCompanionFromNPC(npc: NPC): Companion {
       attack: stats.attack,
       defense: stats.defense,
       speed: 5,
+      level,
     },
     abilities: [
       {

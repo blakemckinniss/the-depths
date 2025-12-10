@@ -238,10 +238,10 @@ export function canTameEnemy(enemy: Enemy, player: Player): { canTame: boolean; 
     chance += 0.25
   }
 
-  // Level difference penalty
-  const levelDiff = Math.floor(enemy.expReward / 15) - player.stats.level
+  // Level difference penalty - use actual enemy level
+  const levelDiff = enemy.level - player.stats.level
   if (levelDiff > 0) {
-    chance -= levelDiff * 0.1
+    chance -= levelDiff * 0.1 // -10% per level above player
   }
 
   chance = Math.max(0.05, Math.min(0.9, chance))
@@ -272,6 +272,7 @@ export function createBasicCompanionFromEnemy(enemy: Enemy, method: string): Com
       attack: Math.floor(enemy.attack * 0.9),
       defense: Math.floor(enemy.defense * 0.9),
       speed: 5,
+      level: enemy.level, // Inherit level from enemy
     },
     abilities: [
       {
@@ -306,7 +307,7 @@ export function createBasicCompanionFromEnemy(enemy: Enemy, method: string): Com
   }
 }
 
-export function createBasicCompanionFromNPC(npc: NPC): Companion {
+export function createBasicCompanionFromNPC(npc: NPC, playerLevel = 1): Companion {
   const roleStats = {
     merchant: { health: 20, attack: 3, defense: 2, style: "passive" as const },
     quest_giver: { health: 25, attack: 5, defense: 3, style: "support" as const },
@@ -316,6 +317,9 @@ export function createBasicCompanionFromNPC(npc: NPC): Companion {
   }
 
   const stats = roleStats[npc.role] || roleStats.trapped
+
+  // Rescued NPCs are player level - 1 (minimum 1)
+  const level = Math.max(1, playerLevel - 1)
 
   return {
     id: generateEntityId("companion"),
@@ -331,6 +335,7 @@ export function createBasicCompanionFromNPC(npc: NPC): Companion {
       attack: stats.attack,
       defense: stats.defense,
       speed: 5,
+      level,
     },
     abilities: [
       {

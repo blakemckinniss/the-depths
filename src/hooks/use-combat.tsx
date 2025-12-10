@@ -64,6 +64,7 @@ import {
   tickHazard,
   removeHazardEffects,
 } from "@/lib/world/hazard-system";
+import { getXpModifier } from "@/lib/mechanics/game-mechanics-ledger";
 import type { GameLogger, LogCategory } from "@/lib/ai/game-log-system";
 import { EntityText } from "@/components/narrative/entity-text";
 
@@ -299,8 +300,9 @@ export function useCombat({
   const handleEnemyDefeat = useCallback(
     (enemy: Enemy, player: Player) => {
       const effectiveStats = calculateEffectiveStats(player);
+      const levelXpMod = getXpModifier(player.stats.level, enemy.level);
       const expGain = Math.floor(
-        enemy.expReward * effectiveStats.expMultiplier,
+        enemy.expReward * effectiveStats.expMultiplier * levelXpMod,
       );
       const goldGain = Math.floor(
         enemy.goldReward * effectiveStats.goldMultiplier,
@@ -531,9 +533,10 @@ export function useCombat({
         });
         // Check if reflection killed the enemy
         if (reflectedHealth <= 0) {
+          const reflectEffStats = calculateEffectiveStats(updatedPlayer);
+          const reflectLevelXpMod = getXpModifier(updatedPlayer.stats.level, enemy.level);
           const expGain = Math.floor(
-            enemy.expReward *
-              calculateEffectiveStats(updatedPlayer).expMultiplier,
+            enemy.expReward * reflectEffStats.expMultiplier * reflectLevelXpMod,
           );
           const goldGain = Math.floor(
             enemy.goldReward *
@@ -754,8 +757,10 @@ export function useCombat({
         }
 
         if (newEnemyHealth <= 0) {
-          const expGain = enemy.expReward;
-          const goldGain = enemy.goldReward;
+          const companionKillEffStats = calculateEffectiveStats(updatedPlayer);
+          const companionKillLevelXpMod = getXpModifier(updatedPlayer.stats.level, enemy.level);
+          const expGain = Math.floor(enemy.expReward * companionKillEffStats.expMultiplier * companionKillLevelXpMod);
+          const goldGain = Math.floor(enemy.goldReward * companionKillEffStats.goldMultiplier);
 
           updateRunStats({
             enemiesSlain: state.runStats.enemiesSlain + 1,
@@ -1268,8 +1273,9 @@ export function useCombat({
         );
       }
 
+      const abilityVictoryLevelXpMod = getXpModifier(state.player.stats.level, state.currentEnemy.level);
       const expGain = Math.floor(
-        state.currentEnemy.expReward * effectiveStats.expMultiplier,
+        state.currentEnemy.expReward * effectiveStats.expMultiplier * abilityVictoryLevelXpMod,
       );
       const goldGain = Math.floor(
         state.currentEnemy.goldReward * effectiveStats.goldMultiplier,

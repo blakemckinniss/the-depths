@@ -14,6 +14,7 @@ import type {
   RunSummary,
 } from "./game-types"
 import { createNPC, createCompanion, createBoss, TRAP_TEMPLATES, SHRINE_TEMPLATES } from "@/lib/entity/entity-system"
+import { calculateEntityLevel } from "@/lib/mechanics/game-mechanics-ledger"
 
 // Import new item generation systems
 import {
@@ -75,6 +76,7 @@ export function generateEnemy(floor: number, isBoss = false): Enemy {
     id: generateId(),
     entityType: "enemy",
     name: template.name,
+    level: 1, // Placeholder - will be calculated by createRankedEnemy based on floor + rank
     health: Math.floor(template.baseHealth * floorScale),
     maxHealth: Math.floor(template.baseHealth * floorScale),
     attack: Math.floor(template.baseAttack * floorScale),
@@ -258,6 +260,9 @@ export function generateCompanion(floor: number, forceRole?: Companion["role"]):
   const stats = role ? baseStats[role] : baseStats["fighter"]
   const floorScale = 1 + (floor - 1) * 0.1
 
+  // Calculate companion level based on floor
+  const level = calculateEntityLevel(floor, "normal")
+
   return createCompanion({
     name: template.name,
     role,
@@ -268,6 +273,7 @@ export function generateCompanion(floor: number, forceRole?: Companion["role"]):
       attack: Math.floor(stats.attack * floorScale),
       defense: Math.floor(stats.defense * floorScale),
       speed: Math.floor(stats.speed * floorScale),
+      level,
     },
     loyalty: 50 + Math.floor(Math.random() * 20),
     combatStyle:

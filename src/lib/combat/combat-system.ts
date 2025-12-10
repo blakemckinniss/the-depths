@@ -1,6 +1,7 @@
 import type { Player, Enemy, CombatStance, DamageType, EnemyAbility, ComboTracker, StatusEffect } from "@/lib/core/game-types"
 import { calculateEffectiveStats, STATUS_EFFECTS, createStatusEffect } from "@/lib/entity/entity-system"
 import { generateId } from "@/lib/core/utils"
+import { getLevelDamageModifier } from "@/lib/mechanics/game-mechanics-ledger"
 
 // Stance modifiers
 export const STANCE_MODIFIERS: Record<CombatStance, { attack: number; defense: number; resourceCost: number }> = {
@@ -65,13 +66,17 @@ export function calculateDamageWithType(
   damageType: DamageType | undefined,
   enemy: Enemy,
   player: Player,
-): { damage: number; effectiveness: "normal" | "effective" | "resisted" } {
+): { damage: number; effectiveness: "normal" | "effective" | "resisted"; levelModifier: number } {
   let damage = baseDamage
   let effectiveness: "normal" | "effective" | "resisted" = "normal"
 
   // Apply stance modifier
   const stanceMod = STANCE_MODIFIERS[player.stance]
   damage = Math.floor(damage * stanceMod.attack)
+
+  // Apply level scaling (player level vs enemy level)
+  const levelModifier = getLevelDamageModifier(player.stats.level, enemy.level)
+  damage = Math.floor(damage * levelModifier)
 
   // Apply combo bonus if active
   if (player.combo.activeCombo) {
@@ -93,7 +98,7 @@ export function calculateDamageWithType(
     effectiveness = "resisted"
   }
 
-  return { damage, effectiveness }
+  return { damage, effectiveness, levelModifier }
 }
 
 export function checkForCombo(
@@ -210,22 +215,27 @@ export function calculateIncomingDamage(
   baseDamage: number,
   damageType: DamageType | undefined,
   player: Player,
-): number {
+  enemyLevel?: number,
+): { damage: number; levelModifier: number } {
   const effectiveStats = calculateEffectiveStats(player)
   const stanceMod = STANCE_MODIFIERS[player.stance]
 
+  // Apply level scaling if enemy level provided (enemy attacking player)
+  const levelModifier = enemyLevel ? getLevelDamageModifier(enemyLevel, player.stats.level) : 1.0
+  let damage = Math.floor(baseDamage * levelModifier)
+
   // Base reduction from defense
-  const damage = Math.max(1, baseDamage - Math.floor(effectiveStats.defense * 0.5 * stanceMod.defense))
+  damage = Math.max(1, damage - Math.floor(effectiveStats.defense * 0.5 * stanceMod.defense))
 
   // Check for combo block
   if (player.combo.activeCombo) {
     const comboDef = Object.values(COMBO_DEFINITIONS).find((c) => c.name === player.combo.activeCombo?.name)
     if (comboDef?.effect.blockNextAttack) {
-      return 0
+      return { damage: 0, levelModifier }
     }
   }
 
-  return damage
+  return { damage, levelModifier }
 }
 
 // Effect factories for enemy abilities based on damage type

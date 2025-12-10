@@ -1959,6 +1959,181 @@ export function generateFullMechanicsPrompt(options?: {
 }
 
 // =============================================================================
+// ENTITY LEVEL SYSTEM
+// Levels for enemies, companions, NPCs - makes level difference matter
+// =============================================================================
+
+/**
+ * Entity level calculation configuration
+ * Enemy level = baseLevel + (floor-1) * levelsPerFloor + rankBonus ± variance
+ */
+export const ENTITY_LEVEL_CONFIG = {
+  /** Starting level for floor 1 enemies */
+  baseLevel: 1,
+  /** Average level increase per dungeon floor */
+  levelsPerFloor: 2,
+  /** Random variance around expected level (±variance) */
+  variance: 1,
+  /** Bonus levels by enemy rank */
+  rankBonus: {
+    normal: 0,
+    rare: 1,
+    unique: 2,
+    boss: 3,
+    elite_boss: 5,
+  },
+} as const;
+
+/**
+ * Combat damage scaling based on level difference
+ */
+export const LEVEL_COMBAT_SCALING = {
+  /** Damage bonus per level above target (+5% per level) */
+  damagePerLevelAdvantage: 0.05,
+  /** Damage penalty per level below target (-3% per level) */
+  damagePerLevelDisadvantage: 0.03,
+  /** Maximum damage bonus cap (+50%) */
+  maxDamageBonus: 0.50,
+  /** Maximum damage penalty cap (-30%, so 70% minimum damage) */
+  maxDamagePenalty: 0.30,
+} as const;
+
+/**
+ * XP scaling based on level difference
+ */
+export const LEVEL_XP_SCALING = {
+  /** XP reduction per level below player (-10% per level) */
+  xpPerLevelBelow: 0.10,
+  /** XP bonus per level above player (+5% per level) */
+  xpPerLevelAbove: 0.05,
+  /** Minimum XP percentage (10% even for gray enemies) */
+  minimumXpPercent: 0.10,
+  /** Maximum XP percentage (150% for high-level enemies) */
+  maximumXpPercent: 1.50,
+  /** Level difference threshold for "gray" enemies (trivial XP) */
+  grayLevelThreshold: 5,
+} as const;
+
+/**
+ * Expected level ranges per floor (for reference/validation)
+ */
+export const FLOOR_LEVEL_RANGES = {
+  1: { normal: [1, 2], rare: [2, 3], boss: [4, 5] },
+  2: { normal: [3, 4], rare: [4, 5], boss: [6, 7] },
+  3: { normal: [5, 6], rare: [6, 7], boss: [8, 9] },
+  4: { normal: [7, 8], rare: [8, 9], boss: [10, 11] },
+  5: { normal: [9, 10], rare: [10, 11], boss: [12, 13] },
+  6: { normal: [11, 12], rare: [12, 13], boss: [14, 15] },
+  7: { normal: [13, 14], rare: [14, 15], boss: [16, 17] },
+} as const;
+
+/**
+ * Calculate entity level from floor and rank
+ */
+export function calculateEntityLevel(
+  floor: number,
+  rank: keyof typeof ENTITY_LEVEL_CONFIG.rankBonus = "normal",
+  includeVariance = true,
+): number {
+  const { baseLevel, levelsPerFloor, variance, rankBonus } = ENTITY_LEVEL_CONFIG;
+  const base = baseLevel + (floor - 1) * levelsPerFloor;
+  const bonus = rankBonus[rank];
+  const randomVariance = includeVariance
+    ? Math.floor(Math.random() * (variance * 2 + 1)) - variance
+    : 0;
+  return Math.max(1, base + bonus + randomVariance);
+}
+
+/**
+ * Get damage modifier based on level difference
+ * @param attackerLevel Level of the attacker
+ * @param defenderLevel Level of the defender
+ * @returns Multiplier for damage (e.g., 1.15 = +15% damage)
+ */
+export function getLevelDamageModifier(
+  attackerLevel: number,
+  defenderLevel: number,
+): number {
+  const levelDiff = attackerLevel - defenderLevel;
+  const { damagePerLevelAdvantage, damagePerLevelDisadvantage, maxDamageBonus, maxDamagePenalty } =
+    LEVEL_COMBAT_SCALING;
+
+  if (levelDiff > 0) {
+    // Attacker is higher level - bonus damage
+    const bonus = levelDiff * damagePerLevelAdvantage;
+    return Math.min(1 + bonus, 1 + maxDamageBonus);
+  } else if (levelDiff < 0) {
+    // Attacker is lower level - penalty
+    const penalty = Math.abs(levelDiff) * damagePerLevelDisadvantage;
+    return Math.max(1 - penalty, 1 - maxDamagePenalty);
+  }
+  return 1.0; // Same level, no modifier
+}
+
+/**
+ * Get XP modifier based on level difference
+ * @param playerLevel Player's current level
+ * @param enemyLevel Enemy's level
+ * @returns Multiplier for XP gained (e.g., 0.8 = 80% of base XP)
+ */
+export function getXpModifier(playerLevel: number, enemyLevel: number): number {
+  const levelDiff = playerLevel - enemyLevel;
+  const { xpPerLevelBelow, xpPerLevelAbove, minimumXpPercent, maximumXpPercent, grayLevelThreshold } =
+    LEVEL_XP_SCALING;
+
+  // Gray enemies - trivially low level
+  if (levelDiff >= grayLevelThreshold) {
+    return minimumXpPercent;
+  }
+
+  if (levelDiff > 0) {
+    // Player is higher level - reduced XP
+    const reduction = levelDiff * xpPerLevelBelow;
+    return Math.max(1 - reduction, minimumXpPercent);
+  } else if (levelDiff < 0) {
+    // Enemy is higher level - bonus XP
+    const bonus = Math.abs(levelDiff) * xpPerLevelAbove;
+    return Math.min(1 + bonus, maximumXpPercent);
+  }
+  return 1.0; // Same level, full XP
+}
+
+/**
+ * Get level difference color coding for UI
+ * @param playerLevel Player's level
+ * @param entityLevel Entity's level
+ * @returns Tailwind color class
+ */
+export function getLevelDiffColor(playerLevel: number, entityLevel: number): string {
+  const diff = entityLevel - playerLevel;
+  if (diff <= -5) return "text-gray-500"; // Gray - trivial
+  if (diff <= -3) return "text-green-400"; // Green - easy
+  if (diff <= 2) return "text-yellow-400"; // Yellow - fair fight
+  if (diff <= 4) return "text-orange-400"; // Orange - challenging
+  return "text-red-500"; // Red - dangerous
+}
+
+/**
+ * Generate level system prompt for AI
+ */
+export function generateLevelSystemPrompt(): string {
+  return `LEVEL SYSTEM:
+Entity levels scale with floor: Level = 1 + (floor-1)*${ENTITY_LEVEL_CONFIG.levelsPerFloor} + rankBonus
+Rank bonuses: ${Object.entries(ENTITY_LEVEL_CONFIG.rankBonus)
+    .map(([rank, bonus]) => `${rank}=+${bonus}`)
+    .join(", ")}
+
+Combat scaling:
+• Higher level = +${LEVEL_COMBAT_SCALING.damagePerLevelAdvantage * 100}% damage per level (max +${LEVEL_COMBAT_SCALING.maxDamageBonus * 100}%)
+• Lower level = -${LEVEL_COMBAT_SCALING.damagePerLevelDisadvantage * 100}% damage per level (min -${LEVEL_COMBAT_SCALING.maxDamagePenalty * 100}%)
+
+XP scaling:
+• Enemy below player: -${LEVEL_XP_SCALING.xpPerLevelBelow * 100}% per level (min ${LEVEL_XP_SCALING.minimumXpPercent * 100}%)
+• Enemy above player: +${LEVEL_XP_SCALING.xpPerLevelAbove * 100}% per level (max ${LEVEL_XP_SCALING.maximumXpPercent * 100}%)
+• ${LEVEL_XP_SCALING.grayLevelThreshold}+ levels below = gray enemy (${LEVEL_XP_SCALING.minimumXpPercent * 100}% XP)`;
+}
+
+// =============================================================================
 // TYPE EXPORTS FOR NEW CONSTANTS
 // =============================================================================
 

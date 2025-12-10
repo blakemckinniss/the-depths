@@ -16,6 +16,7 @@ import type { GameLogger, LogCategory } from "@/lib/ai/game-log-system";
 import type { LootContainer } from "@/lib/ai/ai-drops-system";
 import { calculateDisarmChance } from "@/lib/core/game-data";
 import { STATUS_EFFECTS } from "@/lib/entity/entity-system";
+import { calculateEntityLevel } from "@/lib/mechanics/game-mechanics-ledger";
 import { EntityText, ItemText } from "@/components/narrative/entity-text";
 
 // ============================================================================
@@ -744,6 +745,7 @@ export function useEncounters({
           id: npc.id,
           entityType: "enemy",
           name: npc.name,
+          level: calculateEntityLevel(state.floor, "normal"),
           health: 20 + state.floor * 5,
           maxHealth: 20 + state.floor * 5,
           attack: 5 + state.floor * 2,

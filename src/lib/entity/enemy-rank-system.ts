@@ -8,6 +8,7 @@
 import type { Enemy, EnemyAbility, StatusEffect, DamageType } from "@/lib/core/game-types"
 import { createStatusEffect } from "./entity-system"
 import { generateId } from "@/lib/core/utils"
+import { calculateEntityLevel } from "@/lib/mechanics/game-mechanics-ledger"
 
 // =============================================================================
 // RANK DEFINITIONS
@@ -414,6 +415,9 @@ export function upgradeEnemyRank(enemy: Enemy, rank: EnemyRank, floor: number): 
   // Generate name
   const rankedName = generateEnemyName(enemy.name, rank)
 
+  // Calculate level from floor and rank
+  const level = calculateEntityLevel(floor, rank)
+
   // Calculate scaled stats
   const scaledHealth = Math.floor(enemy.maxHealth * modifiers.healthMultiplier)
   const scaledAttack = Math.floor(enemy.attack * modifiers.attackMultiplier)
@@ -441,6 +445,7 @@ export function upgradeEnemyRank(enemy: Enemy, rank: EnemyRank, floor: number): 
     name: rankedName,
     originalName: enemy.name,
     rank,
+    level,
     health: scaledHealth,
     maxHealth: scaledHealth,
     attack: scaledAttack,

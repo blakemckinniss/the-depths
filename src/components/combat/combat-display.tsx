@@ -1,6 +1,7 @@
 "use client"
 
 import type { Enemy, Player, EnvironmentalHazard } from "@/lib/core/game-types"
+import { getLevelDiffColor } from "@/lib/mechanics/game-mechanics-ledger"
 import { EntityText } from "@/components/narrative/entity-text"
 import { StatBar } from "@/components/character/stat-bar"
 import { WeaknessIndicator } from "./weakness-indicator"
@@ -56,6 +57,9 @@ export function CombatDisplay({
             <EntityText type="enemy" className="text-lg" entity={enemy}>
               {enemy.name}
             </EntityText>
+            <span className={`text-xs ${getLevelDiffColor(player.stats.level, enemy.level)}`}>
+              Lv.{enemy.level}
+            </span>
             {(enemy as RankedEnemy).rank && (enemy as RankedEnemy).rank !== "normal" && (
               <span className={`text-xs px-1.5 py-0.5 rounded bg-black/30 ${getRankColor((enemy as RankedEnemy).rank)}`}>
                 {getRankDisplayName((enemy as RankedEnemy).rank)}
