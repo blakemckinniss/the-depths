@@ -4,12 +4,9 @@
  * Analyzes unknown items and reveals their true nature
  */
 
-import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai/ai-utils"
-import { generateMechanicsPrompt } from "@/lib/mechanics/game-mechanics-ledger"
+import { generateWithAI, AI_CONFIG, entityCache, buildSystemPrompt } from "@/lib/ai/ai-utils"
 import { z } from "zod"
 import { NextResponse } from "next/server"
-
-const MECHANICS_PROMPT = generateMechanicsPrompt()
 
 // Schema for identified item
 const IdentifiedItemSchema = z.object({
@@ -47,18 +44,15 @@ const RequestSchema = z.object({
   floor: z.number().optional(),
 })
 
-const SYSTEM_PROMPT = `You are an item identifier for a dark fantasy dungeon crawler.
-Analyze unknown items and reveal their true nature.
-
-RULES:
+// Custom identification rules appended to mechanics context
+const IDENTIFICATION_RULES = `
+IDENTIFICATION RULES:
 - Match revealed item to the source context and appearance
 - Higher rarity = more powerful/dangerous effects
 - Include dramatic reveal text for the discovery moment
 - Warnings for cursed or dangerous items
 - Keep descriptions atmospheric and brief
-- Effects should be mechanically meaningful
-
-${MECHANICS_PROMPT}`
+- Effects should be mechanically meaningful`
 
 export async function POST(request: Request) {
   try {
@@ -69,6 +63,13 @@ export async function POST(request: Request) {
     const cacheKey = entityCache.generateKey("identify", unknownItem.name, unknownItem.rarity, floor)
     const cached = entityCache.get(cacheKey)
     if (cached) return NextResponse.json(cached)
+
+    // Build system prompt with relevant mechanics context
+    const system = buildSystemPrompt({
+      floor,
+      playerClass,
+      includeMechanics: ["items", "effects", "economy"],
+    }) + "\n" + IDENTIFICATION_RULES
 
     const prompt = `Identify this unknown item:
 
@@ -91,7 +92,7 @@ The reveal text should be atmospheric and dramatic.`
     const result = await generateWithAI({
       schema: IdentifiedItemSchema,
       prompt,
-      system: SYSTEM_PROMPT,
+      system,
       temperature: AI_CONFIG.temperature.creative,
       maxTokens: 500,
     })

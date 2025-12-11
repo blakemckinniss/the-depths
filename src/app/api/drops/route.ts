@@ -8,11 +8,8 @@
  * - Dungeon-themed loot
  */
 
-import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai/ai-utils";
+import { generateWithAI, AI_CONFIG, entityCache, buildSystemPrompt, type MechanicsArea } from "@/lib/ai/ai-utils";
 import {
-  generateMechanicsPrompt,
-  generateEconomyPrompt,
-  generateProgressionPrompt,
   getDamageTypes,
   GOLD_RANGES,
   getFloorStatRange,
@@ -22,10 +19,67 @@ import {
 import { z } from "zod";
 import { NextResponse } from "next/server";
 
-// Get mechanics prompt once at module load
-const MECHANICS_PROMPT = generateMechanicsPrompt();
-const ECONOMY_PROMPT = generateEconomyPrompt();
 const DAMAGE_TYPES = getDamageTypes();
+
+// Helper to build drop system prompts with appropriate mechanics context
+type DropType = "monster_lore" | "treasure" | "boss_reward" | "themed_loot";
+
+const DROP_TYPE_CONFIG: Record<DropType, { areas: MechanicsArea[]; rules: string }> = {
+  monster_lore: {
+    areas: ["enemies", "items", "effects", "levels"],
+    rules: `MONSTER LORE RULES:
+- Keep text brief and punchy (1-2 sentences max per field)
+- Last words should be dramatic or unsettling
+- Special drops only for elite/boss monsters
+- Match item theme to monster nature
+- Dark fantasy tone - no humor or modern references
+- Weakness hints should be cryptic, not obvious`,
+  },
+  treasure: {
+    areas: ["items", "economy", "effects"],
+    rules: `TREASURE RULES:
+- Match contents to container type (vault = better loot)
+- Include 2-5 items per container
+- Mix item types for variety
+- Trapped containers should have better rewards
+- Inscriptions/lore should hint at dungeon history`,
+  },
+  boss_reward: {
+    areas: ["enemies", "items", "effects", "economy", "levels"],
+    rules: `BOSS REWARD RULES:
+- Trophy items should be unique to this boss
+- Equipment should feel powerful and themed
+- Stats scale with boss difficulty
+- Lore should reference the battle
+- Names should be evocative and memorable`,
+  },
+  themed_loot: {
+    areas: ["items", "economy", "effects", "progression"],
+    rules: `THEMED LOOT RULES:
+- All items must thematically match the dungeon
+- Include variety: weapons, armor, consumables, materials
+- Generate 3-5 items
+- Set bonuses are optional but should be thematic
+- Higher floors = better rarity distribution
+- Items should feel like they belong in this specific dungeon`,
+  },
+};
+
+function getDropSystemPrompt(
+  dropType: DropType,
+  context: { dungeonTheme?: string; floor?: number } = {},
+): string {
+  const config = DROP_TYPE_CONFIG[dropType];
+  return (
+    buildSystemPrompt({
+      dungeonTheme: context.dungeonTheme,
+      floor: context.floor,
+      includeMechanics: config.areas,
+    }) +
+    "\n\n" +
+    config.rules
+  );
+}
 
 // =============================================================================
 // SCHEMAS
@@ -243,61 +297,6 @@ const RequestSchema = z.object({
   floor: z.number().optional(),
 });
 
-// =============================================================================
-// SYSTEM PROMPTS
-// =============================================================================
-
-const MONSTER_LORE_SYSTEM = `You are a dark fantasy loremaster for a dungeon crawler game.
-Generate atmospheric monster backstories and themed drops.
-
-RULES:
-- Keep text brief and punchy (1-2 sentences max per field)
-- Last words should be dramatic or unsettling
-- Special drops only for elite/boss monsters
-- Match item theme to monster nature
-- Dark fantasy tone - no humor or modern references
-- Weakness hints should be cryptic, not obvious
-
-${MECHANICS_PROMPT}`;
-
-const TREASURE_SYSTEM = `You are a dungeon treasure generator for a dark fantasy game.
-Determine what treasures are found in containers.
-
-RULES:
-- Match contents to container type (vault = better loot)
-- Include 2-5 items per container
-- Mix item types for variety
-- Trapped containers should have better rewards
-- Inscriptions/lore should hint at dungeon history
-
-${ECONOMY_PROMPT}
-
-${MECHANICS_PROMPT}`;
-
-const BOSS_REWARD_SYSTEM = `You are a boss reward generator for a dark fantasy dungeon crawler.
-Create unique, memorable boss loot.
-
-RULES:
-- Trophy items should be unique to this boss
-- Equipment should feel powerful and themed
-- Stats scale with boss difficulty
-- Lore should reference the battle
-- Names should be evocative and memorable
-
-${MECHANICS_PROMPT}`;
-
-const DUNGEON_THEME_SYSTEM = `You are a themed loot generator for a dark fantasy dungeon crawler.
-Create items that match the dungeon's theme and atmosphere.
-
-RULES:
-- All items must thematically match the dungeon
-- Include variety: weapons, armor, consumables, materials
-- Generate 3-5 items
-- Set bonuses are optional but should be thematic
-- Higher floors = better rarity distribution
-- Items should feel like they belong in this specific dungeon
-
-${MECHANICS_PROMPT}`;
 
 // =============================================================================
 // HANDLERS
@@ -332,7 +331,7 @@ ${monster.isElite || monster.isBoss ? "Include a unique special drop themed to t
   const result = await generateWithAI({
     schema: MonsterLoreSchema,
     prompt,
-    system: MONSTER_LORE_SYSTEM,
+    system: getDropSystemPrompt("monster_lore", { floor }),
     temperature: AI_CONFIG.temperature.creative,
     maxTokens: 400,
   });
@@ -373,7 +372,7 @@ Generate 2-5 items appropriate to the container.`;
   const result = await generateWithAI({
     schema: TreasureContentsSchema,
     prompt,
-    system: TREASURE_SYSTEM,
+    system: getDropSystemPrompt("treasure", { floor }),
     temperature: AI_CONFIG.temperature.creative,
     maxTokens: 600,
   });
@@ -402,14 +401,12 @@ ${playerClass ? `Player Class: ${playerClass} (consider class-appropriate equipm
 Create:
 1. A unique trophy item from this boss
 2. A powerful equipment piece (rare or legendary)
-3. Brief victory lore
-
-${generateProgressionPrompt(floor)}`;
+3. Brief victory lore`;
 
   const result = await generateWithAI({
     schema: BossRewardSchema,
     prompt,
-    system: BOSS_REWARD_SYSTEM,
+    system: getDropSystemPrompt("boss_reward", { floor }),
     temperature: AI_CONFIG.temperature.creative,
     maxTokens: 500,
   });
@@ -444,14 +441,12 @@ Create 3-5 items that:
 - Scale to the floor level
 - Include variety (weapons, armor, consumables)
 
-${generateProgressionPrompt(dungeon.floor)}
-
 Optionally create a set bonus if items share a theme.`;
 
   const result = await generateWithAI({
     schema: DungeonThemedLootSchema,
     prompt,
-    system: DUNGEON_THEME_SYSTEM,
+    system: getDropSystemPrompt("themed_loot", { dungeonTheme: dungeon.theme, floor: dungeon.floor }),
     temperature: AI_CONFIG.temperature.creative,
     maxTokens: 700,
   });

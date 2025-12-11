@@ -230,6 +230,22 @@ export function CompanionDisplay({ companion, compact = false, onSelect, selecte
           ))}
         </div>
       )}
+
+      {/* Last Action Indicator */}
+      {companion.lastAction && (
+        <div className={cn(
+          "text-[10px] px-2 py-1 rounded border-l-2 mt-2",
+          companion.lastAction.type === "attack" && "border-red-500/50 bg-red-500/10 text-red-300",
+          companion.lastAction.type === "ability" && "border-amber-500/50 bg-amber-500/10 text-amber-300",
+          companion.lastAction.type === "heal" && "border-emerald-500/50 bg-emerald-500/10 text-emerald-300",
+          companion.lastAction.type === "defend" && "border-blue-500/50 bg-blue-500/10 text-blue-300",
+          companion.lastAction.type === "flee" && "border-yellow-500/50 bg-yellow-500/10 text-yellow-300",
+          companion.lastAction.type === "betray" && "border-red-700/50 bg-red-700/10 text-red-400",
+          companion.lastAction.type === "idle" && "border-zinc-500/50 bg-zinc-500/10 text-zinc-400",
+        )}>
+          Last: {companion.lastAction.description}
+        </div>
+      )}
     </div>
   )
 }

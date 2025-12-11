@@ -293,6 +293,13 @@ export interface Companion extends GameEntity {
   // Special flags for unique companions
   flags: string[] // ["cannot_die", "betrayal_chance", "evolving", "temporary", "summon"]
 
+  // Combat feedback - tracks last action for UI display
+  lastAction?: {
+    type: "attack" | "ability" | "heal" | "defend" | "flee" | "betray" | "idle"
+    description: string // "attacked for 12 damage", "healed you for 8 HP"
+    turn: number // combat round when action occurred
+  }
+
   // === PLAYER-EQUIVALENT FIELDS (for future playable companions) ===
   // Equipment - companions can equip gear
   equipment?: {
@@ -855,7 +862,6 @@ export type GamePhase =
   | "environmental_interaction"
   | "combat"
   | "exploring"
-  | "victory"
 
 // Foresight System - Outcome visibility as earned game mechanic
 export type ForesightLevel = "hidden" | "risk" | "type" | "partial" | "full"

@@ -962,17 +962,29 @@ export function useCombat({
       let updatedParty = player.party;
       let totalPlayerHealed = 0;
 
+      // Party turn header for visibility
+      if (activeCompanions.filter(c => c.alive).length > 0) {
+        addLog(
+          <span className="text-teal-400/80 text-xs uppercase tracking-wider">
+            — Party Actions —
+          </span>,
+          "system",
+        );
+      }
+
       for (const companion of activeCompanions) {
         if (!currentEnemy || currentEnemy.health <= 0) break;
         if (!companion.alive) continue;
 
         const action = selectCompanionAction(companion, player, currentEnemy);
         let updatedCompanion = companion;
+        let actionDescription = "";
 
         switch (action.action) {
           case "attack": {
             if (!currentEnemy) break;
             const damage = calculateCompanionDamage(companion);
+            actionDescription = `attacked for ${damage} dmg`;
             const newHealth: number = currentEnemy.health - damage;
             const bondTier = getBondTier(companion.bond.level);
             const colorClass = getCompanionColor(companion);
@@ -1024,6 +1036,7 @@ export function useCombat({
                 companion,
                 action.ability,
               );
+              actionDescription = `used ${action.ability.name} for ${damage} dmg`;
               const newHealth: number = currentEnemy.health - damage;
 
               addLog(
@@ -1048,6 +1061,7 @@ export function useCombat({
               }
             } else if (action.ability.effect.type === "heal") {
               const healing = action.ability.effect.value || 10;
+              actionDescription = `healed you for ${healing} HP`;
               totalPlayerHealed += healing;
 
               addLog(
@@ -1063,6 +1077,7 @@ export function useCombat({
               );
               updatedCompanion = modifyBond(companion, 2, "Healed the player");
             } else if (action.ability.effect.type === "buff") {
+              actionDescription = `used ${action.ability.name}`;
               addLog(
                 <span>
                   <span className={colorClass}>{companion.name}</span> uses{" "}
@@ -1075,6 +1090,7 @@ export function useCombat({
               action.ability.effect.type === "debuff" &&
               currentEnemy
             ) {
+              actionDescription = `debuffed enemy with ${action.ability.name}`;
               addLog(
                 <span>
                   <span className={colorClass}>{companion.name}</span> uses{" "}
@@ -1097,6 +1113,7 @@ export function useCombat({
           }
 
           case "defend": {
+            actionDescription = "took defensive stance";
             const colorClass = getCompanionColor(companion);
             addLog(
               <span>
@@ -1148,6 +1165,9 @@ export function useCombat({
             totalPlayerHealed -= betrayDamage;
             continue;
           }
+
+          default:
+            actionDescription = "idle";
         }
 
         // Process cooldowns and update companion in party
@@ -1155,6 +1175,11 @@ export function useCombat({
         updatedCompanion = {
           ...updatedCompanion,
           turnsWithPlayer: companion.turnsWithPlayer + 1,
+          lastAction: actionDescription ? {
+            type: action.action as "attack" | "ability" | "heal" | "defend" | "flee" | "betray" | "idle",
+            description: actionDescription,
+            turn: 0, // Will be set by caller with actual combat round
+          } : undefined,
         };
 
         // Update the companion in the party

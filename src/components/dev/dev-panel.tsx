@@ -858,7 +858,7 @@ export function DevPanel({
               <div className="space-y-2">
                 <h3 className="text-xs text-zinc-500 font-mono uppercase">Current: {gameState.phase}</h3>
                 <div className="grid grid-cols-3 gap-2">
-                  {(["title", "tavern", "dungeon_select", "exploring", "combat", "victory", "game_over"] as const).map(
+                  {(["title", "tavern", "dungeon_select", "exploring", "combat", "game_over"] as const).map(
                     (phase) => (
                       <DevButton
                         key={phase}

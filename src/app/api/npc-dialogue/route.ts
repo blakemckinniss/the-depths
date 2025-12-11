@@ -5,19 +5,13 @@
  * role, and current game state
  */
 
-import { generateWithAI, AI_CONFIG, entityCache } from "@/lib/ai/ai-utils";
+import { generateWithAI, AI_CONFIG, entityCache, buildSystemPrompt } from "@/lib/ai/ai-utils";
 import {
-  generateMechanicsPrompt,
   getDispositionLabel,
   getHealthDescriptor,
-  DISPOSITION_RANGES,
-  NPC_ROLES,
 } from "@/lib/mechanics/game-mechanics-ledger";
 import { z } from "zod";
 import { NextResponse } from "next/server";
-
-// Get mechanics prompt once at module load
-const MECHANICS_PROMPT = generateMechanicsPrompt();
 
 // Schema for NPC dialogue response
 const DialogueResponseSchema = z.object({
@@ -83,10 +77,9 @@ const RequestSchema = z.object({
     .describe("Previous exchanges"),
 });
 
-const SYSTEM_PROMPT = `You are an NPC dialogue generator for a dark fantasy dungeon crawler.
-Generate immersive, personality-driven dialogue.
-
-RULES:
+// NPC dialogue rules appended to mechanics context
+const NPC_DIALOGUE_RULES = `
+NPC DIALOGUE RULES:
 - Match dialogue to NPC personality and role
 - Disposition affects friendliness (0=hostile, 100=devoted)
 - Merchants should mention wares naturally
@@ -95,10 +88,7 @@ RULES:
 - Quest givers should tease their quest naturally
 - Keep individual lines brief (1-2 sentences)
 - Provide 2-4 meaningful response options
-- Dark fantasy tone - no modern references
-
-When NPCs mention items, effects, or abilities, only reference mechanics that actually exist in the game:
-${MECHANICS_PROMPT}`;
+- Dark fantasy tone - no modern references`;
 
 export async function POST(request: Request) {
   try {
@@ -117,6 +107,15 @@ export async function POST(request: Request) {
     );
     const cached = entityCache.get(cacheKey);
     if (cached) return NextResponse.json(cached);
+
+    // Build system prompt with relevant mechanics context
+    const system = buildSystemPrompt({
+      dungeonName: context.dungeonName,
+      dungeonTheme: context.dungeonTheme,
+      floor: context.floor,
+      playerClass: context.playerClass,
+      includeMechanics: ["items", "economy", "events", "companions"],
+    }) + "\n" + NPC_DIALOGUE_RULES;
 
     const prompt = `Generate dialogue for this NPC:
 
@@ -143,7 +142,7 @@ ${npc.role === "mysterious" ? "Speak cryptically, hinting at secrets." : ""}`;
     const result = await generateWithAI({
       schema: DialogueResponseSchema,
       prompt,
-      system: SYSTEM_PROMPT,
+      system,
       temperature: AI_CONFIG.temperature.creative,
       maxTokens: 600,
     });
