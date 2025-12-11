@@ -1,4 +1,5 @@
 "use client";
+// LARGE_FILE_OK: Active refactoring - extracting to hooks (target: 500 lines)
 
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 
@@ -30,8 +31,6 @@ import {
   createInitialRunStats,
   createDungeonFromMap,
 } from "@/lib/core/game-data";
-import { generateMap } from "@/lib/items/map-generator";
-import { createCurrency, applyCurrencyToMap } from "@/lib/items/currency-generator";
 import { calculateEffectiveStats, STATUS_EFFECTS } from "@/lib/entity/entity-system";
 import {
   triggerTurnEnd,
@@ -52,7 +51,6 @@ import {
   getClassAbilitiesForLevel,
   CLASSES,
   autoLevelAbilitiesOnLevelUp,
-  levelUpAbility,
 } from "@/lib/character/ability-system";
 import {
   initializePlayerRace,
@@ -115,6 +113,7 @@ import { PathSelect } from "@/components/world/path-select";
 import { UtilityBar } from "@/components/world/utility-bar";
 import { HazardDisplay } from "@/components/world/hazard-display";
 import { EnvironmentalIndicator } from "@/components/world/environmental-indicator";
+import { StatusEffectsDisplay } from "@/components/effects/status-effects-display";
 import { extractPlayerCapabilities } from "@/lib/mechanics/player-capabilities";
 import { TrapInteraction } from "@/components/encounters/trap-interaction";
 import { ShrineInteraction } from "@/components/encounters/shrine-interaction";
@@ -343,6 +342,7 @@ export function DungeonGame() {
     state: gameState,
     dispatch,
     logger: log,
+    addLog,
     updateRunStats,
   });
 
@@ -2163,264 +2163,7 @@ export function DungeonGame() {
     [tavern, addLog],
   );
 
-  // === MAP SYSTEM HANDLERS ===
-
-  const handleBuyMap = useCallback(
-    (tier: MapTier, price: number) => {
-      if (gameState.player.stats.gold < price) return;
-
-      const map = generateMap({ tier, rarity: "common" });
-      dispatch({ type: "MODIFY_PLAYER_GOLD", payload: -price });
-      dispatch({ type: "ADD_ITEM", payload: map });
-      updateRunStats({ goldSpent: gameState.runStats.goldSpent + price });
-
-      addLog(
-        <span>
-          You purchase a <EntityText type="item">{map.name}</EntityText> from Theron the Cartographer.
-        </span>,
-        "system",
-      );
-    },
-    [gameState.player.stats.gold, gameState.runStats.goldSpent, dispatch, addLog, updateRunStats],
-  );
-
-  const handleBuyCurrency = useCallback(
-    (currencyId: string, price: number) => {
-      if (gameState.player.stats.gold < price) return;
-
-      const currency = createCurrency(currencyId);
-      if (!currency) return;
-
-      dispatch({ type: "MODIFY_PLAYER_GOLD", payload: -price });
-      dispatch({ type: "ADD_ITEM", payload: currency });
-      updateRunStats({ goldSpent: gameState.runStats.goldSpent + price });
-
-      addLog(
-        <span>
-          You purchase an <EntityText type="item">{currency.name}</EntityText> from Theron.
-        </span>,
-        "system",
-      );
-    },
-    [gameState.player.stats.gold, gameState.runStats.goldSpent, dispatch, addLog, updateRunStats],
-  );
-
-  const handleActivateMap = useCallback(
-    (map: MapItem) => {
-      // Create dungeon from map
-      const dungeon = createDungeonFromMap(map);
-
-      // Remove map from inventory (consumed)
-      dispatch({ type: "REMOVE_ITEM", payload: map.id });
-
-      // Initialize dungeon run (dungeon.floors contains the total floor count)
-      dispatch({
-        type: "LOAD_STATE",
-        payload: {
-          ...gameState,
-          phase: "exploring",
-          currentDungeon: dungeon,
-          floor: 1,
-          player: {
-            ...gameState.player,
-            inventory: gameState.player.inventory.filter((i) => i.id !== map.id),
-          },
-        },
-      });
-
-      addLog(
-        <span>
-          You activate the <EntityText type="rare">{map.name}</EntityText>. The portal shimmers to life...
-        </span>,
-        "system",
-      );
-    },
-    [gameState, dispatch, addLog],
-  );
-
-  const handleApplyCurrency = useCallback(
-    (currency: CraftingCurrency, map: MapItem) => {
-      const result = applyCurrencyToMap(currency, map);
-
-      if (!result.success) {
-        addLog(<span className="text-red-400">{result.message}</span>, "system");
-        return;
-      }
-
-      // Remove one currency from stack (or remove item if stack=1)
-      const currentStack = currency.stackSize ?? 1;
-      if (currentStack > 1) {
-        const updatedCurrency = { ...currency, stackSize: currentStack - 1 };
-        dispatch({
-          type: "LOAD_STATE",
-          payload: {
-            ...gameState,
-            player: {
-              ...gameState.player,
-              inventory: gameState.player.inventory.map((i) =>
-                i.id === currency.id ? updatedCurrency : i.id === map.id ? result.map! : i
-              ),
-            },
-          },
-        });
-      } else {
-        dispatch({
-          type: "LOAD_STATE",
-          payload: {
-            ...gameState,
-            player: {
-              ...gameState.player,
-              inventory: gameState.player.inventory
-                .filter((i) => i.id !== currency.id)
-                .map((i) => (i.id === map.id ? result.map! : i)),
-            },
-          },
-        });
-      }
-
-      addLog(
-        <span>
-          <EntityText type="item">{currency.name}</EntityText> applied: {result.message}
-        </span>,
-        "system",
-      );
-    },
-    [gameState, dispatch, addLog],
-  );
-
-  const handleLevelUpAbility = useCallback(
-    (abilityId: string) => {
-      const updatedPlayer = levelUpAbility(gameState.player, abilityId);
-      if (!updatedPlayer) return;
-
-      const ability = updatedPlayer.abilities.find((a) => a.id === abilityId);
-      const newLevel = ability?.level || 1;
-
-      dispatch({ type: "LOAD_STATE", payload: { ...gameState, player: updatedPlayer } });
-
-      addLog(
-        <span>
-          Gregor guides your training.{" "}
-          <EntityText type="ability">{ability?.name}</EntityText>{" "}
-          improved to level <span className="text-amber-400">{newLevel}</span>!
-        </span>,
-        "system",
-      );
-    },
-    [gameState, dispatch, addLog],
-  );
-
-  const handleTransmogrify = useCallback(
-    (itemIds: string[], narrations: string[]) => {
-      // Remove the sacrificed items from inventory
-      for (const itemId of itemIds) {
-        dispatch({ type: "REMOVE_ITEM", payload: itemId });
-      }
-
-      // Log the narrations
-      if (narrations.length > 0) {
-        addLog(
-          <span>
-            The altar pulses with energy. {narrations[0]}
-          </span>,
-          "system",
-        );
-      } else {
-        addLog(
-          <span>
-            The altar pulses with energy. Essence extracted from {itemIds.length} item{itemIds.length > 1 ? "s" : ""}.
-          </span>,
-          "system",
-        );
-      }
-    },
-    [dispatch, addLog],
-  );
-
-  const handleCraftFromEssence = useCallback(
-    (recipe: EssenceCraftRecipe, result: Item | null) => {
-      if (result) {
-        // Add the crafted item
-        dispatch({ type: "ADD_ITEM", payload: result });
-
-        addLog(
-          <span>
-            The altar glows as essence coalesces.{" "}
-            <EntityText type={result.rarity} entity={result}>
-              {result.name}
-            </EntityText>{" "}
-            materializes from pure essence!
-          </span>,
-          "system",
-        );
-      } else {
-        addLog(
-          <span className="text-red-400">
-            The essence dissipates. The crafting of {recipe.name} failed.
-          </span>,
-          "system",
-        );
-      }
-    },
-    [dispatch, addLog],
-  );
-
-  const handleAlchemyExperiment = useCallback(
-    (result: AlchemyResult | null, materialsUsed: string[]) => {
-      // Remove used materials
-      dispatch(gameActions.removeMaterials(materialsUsed));
-
-      if (result?.success && result.result) {
-        // Map alchemy result type to Item type
-        const typeMap: Record<string, Item["type"]> = {
-          weapon: "weapon",
-          armor: "armor",
-          consumable: "potion",
-          trinket: "misc",
-          tool: "misc",
-          material: "misc",
-        };
-
-        // Convert alchemy result to full Item with required fields
-        const item: Item = {
-          name: result.result.name,
-          type: typeMap[result.result.type] || "misc",
-          subtype: result.result.subtype,
-          rarity: result.result.rarity,
-          description: result.result.description,
-          stats: result.result.stats,
-          id: `alchemy-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          entityType: "item",
-          value: Math.floor(10 * (["common", "uncommon", "rare", "epic", "legendary"].indexOf(result.result.rarity) + 1)),
-        };
-
-        // Add the created item
-        dispatch({ type: "ADD_ITEM", payload: item });
-
-        addLog(
-          <span>
-            Vesper nods approvingly.{" "}
-            <EntityText type={item.rarity} entity={item}>
-              {item.name}
-            </EntityText>{" "}
-            created!
-          </span>,
-          "system",
-        );
-      } else if (result?.failure) {
-        addLog(
-          <span className="text-red-400">
-            The experiment fails. {result.failure.reason}
-            {result.failure.hint && (
-              <span className="text-amber-400/70"> Hint: {result.failure.hint}</span>
-            )}
-          </span>,
-          "system",
-        );
-      }
-    },
-    [dispatch, addLog],
-  );
+  // MAP SYSTEM HANDLERS extracted to use-tavern.tsx hook
 
   const currentChoices = useMemo(() => {
     const potion = gameState.player.inventory.find((i) => i.type === "potion");
@@ -2812,11 +2555,11 @@ export function DungeonGame() {
       onEquipItem: handleEquipItem,
       onUseItem: handleUseItem,
       onDropItem: handleDropItem,
-      onActivateMap: handleActivateMap,
+      onActivateMap: tavern.activateMap,
       canActivateMap: gameState.phase === "tavern",
       inCombat: gameState.inCombat,
     });
-  }, [setEntityModalActions, handleEquipItem, handleUseItem, handleDropItem, handleActivateMap, gameState.phase, gameState.inCombat]);
+  }, [setEntityModalActions, handleEquipItem, handleUseItem, handleDropItem, tavern.activateMap, gameState.phase, gameState.inCombat]);
 
   // === RENDER HELPERS ===
   const renderInteractiveEntities = useCallback(() => {
@@ -3100,14 +2843,14 @@ export function DungeonGame() {
             onEnterDungeons={enterDungeonSelect}
             onRestoreHealth={handleRestoreHealth}
             onBuyKey={handleBuyKey}
-            onBuyMap={handleBuyMap}
-            onBuyCurrency={handleBuyCurrency}
-            onActivateMap={handleActivateMap}
-            onApplyCurrency={handleApplyCurrency}
-            onLevelUpAbility={handleLevelUpAbility}
-            onTransmogrify={handleTransmogrify}
-            onCraftFromEssence={handleCraftFromEssence}
-            onAlchemyExperiment={handleAlchemyExperiment}
+            onBuyMap={tavern.buyMap}
+            onBuyCurrency={tavern.buyCurrency}
+            onActivateMap={tavern.activateMap}
+            onApplyCurrency={tavern.applyCurrency}
+            onLevelUpAbility={tavern.levelUpPlayerAbility}
+            onTransmogrify={tavern.transmogrify}
+            onCraftFromEssence={tavern.craftFromEssence}
+            onAlchemyExperiment={tavern.alchemyExperiment}
           />
         ) : gameState.phase === "dungeon_select" ? (
           <DungeonSelect
@@ -3180,8 +2923,16 @@ export function DungeonGame() {
               />
             )}
 
+            {/* Persistent Status Effects - ALWAYS visible in main area */}
+            {gameState.player.activeEffects.length > 0 && (
+              <div className="mb-3 p-2 bg-stone-800/60 rounded border border-stone-700/50">
+                <div className="text-xs text-muted-foreground mb-1">Active Effects</div>
+                <StatusEffectsDisplay effects={gameState.player.activeEffects} compact />
+              </div>
+            )}
+
             {/* Game Log + Choices */}
-            <div className="flex-1 overflow-y-auto overflow-x-hidden">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden text-sm leading-snug">
               {currentNarrative ? (
                 <InteractiveNarrative
                   narrative={currentNarrative}
@@ -3196,7 +2947,7 @@ export function DungeonGame() {
 
               {/* Choices flow directly after narrative */}
               {currentChoices.length > 0 && (
-                <div className="mt-4 sticky bottom-0 bg-gradient-to-t from-background via-background to-transparent pt-4 pb-2">
+                <div className="mt-4">
                   <ChoiceButtons
                     choices={currentChoices}
                     disabled={isProcessing}
@@ -3210,7 +2961,6 @@ export function DungeonGame() {
                   The dungeon stirs...
                 </div>
               )}
-            </div>
 
             {!gameState.inCombat && gameState.currentHazard && (
               <div className="mb-3">
@@ -3333,7 +3083,7 @@ export function DungeonGame() {
               />
             )}
 
-            {gameState.pathOptions && gameState.pathOptions.length > 0 && !gameState.activeVault && (
+            {gameState.pathOptions && gameState.pathOptions.length > 0 && !gameState.activeVault && !activeLootContainer && (
               <PathSelect
                 paths={gameState.pathOptions}
                 onSelectPath={handleSelectPath}
@@ -3351,6 +3101,7 @@ export function DungeonGame() {
             )}
 
             {!gameState.inCombat && renderInteractiveEntities()}
+            </div>
           </div>
         )}
       </div>
@@ -3364,7 +3115,7 @@ export function DungeonGame() {
               onEquipItem={handleEquipItem}
               onUseItem={handleUseItem}
               onDropItem={handleDropItem}
-              onActivateMap={handleActivateMap}
+              onActivateMap={tavern.activateMap}
               inCombat={gameState.inCombat}
               canActivateMap={gameState.phase === "tavern"}
             />

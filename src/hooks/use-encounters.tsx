@@ -863,14 +863,26 @@ export function useEncounters({
 
       if (curseTriggered && curseEffect) {
         addLog(
-          <span className="text-red-400">
-            <EntityText type="damage">Cursed!</EntityText> {curseEffect}
+          <span className="text-red-400 animate-pulse">
+            <EntityText type="damage">💀 CURSED!</EntityText> {curseEffect}
           </span>,
           "combat",
         );
-        const curseDamage = Math.floor(10 + state.floor * 3);
-        const newHealth = Math.max(1, state.player.stats.health - curseDamage);
-        dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
+        // Create a proper curse status effect that persists
+        const curseStatusEffect: StatusEffect = {
+          id: `curse_container_${Date.now()}`,
+          entityType: "curse",
+          name: "Container Curse",
+          description: curseEffect,
+          effectType: "debuff",
+          duration: -1, // Permanent until cured
+          modifiers: {
+            // Apply a gold drain modifier (checked on room enter)
+            goldMultiplier: 0.9, // 10% gold penalty as representation
+          },
+          sourceType: "ai_generated",
+        };
+        dispatch({ type: "ADD_EFFECT", payload: curseStatusEffect });
       }
 
       for (const item of items) {
