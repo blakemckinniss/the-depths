@@ -129,7 +129,7 @@ export function useChoices({
               action = exploreRoom;
               break;
             case "interact":
-              // Find entity to interact with
+              // Find entity to interact with - NO FALLBACKS on AI-generated choices
               if (choice.entityTarget) {
                 const entity = gameState.roomEnvironmentalEntities.find(
                   (e) => e.name.toLowerCase().includes(choice.entityTarget!.toLowerCase()) ||
@@ -138,10 +138,14 @@ export function useChoices({
                 if (entity && !entity.consumed) {
                   action = () => handleEnvironmentalInteraction(entity.id, entity.possibleInteractions?.[0]?.action || "examine");
                 } else {
-                  action = exploreRoom; // Fallback
+                  // NO FALLBACKS - AI generated invalid entity target
+                  console.error(`AI choice referenced non-existent entity: ${choice.entityTarget}`);
+                  action = () => { throw new Error(`AI generated choice with invalid entity target "${choice.entityTarget}" - NO FALLBACKS`); };
                 }
               } else {
-                action = exploreRoom;
+                // NO FALLBACKS - interact type requires entityTarget
+                console.error("AI generated interact choice without entityTarget");
+                action = () => { throw new Error("AI generated interact choice without entityTarget - NO FALLBACKS"); };
               }
               break;
             case "investigate":

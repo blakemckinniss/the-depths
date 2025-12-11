@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, type ReactNode } from "react";
+import { useCallback } from "react";
 import type {
   GameState,
   PathOption,
@@ -13,7 +13,7 @@ import type {
 } from "@/lib/core/game-types";
 import type { Dispatch } from "react";
 import type { GameAction } from "@/contexts/game-reducer";
-import type { GameLogger, LogCategory } from "@/lib/ai/game-log-system";
+import type { GameLogger } from "@/lib/ai/game-log-system";
 import type { LootContainer } from "@/lib/ai/ai-drops-system";
 import { generatePathOptions, getPathRewardMultiplier } from "@/lib/world/path-system";
 import { generateHazard, applyHazardToEnemy } from "@/lib/world/hazard-system";
@@ -43,21 +43,28 @@ import {
   type EventType,
   type EventMemory,
 } from "@/lib/mechanics/game-mechanics-ledger";
+import {
+  decideRoomNarrative,
+  decideMysteryOutcome,
+  decideDescendNarrative,
+  resolveMysteryTier,
+  getBlessingStats,
+  getCurseStats,
+  type RoomContext,
+  type MysteryContext,
+  type DescendContext,
+} from "@/hooks/room-decision";
+import type { AddLogFn, GenerateNarrativeFn } from "./types";
 
 // ============================================================================
 // TYPES
 // ============================================================================
-
-type AddLogFn = (message: ReactNode, category: LogCategory) => void;
 
 // Response type for descend narrative
 interface DescendResponse {
   roomDescription: string;
   eventNarration?: string;
 }
-
-// Generic narrative generator function type (matches DungeonMasterContext)
-type GenerateNarrativeFn = <T>(type: string, context: { [key: string]: string | number | boolean | undefined | object }) => Promise<T | null>;
 
 interface UseNavigationOptions {
   state: GameState;
@@ -762,44 +769,18 @@ export function useNavigation({
             | undefined,
         );
 
-        if (container) {
-          logger.lootContainerDiscovered(container.name, container.rarity);
-
-          // Set active container - UI will render the reveal component
-          setActiveLootContainer(container);
-
-          dispatch({ type: "SET_ROOM", payload: newRoom });
-          dispatch({ type: "SET_HAZARD", payload: newHazard });
-        } else {
-          // Fallback to static generation if AI fails
-          const loot =
-            Math.random() < 0.5
-              ? generateWeapon(state.floor)
-              : generateArmor(state.floor);
-          const goldFound = Math.floor(
-            (Math.random() * 20 * state.floor + 10) * rewardMult,
-          );
-
-          addLog(
-            <span>
-              You find a simple container with <ItemText item={loot} /> and{" "}
-              <EntityText type="gold">{goldFound} gold</EntityText>.
-            </span>,
-            "loot",
-          );
-
-          dispatch({ type: "SET_ROOM", payload: newRoom });
-          dispatch({ type: "SET_HAZARD", payload: newHazard });
-          dispatch({ type: "ADD_ITEM", payload: loot });
-          dispatch({ type: "MODIFY_PLAYER_GOLD", payload: goldFound });
-          dispatch({
-            type: "UPDATE_RUN_STATS",
-            payload: {
-              goldEarned: state.runStats.goldEarned + goldFound,
-              itemsFound: [...state.runStats.itemsFound, loot],
-            },
-          });
+        // NO FALLBACKS - AI must generate container or game fails visibly
+        if (!container) {
+          throw new Error("AI failed to generate loot container - NO FALLBACKS");
         }
+
+        logger.lootContainerDiscovered(container.name, container.rarity);
+
+        // Set active container - UI will render the reveal component
+        setActiveLootContainer(container);
+
+        dispatch({ type: "SET_ROOM", payload: newRoom });
+        dispatch({ type: "SET_HAZARD", payload: newHazard });
       } else if (finalEventType === "trap") {
         const trap = generateTrap(state.floor);
         logger.trapEncounter(trap);
@@ -852,8 +833,10 @@ export function useNavigation({
               setNpcDialogue(aiDialogue.greeting);
             }
           })
-          .catch(() => {
-            // Silent fail - fallback dialogue already set
+          .catch((error) => {
+            // NO FALLBACKS - AI must generate dialogue or game fails visibly
+            console.error("NPC dialogue generation failed:", error);
+            throw new Error(`AI failed to generate NPC dialogue - NO FALLBACKS: ${error.message}`);
           });
       } else if (finalEventType === "rest") {
         // Rest room - heal and recover
@@ -897,62 +880,127 @@ export function useNavigation({
         dispatch({ type: "SET_HAZARD", payload: newHazard });
         dispatch({ type: "START_COMBAT", payload: buffedBoss });
       } else if (finalEventType === "mystery") {
-        // Mystery event - random outcome
-        const mysteryRoll = Math.random();
-        if (mysteryRoll < 0.3) {
-          // Good outcome - treasure
-          const goldFound = Math.floor(20 + state.floor * 10 + Math.random() * 30);
-          dispatch({ type: "MODIFY_PLAYER_GOLD", payload: goldFound });
+        // Mystery event - AI decides outcome (NO FALLBACKS)
+        const mysteryContext: MysteryContext = {
+          floor: state.floor,
+          room: newRoom,
+          dungeonTheme,
+          dungeonName: state.currentDungeon?.name || "the depths",
+          eventType: "mystery",
+          modifier: orchestrated.modifier ?? undefined,
+          player: {
+            class: state.player.className || undefined,
+            level: state.player.stats.level,
+            healthPercent: playerHealthPercent,
+          },
+        };
+
+        const mysteryDecision = await decideMysteryOutcome(mysteryContext);
+
+        // Log the narration
+        addLog(
+          <span className="text-indigo-400">{mysteryDecision.narration}</span>,
+          "narrative"
+        );
+
+        // Resolve tiers to actual values and apply effects (LEGO pattern)
+        const { outcome, goldTier, healTier, damageTier, blessingTier, curseTier, effectName, effectDescription } = mysteryDecision;
+
+        // Apply gold from tier
+        if (outcome === "treasure" && goldTier && goldTier !== "none") {
+          const goldAmount = resolveMysteryTier("gold", goldTier);
+          dispatch({ type: "MODIFY_PLAYER_GOLD", payload: goldAmount });
           addLog(
             <span className="text-yellow-400">
-              The mystery reveals a hidden cache!{" "}
-              <EntityText type="gold">{goldFound} gold</EntityText> found!
+              <EntityText type="gold">+{goldAmount} gold</EntityText>
             </span>,
             "loot"
           );
-        } else if (mysteryRoll < 0.5) {
-          // Healing outcome
-          const healAmount = Math.floor(state.player.stats.maxHealth * 0.3);
+        }
+
+        // Apply healing from tier
+        if (outcome === "healing" && healTier && healTier !== "none") {
+          const healAmount = resolveMysteryTier("heal", healTier);
           dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: healAmount });
           addLog(
             <span className="text-cyan-400">
-              Mystical energies restore you.{" "}
-              <EntityText type="heal">{healAmount} health</EntityText> recovered.
+              <EntityText type="heal">{healAmount} health</EntityText> restored.
             </span>,
             "effect"
           );
-        } else if (mysteryRoll < 0.7) {
-          // Nothing happens
-          addLog(
-            <span className="text-indigo-400">
-              The mystery fades, leaving only silence...
-            </span>,
-            "narrative"
-          );
-        } else {
-          // Bad outcome - damage
-          const damage = Math.floor(5 + state.floor * 3);
-          dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: -damage });
+        }
+
+        // Apply damage from tier
+        if (outcome === "damage" && damageTier && damageTier !== "none") {
+          const damageAmount = resolveMysteryTier("damage", damageTier);
+          dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: -damageAmount });
           addLog(
             <span className="text-purple-500">
-              Dark energies lash out!{" "}
-              <EntityText type="damage">You take {damage} damage!</EntityText>
+              <EntityText type="damage">You take {damageAmount} damage!</EntityText>
             </span>,
             "combat"
           );
         }
+
+        // Apply blessing from tier
+        if (outcome === "blessing" && blessingTier) {
+          const blessingStats = getBlessingStats(blessingTier);
+          const blessingEffect = {
+            id: `mystery_blessing_${Date.now()}`,
+            entityType: "blessing" as const,
+            name: effectName || "Mysterious Blessing",
+            description: effectDescription || "A mysterious blessing enhances your abilities.",
+            effectType: "buff" as const,
+            duration: blessingStats.duration,
+            modifiers: { attack: blessingStats.attack, defense: blessingStats.defense },
+            sourceType: "ai_generated" as const,
+          };
+          dispatch({ type: "ADD_EFFECT", payload: blessingEffect });
+          addLog(
+            <span className="text-cyan-400">
+              <EntityText type="rare">{blessingEffect.name}</EntityText>: {blessingEffect.description}
+            </span>,
+            "effect"
+          );
+        }
+
+        // Apply curse from tier
+        if (outcome === "curse" && curseTier) {
+          const curseStats = getCurseStats(curseTier);
+          const curseEffect = {
+            id: `mystery_curse_${Date.now()}`,
+            entityType: "curse" as const,
+            name: effectName || "Mysterious Curse",
+            description: effectDescription || "A mysterious curse weakens you.",
+            effectType: "debuff" as const,
+            duration: curseStats.duration,
+            modifiers: { attack: curseStats.attack, defense: curseStats.defense },
+            sourceType: "ai_generated" as const,
+          };
+          dispatch({ type: "ADD_EFFECT", payload: curseEffect });
+          addLog(
+            <span className="text-purple-500">
+              <EntityText type="curse">{curseEffect.name}</EntityText>: {curseEffect.description}
+            </span>,
+            "effect"
+          );
+        }
+
+        // Process any additional narrative effects
+        for (const effect of mysteryDecision.effects) {
+          if (effect.effectType === "narrative") {
+            addLog(
+              <span className="text-indigo-300/80 text-sm">{effect.text}</span>,
+              "narrative"
+            );
+          }
+        }
+
         dispatch({ type: "SET_ROOM", payload: newRoom });
         dispatch({ type: "SET_HAZARD", payload: newHazard });
       } else {
-        // Fallback - empty room
-        addLog(
-          <span className="text-stone-500">
-            The path leads to an empty chamber. You may continue.
-          </span>,
-          "narrative",
-        );
-        dispatch({ type: "SET_ROOM", payload: newRoom });
-        dispatch({ type: "SET_HAZARD", payload: newHazard });
+        // NO FALLBACKS - unknown event type is a bug, not a silent degradation
+        throw new Error(`Unknown event type "${finalEventType}" - NO FALLBACKS. This is a bug.`);
       }
 
       setIsProcessing(false);

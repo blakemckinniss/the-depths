@@ -17,7 +17,6 @@ import {
   addCompanionToParty,
   canTameEnemy,
   createBasicCompanionFromEnemy,
-  selectCompanionAction,
   calculateCompanionDamage,
   getBondTier,
   getCompanionColor,
@@ -27,6 +26,12 @@ import {
   removeCompanionFromParty,
 } from "@/lib/entity/companion-system";
 import { EntityText } from "@/components/narrative/entity-text";
+import {
+  decideCompanionTurn,
+  decideTame,
+  type CompanionTurnContext,
+  type CompanionAbilityInfo,
+} from "@/hooks/companion-decision";
 
 type AddLogFn = (message: ReactNode, category: LogCategory) => void;
 
@@ -72,7 +77,53 @@ export async function processCompanionTurns(
     if (!currentEnemy || currentEnemy.health <= 0) break;
     if (!companion.alive) continue;
 
-    const action = selectCompanionAction(companion, player, currentEnemy);
+    // Build context for AI decision - NO FALLBACKS
+    const turnContext: CompanionTurnContext = {
+      companion: {
+        name: companion.name,
+        species: companion.species || "creature",
+        bondLevel: companion.bond.level,
+        bondTitle: getBondTier(companion.bond.level),
+        healthPercent: Math.round((companion.stats.health / companion.stats.maxHealth) * 100),
+        attack: companion.stats.attack,
+        defense: companion.stats.defense,
+        behaviorStyle: companion.combatBehavior.style as CompanionTurnContext["companion"]["behaviorStyle"],
+        personality: Array.isArray(companion.personality) ? companion.personality.join(", ") : companion.personality,
+        abilities: companion.abilities.map((a): CompanionAbilityInfo => ({
+          id: a.id,
+          name: a.name,
+          effectType: a.effect.type as "damage" | "heal" | "buff" | "debuff",
+          value: a.effect.value,
+          cooldown: a.cooldown,
+          currentCooldown: a.currentCooldown,
+          narration: a.narration,
+        })),
+        turnsWithPlayer: companion.turnsWithPlayer,
+      },
+      player: {
+        name: "Player",
+        class: player.className || undefined,
+        healthPercent: Math.round((player.stats.health / player.stats.maxHealth) * 100),
+        maxHealth: player.stats.maxHealth,
+      },
+      enemy: currentEnemy ? {
+        name: currentEnemy.name,
+        healthPercent: Math.round((currentEnemy.health / currentEnemy.maxHealth) * 100),
+        attack: currentEnemy.attack,
+        defense: currentEnemy.defense,
+        isBoss: "phases" in currentEnemy,
+      } : null,
+      combatTurn: 0,
+    };
+
+    const decision = await decideCompanionTurn(turnContext);
+    const action = {
+      action: decision.action,
+      ability: decision.abilityId
+        ? companion.abilities.find(a => a.id === decision.abilityId)
+        : undefined
+    };
+
     let updatedCompanion = companion;
     let actionDescription = "";
 

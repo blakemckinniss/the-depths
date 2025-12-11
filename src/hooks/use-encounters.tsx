@@ -18,6 +18,108 @@ import { calculateDisarmChance } from "@/lib/core/game-data";
 import { STATUS_EFFECTS } from "@/lib/entity/entity-system";
 import { calculateEntityLevel } from "@/lib/mechanics/game-mechanics-ledger";
 import { EntityText, ItemText } from "@/components/narrative/entity-text";
+import { decideShrineAction, type ShrineInteractionContext } from "./shrine-decision";
+import { decideTrapAction, type TrapInteractionContext, type TrapOutcome } from "./trap-decision";
+import { decideNPCAction, type NPCInteractionContext } from "./npc-decision";
+import { executeEffects, type Effect } from "@/lib/effects";
+import type { ShrineTurnDecision } from "@/lib/effects/effect-types";
+import {
+  BLESSING_TIERS,
+  CURSE_TIERS,
+  resolvePieces,
+  resolveRewardTier,
+} from "@/lib/lego";
+
+// ============================================================================
+// SHRINE DECISION RESOLVER
+// ============================================================================
+
+/**
+ * Resolve a ShrineTurnDecision into Effect[] array.
+ * AI selects tiers and pieceIds, this function builds actual effects.
+ */
+function resolveShrineDecision(decision: ShrineTurnDecision): Effect[] {
+  const effects: Effect[] = [];
+
+  // Resolve blessing tier to status effect
+  if (decision.blessingTier && (decision.outcome === "blessing" || decision.outcome === "mixed")) {
+    const tier = BLESSING_TIERS[decision.blessingTier];
+    const blessingStatus: StatusEffect = {
+      id: `shrine_blessing_${Date.now()}`,
+      name: `Shrine Blessing (${decision.blessingTier})`,
+      entityType: "blessing",
+      effectType: "buff",
+      duration: tier.duration,
+      modifiers: {
+        attack: tier.attack,
+        defense: tier.defense,
+      },
+      description: "The shrine's power flows through you.",
+      sourceType: "shrine",
+    };
+    effects.push({
+      effectType: "apply_status",
+      target: { type: "player" },
+      status: blessingStatus,
+    });
+  }
+
+  // Resolve curse tier to status effect
+  if (decision.curseTier && (decision.outcome === "curse" || decision.outcome === "mixed")) {
+    const tier = CURSE_TIERS[decision.curseTier];
+    const curseStatus: StatusEffect = {
+      id: `shrine_curse_${Date.now()}`,
+      name: `Shrine Curse (${decision.curseTier})`,
+      entityType: "curse",
+      effectType: "debuff",
+      duration: tier.duration,
+      modifiers: {
+        attack: tier.attack,
+        defense: tier.defense,
+      },
+      description: "Dark energy clings to your soul.",
+      sourceType: "shrine",
+    };
+    effects.push({
+      effectType: "apply_status",
+      target: { type: "player" },
+      status: curseStatus,
+    });
+  }
+
+  // Healing via tier resolution
+  if (decision.healTier && decision.healTier !== "none") {
+    const healAmount = resolveRewardTier("healing", decision.healTier);
+    effects.push({
+      effectType: "heal",
+      target: { type: "player" },
+      amount: healAmount,
+      source: "shrine",
+    });
+  }
+
+  // Gold via tier resolution
+  if (decision.goldTier && decision.goldTier !== "none") {
+    const goldAmount = resolveRewardTier("gold", decision.goldTier);
+    effects.push({
+      effectType: "modify_gold",
+      amount: goldAmount,
+      source: "shrine",
+    });
+  }
+
+  // Resolve any additional pieceIds
+  if (decision.pieceIds && decision.pieceIds.length > 0) {
+    const pieceResolution = resolvePieces(decision.pieceIds);
+    if (pieceResolution.success) {
+      effects.push(...pieceResolution.effects);
+    } else {
+      console.warn("Shrine piece resolution failed:", pieceResolution.errors);
+    }
+  }
+
+  return effects;
+}
 
 // ============================================================================
 // TYPES
@@ -312,6 +414,9 @@ export function useEncounters({
 
   // ========== FULL ENCOUNTER HANDLERS ==========
 
+  // === AI-AS-CODE: Trap interactions ===
+  // Kernel: disarm chance calculation, damage, success/fail rolls
+  // AI: narration for each outcome
   const handleTrapAction = useCallback(
     async (action: "disarm" | "trigger" | "avoid") => {
       if (!state.activeTrap || isProcessing) return;
@@ -320,136 +425,127 @@ export function useEncounters({
       const trap = state.activeTrap;
       const disarmChance = calculateDisarmChance(state.player, trap);
 
+      // === KERNEL: Determine outcome based on action ===
+      let outcome: TrapOutcome;
+      let damageDealt = 0;
+      let effectApplied: string | undefined;
+
       if (action === "disarm") {
         const success = Math.random() * 100 < disarmChance;
-
-        if (success) {
-          addLog(
-            <span>
-              You carefully disarm the{" "}
-              <EntityText type="trap">{trap.name}</EntityText>.
-              <EntityText type="heal"> Safe passage secured.</EntityText>
-            </span>,
-            "narrative",
-          );
-          dispatch({ type: "ADD_EXPERIENCE", payload: 5 });
-          dispatch({ type: "SET_PHASE", payload: "dungeon" });
-          dispatch({ type: "SET_ACTIVE_TRAP", payload: null });
-        } else {
-          const damage = trap.damage || 10;
-          const newHealth = state.player.stats.health - damage;
-
-          updateRunStats({
-            damageTaken: state.runStats.damageTaken + damage,
-          });
-
-          addLog(
-            <span>
-              Your disarm attempt fails! The{" "}
-              <EntityText type="trap">{trap.name}</EntityText> activates!{" "}
-              <EntityText type="damage">-{damage} HP</EntityText>
-            </span>,
-            "combat",
-          );
-
-          const updatedEffects = [...state.player.activeEffects];
-          if (trap.effect) {
-            updatedEffects.push(trap.effect);
-            addLog(
-              <span>
-                You are afflicted with{" "}
-                <EntityText type="curse">{trap.effect.name}</EntityText>!
-              </span>,
-              "effect",
-            );
-          }
-
-          if (newHealth <= 0) {
-            triggerDeath("Killed by trap", trap.name);
-            addLog(
-              <span className="text-red-400">
-                The trap proves fatal. Darkness claims you.
-              </span>,
-              "system",
-            );
-          } else {
-            dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
-            if (trap.effect) {
-              dispatch({ type: "ADD_EFFECT", payload: trap.effect });
-            }
-            dispatch({ type: "SET_PHASE", payload: "dungeon" });
-            dispatch({ type: "SET_ACTIVE_TRAP", payload: null });
-          }
+        outcome = success ? "success" : "failure";
+        if (!success) {
+          damageDealt = trap.damage || 10;
+          effectApplied = trap.effect?.name;
         }
       } else if (action === "trigger") {
-        const damage = trap.damage || 10;
-        const newHealth = state.player.stats.health - damage;
+        outcome = "failure";
+        damageDealt = trap.damage || 10;
+        effectApplied = trap.effect?.name;
+      } else {
+        // avoid action - 50% chance of partial
+        const avoided = Math.random() < 0.5;
+        outcome = avoided ? "success" : "partial";
+        if (!avoided) {
+          damageDealt = Math.floor((trap.damage || 10) * 0.7);
+        }
+      }
 
+      // === AI: Get trap narration (NO FALLBACK) ===
+      const trapContext: TrapInteractionContext = {
+        player: {
+          name: state.player.name || "Adventurer",
+          class: state.player.class ?? undefined,
+          level: state.player.stats.level,
+          health: state.player.stats.health,
+          maxHealth: state.player.stats.maxHealth,
+          dexterity: state.player.stats.dexterity,
+        },
+        trap: {
+          id: trap.id,
+          name: trap.name,
+          trapType: trap.trapType,
+          description: trap.description,
+          damage: trap.damage,
+          disarmDC: trap.disarmDC,
+          hidden: trap.hidden,
+        },
+        action,
+        outcome,
+        damageDealt: damageDealt > 0 ? damageDealt : undefined,
+        effectApplied,
+        floor: state.floor,
+      };
+
+      const decision = await decideTrapAction(trapContext);
+
+      // Log the AI-generated narration
+      addLog(
+        <span className={outcome === "success" ? "text-emerald-400" : outcome === "failure" ? "text-red-400" : "text-amber-400"}>
+          {decision.narration}
+        </span>,
+        outcome === "success" ? "narrative" : "combat",
+      );
+
+      // === KERNEL: Apply damage and effects based on outcome ===
+      if (damageDealt > 0) {
+        const newHealth = state.player.stats.health - damageDealt;
         updateRunStats({
-          damageTaken: state.runStats.damageTaken + damage,
+          damageTaken: state.runStats.damageTaken + damageDealt,
         });
-
         addLog(
           <span>
-            You deliberately trigger the{" "}
-            <EntityText type="trap">{trap.name}</EntityText>.{" "}
-            <EntityText type="damage">-{damage} HP</EntityText>
+            <EntityText type="damage">-{damageDealt} HP</EntityText>
           </span>,
           "combat",
         );
 
         if (newHealth <= 0) {
           triggerDeath("Killed by trap", trap.name);
-        } else {
-          dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
-          dispatch({ type: "SET_PHASE", payload: "dungeon" });
-          dispatch({ type: "SET_ACTIVE_TRAP", payload: null });
+          setIsProcessing(false);
+          return;
         }
-      } else {
-        const avoided = Math.random() < 0.5;
-
-        if (avoided) {
-          addLog(
-            <span>
-              You carefully edge past the{" "}
-              <EntityText type="trap">{trap.name}</EntityText>.
-            </span>,
-            "narrative",
-          );
-          dispatch({ type: "SET_PHASE", payload: "dungeon" });
-          dispatch({ type: "SET_ACTIVE_TRAP", payload: null });
-        } else {
-          const damage = Math.floor((trap.damage || 10) * 0.7);
-          const newHealth = state.player.stats.health - damage;
-
-          updateRunStats({
-            damageTaken: state.runStats.damageTaken + damage,
-          });
-
-          addLog(
-            <span>
-              You fail to avoid the{" "}
-              <EntityText type="trap">{trap.name}</EntityText>!{" "}
-              <EntityText type="damage">-{damage} HP</EntityText>
-            </span>,
-            "combat",
-          );
-
-          if (newHealth <= 0) {
-            triggerDeath("Killed by trap", trap.name);
-          } else {
-            dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
-            dispatch({ type: "SET_PHASE", payload: "dungeon" });
-            dispatch({ type: "SET_ACTIVE_TRAP", payload: null });
-          }
-        }
+        dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
       }
 
+      // Apply trap effect on failure
+      if (outcome === "failure" && trap.effect) {
+        dispatch({ type: "ADD_EFFECT", payload: trap.effect });
+        addLog(
+          <span>
+            You are afflicted with{" "}
+            <EntityText type="curse">{trap.effect.name}</EntityText>!
+          </span>,
+          "effect",
+        );
+      }
+
+      // Grant XP for successful disarm
+      if (action === "disarm" && outcome === "success") {
+        dispatch({ type: "ADD_EXPERIENCE", payload: 5 });
+        addLog(
+          <span>
+            <EntityText type="heal">+5 XP</EntityText>
+          </span>,
+          "system",
+        );
+      }
+
+      // Execute any narrative effects from AI
+      if (decision.effects.length > 0) {
+        executeEffects(state, decision.effects);
+      }
+
+      // Clean up trap state
+      dispatch({ type: "SET_PHASE", payload: "dungeon" });
+      dispatch({ type: "SET_ACTIVE_TRAP", payload: null });
       setIsProcessing(false);
     },
     [state, isProcessing, addLog, updateRunStats, triggerDeath, dispatch, setIsProcessing],
   );
 
+  // === AI-AS-CODE: Shrine interactions ===
+  // Kernel: cost validation, stat modifications
+  // AI: decides outcome, narration, blessing/curse effects
   const handleShrineAction = useCallback(
     async (action: "accept" | "decline" | "desecrate" | "seek_blessing") => {
       if (!state.activeShrine || isProcessing) return;
@@ -457,225 +553,139 @@ export function useEncounters({
 
       const shrine = state.activeShrine;
 
-      if (action === "decline") {
-        addLog(
-          <span className="text-muted-foreground">
-            You leave the <EntityText type="shrine">{shrine.name}</EntityText>{" "}
-            undisturbed.
-          </span>,
-          "narrative",
-        );
-        dispatch({ type: "SET_PHASE", payload: "dungeon" });
-        dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
-        setIsProcessing(false);
-        return;
+      // === KERNEL: Calculate affordability ===
+      let canAfford = true;
+      if (shrine.cost?.gold && state.player.stats.gold < shrine.cost.gold) {
+        canAfford = false;
+      }
+      if (shrine.cost?.health && state.player.stats.health <= shrine.cost.health) {
+        canAfford = false;
       }
 
-      if (action === "seek_blessing") {
-        // Trigger DM creative event for shrine communion
-        addLog(
-          <span className="text-amber-300 italic">
-            You reach out to commune with the <EntityText type="shrine">{shrine.name}</EntityText>...
-          </span>,
-          "narrative",
-        );
-        try {
-          const response = await fetch("/api/dm-operations", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              operationType: "creative_event",
-              context: {
-                narrativeContext: `The player communes with ${shrine.name}, a ${shrine.shrineType} shrine. ${shrine.description}`,
-                entities: [
-                  { id: shrine.id, type: "shrine", name: shrine.name, description: shrine.description },
-                  { id: state.player.id, type: "player", name: state.player.name || "The Adventurer" },
-                ],
-                recentEvents: [], // Log entries managed separately
-                playerClass: state.player.class,
-                playerLevel: state.player.stats.level,
-                playerHealth: state.player.stats.health,
-                maxHealth: state.player.stats.maxHealth,
-                dungeonTheme: "dark fantasy",
-                floor: 1,
-              },
-            }),
+      // === AI: Get shrine decision (NO FALLBACK) ===
+      const shrineContext: ShrineInteractionContext = {
+        player: {
+          name: state.player.name || "Adventurer",
+          class: state.player.class ?? undefined,
+          level: state.player.stats.level,
+          health: state.player.stats.health,
+          maxHealth: state.player.stats.maxHealth,
+          gold: state.player.stats.gold,
+        },
+        shrine: {
+          id: shrine.id,
+          name: shrine.name,
+          shrineType: shrine.shrineType,
+          description: shrine.description,
+          cost: shrine.cost,
+          riskLevel: shrine.riskLevel,
+        },
+        action,
+        canAfford,
+        floor: state.floor,
+      };
+
+      const decision = await decideShrineAction(shrineContext);
+
+      // === KERNEL: Apply costs BEFORE effects (only for accept action) ===
+      if (action === "accept" && canAfford) {
+        if (shrine.cost?.gold) {
+          dispatch({ type: "MODIFY_PLAYER_GOLD", payload: -shrine.cost.gold });
+          updateRunStats({
+            goldSpent: state.runStats.goldSpent + shrine.cost.gold,
           });
-          const result = await response.json();
-          if (result.narrative) {
-            addLog(
-              <span className="text-violet-300">{result.narrative}</span>,
-              "narrative",
-            );
-          }
-          if (result.effectGranted) {
-            const blessingEffect = STATUS_EFFECTS.blessed();
-            dispatch({ type: "ADD_EFFECT", payload: blessingEffect });
-            addLog(
-              <span>
-                The shrine grants you <EntityText type="blessing">{blessingEffect.name}</EntityText>!
-              </span>,
-              "effect",
-            );
-          }
-        } catch (error) {
           addLog(
-            <span className="text-muted-foreground">
-              The shrine remains silent...
+            <span>
+              You offer{" "}
+              <EntityText type="gold">{shrine.cost.gold} gold</EntityText> to the
+              shrine.
             </span>,
             "narrative",
           );
         }
-        dispatch({ type: "SET_PHASE", payload: "dungeon" });
-        dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
-        setIsProcessing(false);
-        return;
+        if (shrine.cost?.health) {
+          dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: -shrine.cost.health });
+          addLog(
+            <span>
+              You sacrifice{" "}
+              <EntityText type="damage">{shrine.cost.health} HP</EntityText> to
+              the shrine.
+            </span>,
+            "narrative",
+          );
+        }
       }
 
-      if (action === "desecrate" && shrine.shrineType === "dark") {
-        const roll = Math.random();
-        if (roll < 0.3) {
-          const effect = STATUS_EFFECTS.bloodlust();
+      // Log the AI-generated narration
+      addLog(
+        <span className="text-violet-300">{decision.narration}</span>,
+        "narrative",
+      );
+
+      // === KERNEL: Resolve LEGO decision to effects ===
+      const resolvedEffects = resolveShrineDecision(decision);
+
+      // === KERNEL: Execute resolved effects ===
+      const executionResult = executeEffects(state, resolvedEffects);
+
+      // Process each applied effect
+      for (const effect of executionResult.applied) {
+        if (effect.effectType === "apply_status") {
+          const statusEffect = effect.status;
+          dispatch({ type: "ADD_EFFECT", payload: statusEffect });
+          const isBlessing = statusEffect.effectType === "buff";
           addLog(
             <span>
-              You desecrate the{" "}
-              <EntityText type="shrine">{shrine.name}</EntityText>. Dark power
-              floods through you!{" "}
-              <EntityText type="blessing">{effect.name}</EntityText> gained!
+              {isBlessing ? "The shrine bestows " : "The shrine inflicts "}
+              <EntityText type={isBlessing ? "blessing" : "curse"}>
+                {statusEffect.name}
+              </EntityText>
+              {isBlessing ? " upon you!" : "!"}
             </span>,
             "effect",
           );
-          dispatch({ type: "ADD_EFFECT", payload: effect });
-          dispatch({ type: "SET_PHASE", payload: "dungeon" });
-          dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
-        } else if (roll < 0.7) {
-          const curse = STATUS_EFFECTS.cursed();
-          addLog(
-            <span>
-              The shrine&apos;s dark power lashes out!{" "}
-              <EntityText type="curse">{curse.name}</EntityText> afflicts you!
-            </span>,
-            "effect",
-          );
-          dispatch({ type: "ADD_EFFECT", payload: curse });
-          dispatch({ type: "SET_PHASE", payload: "dungeon" });
-          dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
-        } else {
-          const damage = Math.floor(state.player.stats.maxHealth * 0.3);
+        } else if (effect.effectType === "damage") {
+          const damage = effect.amount;
+          const newHealth = state.player.stats.health - damage;
           updateRunStats({
             damageTaken: state.runStats.damageTaken + damage,
           });
           addLog(
             <span>
-              The shrine explodes with malevolent energy!{" "}
               <EntityText type="damage">-{damage} HP</EntityText>
             </span>,
             "combat",
           );
-          const newHealth = state.player.stats.health - damage;
           if (newHealth <= 0) {
             triggerDeath("Destroyed by shrine", shrine.name);
-          } else {
-            dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
-            dispatch({ type: "SET_PHASE", payload: "dungeon" });
-            dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
+            setIsProcessing(false);
+            return;
           }
+          dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: -damage });
+        } else if (effect.effectType === "heal") {
+          dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: effect.amount });
+          addLog(
+            <span>
+              <EntityText type="heal">+{effect.amount} HP</EntityText>
+            </span>,
+            "effect",
+          );
+        } else if (effect.effectType === "modify_gold") {
+          dispatch({ type: "MODIFY_PLAYER_GOLD", payload: effect.amount });
+          updateRunStats({
+            goldEarned: state.runStats.goldEarned + effect.amount,
+          });
+          addLog(
+            <span>
+              <EntityText type="gold">+{effect.amount} gold</EntityText>
+            </span>,
+            "loot",
+          );
         }
-        setIsProcessing(false);
-        return;
       }
 
-      let canAfford = true;
-      if (shrine.cost?.gold && state.player.stats.gold < shrine.cost.gold)
-        canAfford = false;
-      if (
-        shrine.cost?.health &&
-        state.player.stats.health <= shrine.cost.health
-      )
-        canAfford = false;
-
-      if (!canAfford) {
-        addLog(
-          <span className="text-muted-foreground">
-            You cannot afford this offering.
-          </span>,
-          "system",
-        );
-        dispatch({ type: "SET_PHASE", payload: "dungeon" });
-        dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
-        setIsProcessing(false);
-        return;
-      }
-
-      let newGold = state.player.stats.gold;
-      let newHealth = state.player.stats.health;
-      if (shrine.cost?.gold) {
-        newGold -= shrine.cost.gold;
-        updateRunStats({
-          goldSpent: state.runStats.goldSpent + shrine.cost.gold,
-        });
-        addLog(
-          <span>
-            You offer{" "}
-            <EntityText type="gold">{shrine.cost.gold} gold</EntityText> to the
-            shrine.
-          </span>,
-          "narrative",
-        );
-      }
-      if (shrine.cost?.health) {
-        newHealth -= shrine.cost.health;
-        addLog(
-          <span>
-            You sacrifice{" "}
-            <EntityText type="damage">{shrine.cost.health} HP</EntityText> to
-            the shrine.
-          </span>,
-          "narrative",
-        );
-      }
-
-      let effect: StatusEffect | null = null;
-      switch (shrine.shrineType) {
-        case "health":
-          effect = STATUS_EFFECTS.regeneration();
-          break;
-        case "power":
-          effect = STATUS_EFFECTS.bloodlust();
-          break;
-        case "fortune":
-          effect = STATUS_EFFECTS.fortunate();
-          break;
-        case "unknown":
-          const effects = [
-            STATUS_EFFECTS.blessed(),
-            STATUS_EFFECTS.fortified(),
-            STATUS_EFFECTS.regeneration(),
-          ];
-          effect = effects[Math.floor(Math.random() * effects.length)];
-          break;
-      }
-
-      if (effect) {
-        addLog(
-          <span>
-            The shrine bestows{" "}
-            <EntityText type="blessing">{effect.name}</EntityText> upon you!
-          </span>,
-          "effect",
-        );
-      }
-
-      // Apply costs and rewards
-      if (newGold !== state.player.stats.gold) {
-        dispatch({ type: "SET_PLAYER_GOLD", payload: newGold });
-      }
-      if (newHealth !== state.player.stats.health) {
-        dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
-      }
-      if (effect) {
-        dispatch({ type: "ADD_EFFECT", payload: effect });
-      }
+      // Mark shrine as used and return to dungeon
+      dispatch({ type: "SET_ACTIVE_SHRINE", payload: { ...shrine, used: true } });
       dispatch({ type: "SET_PHASE", payload: "dungeon" });
       dispatch({ type: "SET_ACTIVE_SHRINE", payload: null });
 
@@ -684,6 +694,9 @@ export function useEncounters({
     [state, isProcessing, addLog, updateRunStats, triggerDeath, dispatch, setIsProcessing],
   );
 
+  // === AI-AS-CODE: NPC interactions ===
+  // Kernel: trade costs, gold rewards, enemy conversion
+  // AI: dialogue generation, reaction narration
   const handleNPCChoice = useCallback(
     async (optionId: string) => {
       if (!state.activeNPC || isProcessing) return;
@@ -691,11 +704,34 @@ export function useEncounters({
 
       const npc = state.activeNPC;
 
+      // Build NPC context for AI
+      const npcContext: NPCInteractionContext = {
+        player: {
+          name: state.player.name || "Adventurer",
+          class: state.player.class ?? undefined,
+          level: state.player.stats.level,
+          gold: state.player.stats.gold,
+        },
+        npc: {
+          id: npc.id,
+          name: npc.name,
+          role: npc.role,
+          description: npc.description,
+          disposition: npc.disposition,
+          personality: npc.personality,
+          hasInventory: Boolean(npc.inventory?.length),
+          questId: npc.questId,
+        },
+        action: optionId as "talk" | "trade" | "help" | "attack" | "leave",
+        floor: state.floor,
+      };
+
       if (optionId === "leave") {
+        npcContext.action = "leave";
+        const decision = await decideNPCAction(npcContext);
         addLog(
           <span className="text-muted-foreground">
-            You nod to <EntityText type="npc">{npc.name}</EntityText> and
-            continue on your way.
+            {decision.narration}
           </span>,
           "narrative",
         );
@@ -705,22 +741,28 @@ export function useEncounters({
         return;
       }
 
-      if (
-        optionId === "trade" &&
-        npc.role === "merchant" &&
-        npc.inventory?.length
-      ) {
+      if (optionId === "trade" && npc.role === "merchant" && npc.inventory?.length) {
         const item = npc.inventory[0];
         const cost = item.value;
+        const canAfford = state.player.stats.gold >= cost;
 
-        if (state.player.stats.gold >= cost) {
+        npcContext.action = "trade";
+        npcContext.actionContext = {
+          itemName: item.name,
+          itemCost: cost,
+          tradedSuccessfully: canAfford,
+        };
+
+        const decision = await decideNPCAction(npcContext);
+
+        if (canAfford) {
           updateRunStats({
             goldSpent: state.runStats.goldSpent + cost,
             itemsFound: [...state.runStats.itemsFound, item],
           });
           addLog(
             <span>
-              You purchase{" "}
+              {decision.narration} You purchase{" "}
               <EntityText type={item.rarity}>{item.name}</EntityText> for{" "}
               <EntityText type="gold">{cost} gold</EntityText>.
             </span>,
@@ -732,39 +774,47 @@ export function useEncounters({
         } else {
           addLog(
             <span className="text-muted-foreground">
-              You don&apos;t have enough gold.
+              {decision.narration}
             </span>,
             "system",
           );
         }
+
         setIsProcessing(false);
         return;
       }
 
       if (optionId === "help" && npc.role === "trapped") {
-        const roll = Math.random();
-        if (roll < 0.3) {
-          addLog(
-            <span>
-              <EntityText type="npc">{npc.name}</EntityText> is grateful.{" "}
-              <EntityText type="companion">
-                &quot;I&apos;ll remember this kindness!&quot;
-              </EntityText>
-            </span>,
-            "dialogue",
-          );
-        }
+        // === KERNEL: Calculate gold reward ===
         const goldReward = Math.floor(Math.random() * 30) + 20;
+
+        npcContext.action = "help";
+        npcContext.actionContext = {
+          goldReward,
+          helpedSuccessfully: true,
+        };
+
+        const decision = await decideNPCAction(npcContext);
+
         updateRunStats({
           goldEarned: state.runStats.goldEarned + goldReward,
         });
+
         addLog(
           <span>
-            <EntityText type="npc">{npc.name}</EntityText> thanks you and offers{" "}
+            {decision.narration}
+          </span>,
+          "narrative",
+        );
+
+        addLog(
+          <span>
+            <EntityText type="npc">{npc.name}</EntityText> offers{" "}
             <EntityText type="gold">{goldReward} gold</EntityText>.
           </span>,
           "loot",
         );
+
         dispatch({ type: "MODIFY_PLAYER_GOLD", payload: goldReward });
         dispatch({ type: "SET_PHASE", payload: "dungeon" });
         dispatch({ type: "SET_ACTIVE_NPC", payload: null });
@@ -773,35 +823,26 @@ export function useEncounters({
       }
 
       if (optionId === "talk") {
-        const generateEntity = async (
-          entityType: string,
-          _options: unknown,
-        ) => {
-          if (entityType === "npc") {
-            return {
-              greeting: "Greetings, traveler!",
-            };
-          }
-          return undefined;
-        };
-        const dialogue = await generateEntity("npc", {
-          role: npc.role,
-          floor: state.floor,
-        });
-        const newDialogue =
-          dialogue?.greeting || "The dungeon holds many secrets...";
-        setNpcDialogue(newDialogue);
+        npcContext.action = "talk";
+        const decision = await decideNPCAction(npcContext);
+
+        setNpcDialogue(decision.narration);
         addLog(
           <span className="italic text-amber-200/80">
-            &quot;{newDialogue}&quot;
+            &quot;{decision.narration}&quot;
           </span>,
           "dialogue",
         );
+
         setIsProcessing(false);
         return;
       }
 
       if (optionId === "attack") {
+        npcContext.action = "attack";
+        const decision = await decideNPCAction(npcContext);
+
+        // === KERNEL: Convert NPC to enemy ===
         const enemy: Enemy = {
           id: npc.id,
           entityType: "enemy",
@@ -814,13 +855,15 @@ export function useEncounters({
           expReward: 10,
           goldReward: Math.floor(Math.random() * 20) + 10,
         };
+
         addLog(
           <span>
-            <EntityText type="npc">{npc.name}</EntityText> cries out as you
-            attack! <EntityText type="enemy">They fight back!</EntityText>
+            {decision.narration}{" "}
+            <EntityText type="enemy">Combat begins!</EntityText>
           </span>,
           "combat",
         );
+
         dispatch({ type: "SET_PHASE", payload: "dungeon" });
         dispatch({ type: "SET_ACTIVE_NPC", payload: null });
         dispatch({ type: "START_COMBAT", payload: enemy });

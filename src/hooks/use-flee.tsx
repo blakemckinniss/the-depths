@@ -4,18 +4,13 @@ import { useCallback, type ReactNode } from "react";
 import type { GameState, Player } from "@/lib/core/game-types";
 import type { Dispatch } from "react";
 import type { GameAction } from "@/contexts/game-reducer";
-import type { LogCategory } from "@/lib/ai/game-log-system";
 import { calculateEffectiveStats } from "@/lib/entity/entity-system";
 import { EntityText } from "@/components/narrative/entity-text";
-
-type AddLogFn = (message: ReactNode, category: LogCategory) => void;
+import type { AddLogFn, GenerateNarrativeFn } from "./types";
 
 interface FleeResponse {
   fleeNarration: string;
 }
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type GenerateNarrativeFn = <T>(type: string, context: any) => Promise<T | null>;
 
 interface UseFleeOptions {
   state: GameState;

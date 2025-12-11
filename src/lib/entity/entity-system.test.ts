@@ -210,19 +210,19 @@ describe("Entity Factories", () => {
     it("should create shrine with required fields", () => {
       const shrine = createShrine({
         name: "Altar of Power",
-        shrineType: "blessing",
+        shrineType: "power",
       });
 
       expect(shrine.id).toBeDefined();
       expect(shrine.name).toBe("Altar of Power");
-      expect(shrine.shrineType).toBe("blessing");
+      expect(shrine.shrineType).toBe("power");
       expect(shrine.entityType).toBe("shrine");
     });
 
     it("should default to moderate risk", () => {
       const shrine = createShrine({
         name: "Test Shrine",
-        shrineType: "blessing",
+        shrineType: "health",
       });
 
       expect(shrine.riskLevel).toBe("moderate");
@@ -231,7 +231,7 @@ describe("Entity Factories", () => {
     it("should not be used by default", () => {
       const shrine = createShrine({
         name: "Fresh Shrine",
-        shrineType: "blessing",
+        shrineType: "fortune",
       });
 
       expect(shrine.used).toBe(false);
@@ -265,8 +265,8 @@ describe("Entity Factories", () => {
     it("should create companion with required fields", () => {
       const companion = createCompanion({
         name: "Loyal Wolf",
-        role: "tank",
-        stats: { health: 30, maxHealth: 30, attack: 8, defense: 4 },
+        role: "fighter",
+        stats: { health: 30, maxHealth: 30, attack: 8, defense: 4, speed: 5, level: 1 },
       });
 
       expect(companion.id).toBeDefined();
@@ -279,8 +279,8 @@ describe("Entity Factories", () => {
     it("should default loyalty to 50", () => {
       const companion = createCompanion({
         name: "Test Companion",
-        role: "support",
-        stats: { health: 20, maxHealth: 20, attack: 5, defense: 2 },
+        role: "healer",
+        stats: { health: 20, maxHealth: 20, attack: 5, defense: 2, speed: 4, level: 1 },
       });
 
       expect(companion.loyalty).toBe(50);
@@ -289,8 +289,8 @@ describe("Entity Factories", () => {
     it("should be in party by default", () => {
       const companion = createCompanion({
         name: "New Companion",
-        role: "dps",
-        stats: { health: 25, maxHealth: 25, attack: 10, defense: 3 },
+        role: "scout",
+        stats: { health: 25, maxHealth: 25, attack: 10, defense: 3, speed: 7, level: 1 },
       });
 
       expect(companion.inParty).toBe(true);

@@ -254,7 +254,9 @@ export function canRescueNPC(npc: NPC): boolean {
 }
 
 // ============================================================================
-// FALLBACK GENERATION (when AI is unavailable)
+// COMPANION CREATION (Kernel Logic - Deterministic)
+// These functions create companion data structures from game entities.
+// This is NOT a fallback - it's deterministic kernel logic.
 // ============================================================================
 
 export function createBasicCompanionFromEnemy(enemy: Combatant, method: string): Companion {

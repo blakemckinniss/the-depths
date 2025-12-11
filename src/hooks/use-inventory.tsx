@@ -97,7 +97,7 @@ export function useInventory({ state, dispatch, addLog }: UseInventoryOptions) {
         }
       }
 
-      // Legacy fallback for old items
+      // Legacy item slot inference for migration
       if (!slot) {
         if (item.type === "weapon") slot = "mainHand";
         else if (item.type === "armor") slot = "chest";

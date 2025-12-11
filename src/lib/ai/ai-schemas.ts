@@ -697,6 +697,118 @@ export const dmCreativeEventSchema = z.object({
 })
 
 // ============================================
+// LEGO DECISION SCHEMAS
+// AI-as-LEGO-Composer pattern: AI selects piece IDs, kernel resolves effects
+// ============================================
+
+/**
+ * Power level for combat damage scaling.
+ * - light: 0.6x damage (glancing blow, weak attack)
+ * - medium: 1.0x damage (standard attack)
+ * - heavy: 1.5x damage (critical hit, powerful ability)
+ */
+export const powerLevelSchema = z.enum(["light", "medium", "heavy"])
+
+/**
+ * Blessing/curse tier for shrine outcomes.
+ * Determines magnitude of stat changes.
+ */
+export const blessingTierSchema = z.enum(["minor", "standard", "major"])
+export const curseTierSchema = z.enum(["minor", "standard", "major"])
+
+/**
+ * NPC disposition change magnitude.
+ * - slight: ±5 disposition
+ * - moderate: ±15 disposition
+ * - significant: ±30 disposition
+ */
+export const dispositionChangeSchema = z.enum(["slight", "moderate", "significant"])
+
+/**
+ * Decision metadata for debugging and confidence tracking.
+ */
+export const decisionMetadataSchema = z.object({
+  confidence: z.number().min(0).max(1).nullish()
+    .describe("0-1, how confident AI is in this decision"),
+  reasoning: z.string().nullish()
+    .describe("Brief explanation for debugging"),
+  alternatives: z.array(z.string()).nullish()
+    .describe("Other options AI considered"),
+})
+
+/**
+ * Standard LEGO turn decision.
+ * AI selects piece IDs from registry, kernel resolves and executes.
+ *
+ * Used for: enemy attacks, trap effects, environmental damage
+ */
+export const legoTurnDecisionSchema = z.object({
+  narration: z.string()
+    .describe("1-2 sentence description of what happens"),
+  pieceIds: z.array(z.string())
+    .describe("Array of LEGO piece IDs from registry (e.g. ['basic_strike', 'weaken'])"),
+  powerLevel: powerLevelSchema.nullish()
+    .describe("Damage scaling for combat: light (0.6x), medium (1.0x), heavy (1.5x)"),
+  metadata: decisionMetadataSchema.nullish(),
+})
+
+/**
+ * Shrine-specific decision with tier selection.
+ * AI chooses outcome type and tier, kernel applies actual stat changes.
+ *
+ * Design: AI never outputs raw numbers for blessings/curses.
+ * Instead, it selects a tier and kernel looks up the stat bonuses.
+ */
+export const shrineTurnDecisionSchema = z.object({
+  narration: z.string()
+    .describe("1-2 sentence atmospheric description of the shrine interaction"),
+  outcome: z.enum(["blessing", "curse", "nothing", "mixed"])
+    .describe("What the shrine bestows"),
+  blessingTier: blessingTierSchema.nullish()
+    .describe("If blessing: minor (+2 att/def), standard (+4), major (+6 + heal)"),
+  curseTier: curseTierSchema.nullish()
+    .describe("If curse: minor (-2 att/def), standard (-3), major (-5 + damage)"),
+  healAmount: z.number().nullish()
+    .describe("Optional direct healing (kernel clamps to safe range)"),
+  goldAmount: z.number().nullish()
+    .describe("Optional gold reward (kernel clamps to safe range)"),
+  pieceIds: z.array(z.string()).nullish()
+    .describe("Additional effects via LEGO pieces (e.g. status effects)"),
+  metadata: decisionMetadataSchema.nullish(),
+})
+
+/**
+ * NPC interaction decision with disposition tracking.
+ * AI describes conversation outcome and selects disposition change magnitude.
+ *
+ * Design: AI selects change magnitude (slight/moderate/significant),
+ * kernel converts to actual number (5/15/30).
+ */
+export const npcTurnDecisionSchema = z.object({
+  narration: z.string()
+    .describe("1-2 sentence description of the NPC's response"),
+  dispositionChange: dispositionChangeSchema.nullish()
+    .describe("How much disposition changes: slight (±5), moderate (±15), significant (±30)"),
+  dispositionDirection: z.enum(["positive", "negative"]).nullish()
+    .describe("Whether disposition improves or worsens"),
+  dialogueOptions: z.array(z.string()).nullish()
+    .describe("New dialogue options unlocked by this interaction"),
+  pieceIds: z.array(z.string()).nullish()
+    .describe("Additional effects via LEGO pieces (e.g. buffs from favor)"),
+  metadata: decisionMetadataSchema.nullish(),
+})
+
+/**
+ * Union schema that accepts any LEGO decision type.
+ * Use discriminated union via `outcome` or `dispositionChange` presence.
+ */
+export const anyLegoDecisionSchema = z.union([
+  legoTurnDecisionSchema,
+  shrineTurnDecisionSchema,
+  npcTurnDecisionSchema,
+])
+
+// ============================================
 // TYPE EXPORTS
 // ============================================
 
@@ -723,3 +835,14 @@ export type EntityMutationRequest = z.infer<typeof entityMutationSchema>
 export type EntityMergeRequest = z.infer<typeof entityMergeSchema>
 export type DMOperationRequest = z.infer<typeof dmOperationRequestSchema>
 export type DMCreativeEvent = z.infer<typeof dmCreativeEventSchema>
+
+// LEGO Decision types (AI-as-LEGO-Composer pattern)
+export type PowerLevel = z.infer<typeof powerLevelSchema>
+export type BlessingTier = z.infer<typeof blessingTierSchema>
+export type CurseTier = z.infer<typeof curseTierSchema>
+export type DispositionChange = z.infer<typeof dispositionChangeSchema>
+export type DecisionMetadata = z.infer<typeof decisionMetadataSchema>
+export type LegoTurnDecision = z.infer<typeof legoTurnDecisionSchema>
+export type ShrineTurnDecision = z.infer<typeof shrineTurnDecisionSchema>
+export type NPCTurnDecision = z.infer<typeof npcTurnDecisionSchema>
+export type AnyLegoDecision = z.infer<typeof anyLegoDecisionSchema>

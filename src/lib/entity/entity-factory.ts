@@ -318,7 +318,7 @@ export function createCompanionFromAI(aiData: CompanionRecruitResponse, floor: n
   }
 }
 
-// Create companion from rescued NPC or AI data (fallback)
+// Create companion from rescued NPC (Kernel Logic - Deterministic)
 export function createCompanionFromNPC(npc: NPC, playerLevel = 1): Companion {
   const roleStats = {
     merchant: { health: 20, attack: 3, defense: 2, style: "passive" as const },

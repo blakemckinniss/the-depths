@@ -11,7 +11,7 @@ import type {
   DamageType,
 } from "@/lib/core/game-types";
 import { processCompanionTurns } from "./use-companions";
-import { useAbilityExecution } from "./use-ability-execution";
+import { useAbilityExecutionV2 } from "./use-ability-execution-v2";
 import { useEnemyAI } from "./use-enemy-ai";
 import { useFlee } from "./use-flee";
 import { useTurnEffects } from "./use-turn-effects";
@@ -30,22 +30,14 @@ import {
   STANCE_MODIFIERS,
 } from "@/lib/combat/combat-system";
 import { getXpModifier } from "@/lib/mechanics/game-mechanics-ledger";
-import type { GameLogger, LogCategory } from "@/lib/ai/game-log-system";
+import type { GameLogger } from "@/lib/ai/game-log-system";
 import { EntityText } from "@/components/narrative/entity-text";
 import {
   processEntityDeath,
   processCombatEnd,
 } from "@/lib/ai/dm-combat-integration";
-import { usePlayerAttack } from "./use-player-attack";
-
-// ============================================================================
-// TYPES
-// ============================================================================
-
-type AddLogFn = (message: ReactNode, category: LogCategory) => void;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type GenerateNarrativeFn = <T>(type: string, context: any) => Promise<T | null>;
+import { usePlayerAttackV2 } from "./use-player-attack-v2";
+import type { AddLogFn, GenerateNarrativeFn } from "./types";
 
 interface UseCombatOptions {
   state: GameState;
@@ -329,6 +321,7 @@ export function useCombat({
     [state.player.stats.health, state.player.stats.maxHealth],
   );
 
+  // AI-as-LEGO-Composer: Enemy decisions select pieces, kernel resolves
   const { enemyAttack } = useEnemyAI({
     state,
     dispatch,
@@ -345,7 +338,7 @@ export function useCombat({
     [addLog],
   );
 
-  const { handleUseAbility } = useAbilityExecution({
+  const { handleUseAbility } = useAbilityExecutionV2({
     state,
     dispatch,
     addLog,
@@ -357,15 +350,13 @@ export function useCombat({
     enemyAttack,
   });
 
-  const { playerAttack } = usePlayerAttack({
+  const { playerAttack } = usePlayerAttackV2({
     state,
     dispatch,
     addLog,
     isProcessing,
     setIsProcessing,
     updateRunStats,
-    generateNarrative,
-    calculateDamage,
     checkLevelUp,
     enemyAttack,
     processCompanionTurns: processCompanionTurnsCallback,

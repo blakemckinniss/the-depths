@@ -401,8 +401,8 @@ describe("Combat Actions", () => {
 
   describe("SET_STANCE", () => {
     it("should change combat stance", () => {
-      const newState = gameReducer(state, gameActions.setStance("offensive"));
-      expect(newState.player.stance).toBe("offensive");
+      const newState = gameReducer(state, gameActions.setStance("aggressive"));
+      expect(newState.player.stance).toBe("aggressive");
     });
   });
 });
@@ -629,8 +629,8 @@ describe("Meta Actions", () => {
 
   describe("UPDATE_RUN_STATS", () => {
     it("should update run statistics", () => {
-      const newState = gameReducer(state, gameActions.updateRunStats({ enemiesKilled: 5 }));
-      expect(newState.runStats.enemiesKilled).toBe(5);
+      const newState = gameReducer(state, gameActions.updateRunStats({ enemiesSlain: 5 }));
+      expect(newState.runStats.enemiesSlain).toBe(5);
     });
   });
 
@@ -749,26 +749,26 @@ describe("Action Creators", () => {
   it("should create correct UPDATE_PLAYER action", () => {
     const action = gameActions.updatePlayer({ name: "Hero" });
     expect(action.type).toBe("UPDATE_PLAYER");
-    expect(action.payload).toEqual({ name: "Hero" });
+    expect((action as { payload: unknown }).payload).toEqual({ name: "Hero" });
   });
 
   it("should create correct MODIFY_PLAYER_HEALTH action", () => {
     const action = gameActions.modifyPlayerHealth(-10);
     expect(action.type).toBe("MODIFY_PLAYER_HEALTH");
-    expect(action.payload).toBe(-10);
+    expect((action as { payload: unknown }).payload).toBe(-10);
   });
 
   it("should create correct ADD_ITEM action", () => {
     const item = createTestItem();
     const action = gameActions.addItem(item);
     expect(action.type).toBe("ADD_ITEM");
-    expect(action.payload).toBe(item);
+    expect((action as { payload: unknown }).payload).toBe(item);
   });
 
   it("should create correct START_COMBAT action", () => {
     const enemy = { id: "enemy-1", name: "Goblin" } as never;
     const action = gameActions.startCombat(enemy);
     expect(action.type).toBe("START_COMBAT");
-    expect(action.payload).toBe(enemy);
+    expect((action as { payload: unknown }).payload).toBe(enemy);
   });
 });

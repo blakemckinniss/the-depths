@@ -424,3 +424,90 @@ export function createBossScenario(config: {
 
   return { player, boss };
 }
+
+// =============================================================================
+// GAME STATE FIXTURES (for effect executor tests)
+// =============================================================================
+
+import type { GameState, Combatant } from "@/lib/core/game-types";
+
+/**
+ * Create a complete GameState for testing.
+ * Accepts deep partial overrides.
+ */
+export function createTestGameState(overrides: {
+  player?: Partial<Player>;
+  currentEnemy?: Combatant | null;
+  inCombat?: boolean;
+  floor?: number;
+  currentRoom?: number;
+  combatRound?: number;
+} = {}): GameState {
+  const player = createMockPlayer(overrides.player);
+
+  // Apply stats overrides if provided - merge deeply
+  if (overrides.player?.stats) {
+    player.stats = { ...player.stats, ...overrides.player.stats };
+  }
+
+  return {
+    player,
+    currentEnemy: overrides.currentEnemy ?? null,
+    inCombat: overrides.inCombat ?? false,
+    gameStarted: true,
+    gameOver: false,
+    phase: "exploring",
+    floor: overrides.floor ?? 1,
+    currentRoom: overrides.currentRoom ?? 1,
+    combatRound: overrides.combatRound ?? 0,
+    turn: 1,
+    pathOptions: null,
+    currentDungeon: null,
+    availableDungeons: [],
+    currentHazard: null,
+    roomEntities: [],
+    activeNPC: null,
+    activeShrine: null,
+    activeTrap: null,
+    currentBoss: null,
+    activeVault: null,
+    eventHistory: [],
+    eventMemory: {
+      triggeredEvents: [],
+      entityRelationships: {},
+      playerChoices: [],
+      worldFacts: [],
+      history: [],
+      typeLastSeen: new Map(),
+      combatStreak: 0,
+      roomsSinceReward: 0,
+    },
+    runStats: {
+      floorsCleared: 0,
+      enemiesSlain: 0,
+      goldEarned: 0,
+      goldSpent: 0,
+      damageDealt: 0,
+      damageTaken: 0,
+      itemsFound: [],
+      dungeonsCompleted: [],
+      causeOfDeath: "",
+      survivalTime: 0,
+      abilitiesUsed: 0,
+      bossesDefeated: 0,
+      potionsConsumed: 0,
+      companionsRecruited: 0,
+      companionsLost: [],
+    },
+    turnCount: 0,
+    roomEnvironmentalEntities: [],
+  } as GameState;
+}
+
+/**
+ * Alias for createMockEnemy with Combatant type.
+ * Used when you need an enemy for combat state.
+ */
+export function createTestEnemy(overrides: Partial<Enemy> = {}): Combatant {
+  return createMockEnemy(overrides) as Combatant;
+}

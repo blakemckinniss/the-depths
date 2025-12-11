@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useEffect, type ReactNode } from "react";
+import { useCallback, useState, useEffect } from "react";
 import type {
   GameState,
   Item,
@@ -10,27 +10,17 @@ import type {
 } from "@/lib/core/game-types";
 import type { Dispatch } from "react";
 import type { GameAction } from "@/contexts/game-reducer";
-import type { LogCategory } from "@/lib/ai/game-log-system";
 import { getInteractionsForEntity } from "@/lib/world/environmental-system";
 import { EntityText } from "@/components/narrative/entity-text";
-
-// ============================================================================
-// TYPES
-// ============================================================================
-
-type AddLogFn = (message: ReactNode, category: LogCategory) => void;
-
-interface DynamicChoice {
-  id: string;
-  text: string;
-  type: "explore" | "interact" | "investigate" | "rest" | "special";
-  riskLevel?: "safe" | "risky" | "dangerous";
-  hint?: string;
-  entityTarget?: string;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type GenerateNarrativeFn = <T>(type: string, context: any) => Promise<T | null>;
+import {
+  decideEnvironmentalInteraction,
+  decideExplorationChoices,
+  resolveRewardTier,
+  calculateItemValue,
+  type EnvironmentalInteractionContext,
+  type ExplorationChoicesContext,
+} from "@/hooks/environmental-decision";
+import type { AddLogFn, GenerateNarrativeFn, DynamicChoice } from "./types";
 
 interface UseEnvironmentalOptions {
   state: GameState;
@@ -267,164 +257,161 @@ export function useEnvironmental({
         "narrative",
       );
 
-      // Generate AI outcome
-      const result = (await generateNarrative<{
-        narration: string;
-        rewards: {
-          gold?: number;
-          healing?: number;
-          damage?: number;
-          experience?: number;
-          item?: {
-            name?: string;
-            type?: string;
-            rarity?: ItemRarity;
-            description?: string;
-            lore?: string;
-          };
-        };
-        consequences: { entityConsumed: boolean };
-        companionReaction?: string;
-        newEntity?: {
-          name: string;
-          entityClass: string;
-          description: string;
-          interactionTags: string[];
-        };
-      }>("environmental_interaction", {
-        entityName: entity.name,
-        entityClass: entity.entityClass,
-        entityDescription: entity.description,
-        entityTags: entity.interactionTags,
-        interactionAction: interaction.action,
-        interactionLabel: interaction.label,
-        dangerLevel: interaction.dangerLevel,
-        itemUsed,
-        playerLevel: state.player.stats.level,
+      // Generate AI outcome - NO FALLBACKS
+      const interactionContext: EnvironmentalInteractionContext = {
+        entity: {
+          name: entity.name,
+          entityClass: entity.entityClass as EnvironmentalInteractionContext["entity"]["entityClass"],
+          description: entity.description,
+          interactionTags: entity.interactionTags,
+        },
+        interaction: {
+          action: interaction.action as EnvironmentalInteractionContext["interaction"]["action"],
+          label: interaction.label,
+          dangerLevel: interaction.dangerLevel as "safe" | "risky" | "dangerous" | undefined,
+        },
+        player: {
+          class: state.player.className || undefined,
+          level: state.player.stats.level,
+          healthPercent: Math.round((state.player.stats.health / state.player.stats.maxHealth) * 100),
+        },
         floor: state.floor,
-      })) ?? {
-        narration: "The object reacts to your interaction.",
-        rewards: { gold: Math.floor(Math.random() * 10) + 1 },
-        consequences: { entityConsumed: true },
+        dungeonTheme: state.currentDungeon?.theme,
+        itemUsed,
       };
 
-      if (result) {
-        addLog(<span>{result.narration}</span>, "narrative");
+      const result = await decideEnvironmentalInteraction(interactionContext);
 
-        // Process rewards
-        if (result.rewards) {
-          if (result.rewards.gold && result.rewards.gold > 0) {
-            dispatch({ type: "MODIFY_PLAYER_GOLD", payload: result.rewards.gold });
-            addLog(
-              <span>
-                Found <EntityText type="gold">{result.rewards.gold} gold</EntityText>.
-              </span>,
-              "loot",
-            );
-          }
+      // Log the narration
+      addLog(<span>{result.narration}</span>, "narrative");
 
-          if (result.rewards.healing && result.rewards.healing > 0) {
-            dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: result.rewards.healing });
-            addLog(
-              <span>
-                Restored <EntityText type="heal">{result.rewards.healing} health</EntityText>.
-              </span>,
-              "effect",
-            );
-          }
+      // Resolve tiers to actual values and apply effects (LEGO pattern)
+      const { rewardTiers, item } = result;
 
-          if (result.rewards.damage && result.rewards.damage > 0) {
-            dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: -result.rewards.damage });
-            addLog(
-              <span>
-                Took <EntityText type="damage">{result.rewards.damage} damage</EntityText>!
-              </span>,
-              "combat",
-            );
-          }
+      // Apply gold from tier
+      if (rewardTiers.gold !== "none") {
+        const goldAmount = resolveRewardTier("gold", rewardTiers.gold);
+        dispatch({ type: "MODIFY_PLAYER_GOLD", payload: goldAmount });
+        addLog(
+          <span>
+            Found <EntityText type="gold">{goldAmount} gold</EntityText>.
+          </span>,
+          "loot",
+        );
+      }
 
-          if (result.rewards.item) {
-            const newItem: Item = {
-              id: generateId(),
-              name: result.rewards.item.name || "Mysterious Object",
-              entityType: "item",
-              type: (result.rewards.item.type as Item["type"]) || "misc",
-              rarity: result.rewards.item.rarity || "common",
-              value: 10,
-              description: result.rewards.item.description,
-              lore: result.rewards.item.lore,
-            };
-            dispatch({ type: "ADD_ITEM", payload: newItem });
-            addLog(
-              <span>
-                Acquired <EntityText type={newItem.rarity}>{newItem.name}</EntityText>.
-              </span>,
-              "loot",
-            );
-          }
+      // Apply healing from tier
+      if (rewardTiers.healing !== "none") {
+        const healAmount = resolveRewardTier("healing", rewardTiers.healing);
+        dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: healAmount });
+        addLog(
+          <span>
+            Restored <EntityText type="heal">{healAmount} health</EntityText>.
+          </span>,
+          "effect",
+        );
+      }
 
-          if (result.rewards.experience && result.rewards.experience > 0) {
-            dispatch({ type: "ADD_EXPERIENCE", payload: result.rewards.experience });
-          }
-        }
+      // Apply damage from tier
+      if (rewardTiers.damage !== "none") {
+        const damageAmount = resolveRewardTier("damage", rewardTiers.damage);
+        dispatch({ type: "MODIFY_PLAYER_HEALTH", payload: -damageAmount });
+        addLog(
+          <span>
+            Took <EntityText type="damage">{damageAmount} damage</EntityText>!
+          </span>,
+          "combat",
+        );
+      }
 
-        // Process consequences
-        if (result.consequences?.entityConsumed) {
-          dispatch({
-            type: "UPDATE_ROOM_ENTITY",
-            payload: { id: entityId, changes: { consumed: true } },
-          });
-        }
+      // Apply experience from tier
+      if (rewardTiers.experience !== "none") {
+        const xpAmount = resolveRewardTier("experience", rewardTiers.experience);
+        dispatch({ type: "ADD_EXPERIENCE", payload: xpAmount });
+      }
 
-        // Consume item if required
-        if (interaction.consumesItem && itemUsed) {
-          const itemToConsume = state.player.inventory.find(
-            (i) => i.name === itemUsed,
-          );
-          if (itemToConsume) {
-            dispatch({ type: "REMOVE_ITEM", payload: itemToConsume.id });
-          }
-          addLog(
-            <span className="text-stone-500 text-sm">Used {itemUsed}.</span>,
-            "system",
-          );
-        }
+      // Add item if present
+      if (item) {
+        const newItem: Item = {
+          id: `env_item_${Date.now()}`,
+          name: item.name,
+          entityType: item.type === "weapon" ? "weapon" : item.type === "armor" ? "armor" : "item",
+          type: item.type,
+          rarity: item.rarity,
+          value: calculateItemValue(item.rarity, item.type),
+          description: item.description,
+          lore: item.lore,
+          aiGenerated: true,
+        };
+        dispatch({ type: "ADD_ITEM", payload: newItem });
+        addLog(
+          <span>
+            Acquired <EntityText type={item.rarity}>{item.name}</EntityText>.
+          </span>,
+          "loot",
+        );
+      }
 
-        // Companion reaction
-        if (result.companionReaction && state.player.party.active.length > 0) {
+      // Process any narrative effects (companion reactions)
+      for (const effect of result.effects) {
+        if (effect.effectType === "narrative") {
           const companion = state.player.party.active[0];
-          addLog(
-            <span className="text-teal-400/80 italic">
-              {companion.name}: &quot;{result.companionReaction}&quot;
-            </span>,
-            "dialogue",
-          );
+          if (companion) {
+            addLog(
+              <span className="text-teal-400/80 italic">
+                {companion.name}: &quot;{effect.text}&quot;
+              </span>,
+              "dialogue",
+            );
+          }
         }
+      }
 
-        // Add new entity if spawned
-        if (result.newEntity) {
-          const newEnvEntity: EnvironmentalEntity = {
-            id: generateId(),
-            name: result.newEntity.name || "Something",
-            description: result.newEntity.description || "",
-            entityClass: (result.newEntity.entityClass as EnvironmentalEntity["entityClass"]) || "object",
-            interactionTags: result.newEntity.interactionTags || ["interactive"],
-            possibleInteractions: [],
-            consumed: false,
-            revealed: true,
-          };
-          newEnvEntity.possibleInteractions = getInteractionsForEntity(newEnvEntity);
-          dispatch({
-            type: "SET_ROOM_ENTITIES",
-            payload: [...state.roomEnvironmentalEntities, newEnvEntity],
-          });
-          addLog(
-            <span>
-              A <EntityText type="item">{newEnvEntity.name}</EntityText> is revealed.
-            </span>,
-            "narrative",
-          );
+      // Process entity consumption
+      if (result.entityConsumed) {
+        dispatch({
+          type: "UPDATE_ROOM_ENTITY",
+          payload: { id: entityId, changes: { consumed: true } },
+        });
+      }
+
+      // Consume item if required
+      if (interaction.consumesItem && itemUsed) {
+        const itemToConsume = state.player.inventory.find(
+          (i) => i.name === itemUsed,
+        );
+        if (itemToConsume) {
+          dispatch({ type: "REMOVE_ITEM", payload: itemToConsume.id });
         }
+        addLog(
+          <span className="text-stone-500 text-sm">Used {itemUsed}.</span>,
+          "system",
+        );
+      }
+
+      // Add new entity if spawned
+      if (result.newEntity) {
+        const newEnvEntity: EnvironmentalEntity = {
+          id: generateId(),
+          name: result.newEntity.name || "Something",
+          description: result.newEntity.description || "",
+          entityClass: (result.newEntity.entityClass as EnvironmentalEntity["entityClass"]) || "object",
+          interactionTags: result.newEntity.interactionTags || ["interactive"],
+          possibleInteractions: [],
+          consumed: false,
+          revealed: true,
+        };
+        newEnvEntity.possibleInteractions = getInteractionsForEntity(newEnvEntity);
+        dispatch({
+          type: "SET_ROOM_ENTITIES",
+          payload: [...state.roomEnvironmentalEntities, newEnvEntity],
+        });
+        addLog(
+          <span>
+            A <EntityText type="item">{newEnvEntity.name}</EntityText> is revealed.
+          </span>,
+          "narrative",
+        );
       }
 
       setIsProcessing(false);

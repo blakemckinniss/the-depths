@@ -1,7 +1,26 @@
+/**
+ * Player Attack Hook - AI-as-Code Refactored Version
+ *
+ * This version uses the Effect-based AI decision pattern.
+ *
+ * Architecture:
+ * - KERNEL: Damage calculation, combo detection, trigger mechanics (deterministic)
+ * - AI: Attack narration, victory narration (creative)
+ *
+ * The player's action is user-initiated, so AI doesn't decide WHAT to do,
+ * just HOW to describe it and any bonus narrative effects.
+ */
+
 "use client";
 
 import { useCallback, type ReactNode } from "react";
-import type { GameState, Player, Enemy, Combatant, Item } from "@/lib/core/game-types";
+import type {
+  GameState,
+  Player,
+  Combatant,
+  Item,
+  DamageType,
+} from "@/lib/core/game-types";
 import type { Dispatch } from "react";
 import type { GameAction } from "@/contexts/game-reducer";
 import { calculateEffectiveStats } from "@/lib/entity/entity-system";
@@ -17,6 +36,7 @@ import {
   triggerOnKill,
 } from "@/lib/combat/effect-system";
 import { getXpModifier } from "@/lib/mechanics/game-mechanics-ledger";
+import type { LogCategory } from "@/lib/ai/game-log-system";
 import { EntityText } from "@/components/narrative/entity-text";
 import { getBossVictoryRewards } from "@/lib/ai/ai-drops-system";
 import {
@@ -26,7 +46,44 @@ import {
   useModifier,
   getLifelinkRatio,
 } from "@/lib/ai/dm-combat-integration";
-import type { AddLogFn, GenerateNarrativeFn } from "./types";
+
+// AI-as-code imports
+import {
+  decidePlayerAttack,
+  decideVictory,
+  type PlayerAttackContext,
+  type VictoryContext,
+} from "./player-attack-decision";
+import { executeEffects } from "@/lib/effects";
+
+// =============================================================================
+// TYPES
+// =============================================================================
+
+type AddLogFn = (message: ReactNode, category: LogCategory) => void;
+
+interface UsePlayerAttackV2Options {
+  state: GameState;
+  dispatch: Dispatch<GameAction>;
+  addLog: AddLogFn;
+  isProcessing: boolean;
+  setIsProcessing: (v: boolean) => void;
+  updateRunStats: (updates: Partial<GameState["runStats"]>) => void;
+  checkLevelUp: () => void;
+  enemyAttack: (enemy: Combatant, player: Player) => Promise<void>;
+  processCompanionTurns: (
+    enemy: Combatant,
+    player: Player,
+  ) => Promise<{
+    enemy: Combatant | null;
+    party: Player["party"];
+    playerHealed: number;
+  }>;
+}
+
+// =============================================================================
+// HELPER FUNCTIONS (Kernel-owned logic)
+// =============================================================================
 
 interface DeathCheckResult {
   shouldDie: boolean;
@@ -56,61 +113,42 @@ function applyDeathtouch(attackerId: string, damage: number, targetHealth: numbe
   return damage;
 }
 
-interface CombatResponse {
-  attackNarration: string;
-  enemyReaction: string;
+function calculateBaseDamage(
+  attacker: { attack: number },
+  defender: { defense: number }
+): number {
+  const baseDamage = Math.max(1, attacker.attack - Math.floor(defender.defense * 0.5));
+  const variance = Math.floor(Math.random() * 5) - 2;
+  return Math.max(1, baseDamage + variance);
 }
 
-interface VictoryResponse {
-  deathNarration: string;
-  spoilsNarration: string;
-}
+// =============================================================================
+// HOOK
+// =============================================================================
 
-interface UsePlayerAttackOptions {
-  state: GameState;
-  dispatch: Dispatch<GameAction>;
-  addLog: AddLogFn;
-  isProcessing: boolean;
-  setIsProcessing: (v: boolean) => void;
-  updateRunStats: (updates: Partial<GameState["runStats"]>) => void;
-  generateNarrative: GenerateNarrativeFn;
-  calculateDamage: (attacker: { attack: number }, defender: Combatant) => number;
-  checkLevelUp: () => void;
-  enemyAttack: (enemy: Combatant, player: Player) => Promise<void>;
-  processCompanionTurns: (
-    enemy: Combatant,
-    player: Player,
-  ) => Promise<{
-    enemy: Combatant | null;
-    party: Player["party"];
-    playerHealed: number;
-  }>;
-}
-
-export function usePlayerAttack({
+export function usePlayerAttackV2({
   state,
   dispatch,
   addLog,
   isProcessing,
   setIsProcessing,
   updateRunStats,
-  generateNarrative,
-  calculateDamage,
   checkLevelUp,
   enemyAttack,
   processCompanionTurns,
-}: UsePlayerAttackOptions) {
+}: UsePlayerAttackV2Options) {
   const playerAttack = useCallback(async () => {
     if (!state.currentEnemy || !state.inCombat || isProcessing) return;
     setIsProcessing(true);
 
+    // === KERNEL: Calculate damage deterministically ===
     const effectiveStats = calculateEffectiveStats(state.player);
-    const baseDamage = calculateDamage(
+    const baseDamage = calculateBaseDamage(
       { attack: effectiveStats.attack },
       state.currentEnemy,
     );
 
-    const weaponDamageType =
+    const weaponDamageType: DamageType =
       state.player.equipment.weapon?.damageType || "physical";
     const { damage: rawDamage, effectiveness } = calculateDamageWithType(
       baseDamage,
@@ -121,11 +159,10 @@ export function usePlayerAttack({
 
     let damage = Math.floor(rawDamage * effectiveStats.damageMultiplier);
     damage = applyDeathtouch(state.player.id, damage, state.currentEnemy.health);
-    updateRunStats({ damageDealt: state.runStats.damageDealt + damage });
 
-    const newEnemyHealth = state.currentEnemy.health - damage;
     const isCritical = damage > effectiveStats.attack * 1.2;
 
+    // === KERNEL: Process combo system ===
     const comboResult = checkForCombo(state.player.combo, weaponDamageType);
     let updatedPlayer = { ...state.player, combo: comboResult.newCombo };
 
@@ -138,7 +175,7 @@ export function usePlayerAttack({
       );
     }
 
-    // Process attack triggers
+    // === KERNEL: Process attack triggers ===
     let bonusDamageToEnemy = 0;
     const attackTrigger = triggerOnAttack(updatedPlayer, {
       damageDealt: damage,
@@ -194,6 +231,7 @@ export function usePlayerAttack({
 
     const totalDamage = damage + bonusDamageToEnemy;
     const actualNewEnemyHealth = state.currentEnemy.health - totalDamage;
+
     if (bonusDamageToEnemy > 0) {
       addLog(
         <span>
@@ -203,7 +241,7 @@ export function usePlayerAttack({
       );
     }
 
-    // Apply LIFELINK
+    // === KERNEL: Apply LIFELINK ===
     const lifelinkRatio = getLifelinkRatio(state.player.id);
     if (lifelinkRatio > 0 && totalDamage > 0) {
       const lifelinkHeal = Math.floor(totalDamage * lifelinkRatio);
@@ -227,51 +265,67 @@ export function usePlayerAttack({
       }
     }
 
-    const attackResponse = await generateNarrative<CombatResponse>("player_attack", {
-      enemyName: state.currentEnemy.name,
-      damage,
-      playerWeapon: state.player.equipment.weapon?.name,
-      enemyHealth: newEnemyHealth,
-      enemyMaxHealth: state.currentEnemy.maxHealth,
-      isCritical,
-      damageType: weaponDamageType,
-      effectiveness,
-      playerStance: state.player.stance,
-      combatRound: state.combatRound,
-    });
+    // === AI: Get attack narration (NO FALLBACK) ===
+    const attackContext: PlayerAttackContext = {
+      player: {
+        name: state.player.name,
+        class: state.player.class ?? undefined,
+        level: state.player.stats.level,
+        health: state.player.stats.health,
+        maxHealth: state.player.stats.maxHealth,
+        stance: state.player.stance,
+        weaponName: state.player.equipment.weapon?.name,
+        weaponType: state.player.equipment.weapon?.subtype,
+      },
+      enemy: {
+        id: state.currentEnemy.id,
+        name: state.currentEnemy.name,
+        health: state.currentEnemy.health,
+        maxHealth: state.currentEnemy.maxHealth,
+        weakness: state.currentEnemy.weakness,
+        resistance: state.currentEnemy.resistance,
+      },
+      attack: {
+        damage,
+        damageType: weaponDamageType,
+        isCritical,
+        effectiveness,
+        comboTriggered: comboResult.triggered?.name,
+      },
+      combatRound: state.combatRound || 1,
+    };
 
+    const attackDecision = await decidePlayerAttack(attackContext);
+
+    // Execute any narrative effects from AI
+    if (attackDecision.effects.length > 0) {
+      const effectResult = executeEffects(state, attackDecision.effects);
+      for (const { effect, reason } of effectResult.skipped) {
+        console.warn(`Effect skipped: ${effect.effectType} - ${reason}`);
+      }
+    }
+
+    // Display attack narration
     let effectivenessNote = "";
     if (effectiveness === "effective") effectivenessNote = " Super effective!";
     if (effectiveness === "resisted") effectivenessNote = " Resisted...";
 
-    if (attackResponse) {
-      addLog(
-        <span>
-          {attackResponse.attackNarration} <EntityText type="damage">(-{damage})</EntityText>
-          {effectivenessNote && (
-            <span className={effectiveness === "effective" ? "text-emerald-400" : "text-stone-500"}>
-              {effectivenessNote}
-            </span>
-          )}
-        </span>,
-        "combat",
-      );
-    } else {
-      addLog(
-        <span>
-          <EntityText type="player">You</EntityText> strike the{" "}
-          <EntityText type="enemy" entity={state.currentEnemy}>{state.currentEnemy.name}</EntityText>{" "}
-          for <EntityText type="damage">{damage}</EntityText> damage.
-          {effectivenessNote && (
-            <span className={effectiveness === "effective" ? "text-emerald-400" : "text-stone-500"}>
-              {effectivenessNote}
-            </span>
-          )}
-        </span>,
-        "combat",
-      );
-    }
+    addLog(
+      <span>
+        {attackDecision.narration} <EntityText type="damage">(-{damage})</EntityText>
+        {effectivenessNote && (
+          <span className={effectiveness === "effective" ? "text-emerald-400" : "text-stone-500"}>
+            {effectivenessNote}
+          </span>
+        )}
+      </span>,
+      "combat",
+    );
 
+    // Update stats
+    updateRunStats({ damageDealt: state.runStats.damageDealt + totalDamage });
+
+    // === KERNEL: Death check with DM modifiers ===
     const deathCheck = checkEntityDeath(state.currentEnemy.id, actualNewEnemyHealth);
     if (deathCheck.narrative) {
       addLog(<span className="text-purple-400 italic">{deathCheck.narrative}</span>, "effect");
@@ -287,7 +341,7 @@ export function usePlayerAttack({
     }
 
     if (deathCheck.shouldDie) {
-      // Process on_kill triggers
+      // === VICTORY PATH ===
       const killTrigger = triggerOnKill(updatedPlayer, { enemy: state.currentEnemy });
       updatedPlayer = killTrigger.player;
       for (const narrative of killTrigger.narratives) {
@@ -310,14 +364,50 @@ export function usePlayerAttack({
         );
       }
 
-      const abilityVictoryLevelXpMod = getXpModifier(state.player.stats.level, state.currentEnemy.level);
+      // Calculate rewards
+      const levelXpMod = getXpModifier(state.player.stats.level, state.currentEnemy.level);
       const expGain = Math.floor(
-        state.currentEnemy.expReward * effectiveStats.expMultiplier * abilityVictoryLevelXpMod,
+        state.currentEnemy.expReward * effectiveStats.expMultiplier * levelXpMod,
       );
       const goldGain = Math.floor(state.currentEnemy.goldReward * effectiveStats.goldMultiplier);
       const loot = state.currentEnemy.loot;
       const materialDrops = state.currentEnemy.materialDrops || [];
       const allLoot: Item[] = [...(loot ? [loot] : []), ...materialDrops];
+
+      const isBoss =
+        state.currentEnemy.name.includes("Lord") ||
+        state.currentEnemy.name.includes("King") ||
+        state.currentEnemy.expReward > 100 ||
+        state.currentEnemy.maxHealth > 150;
+
+      // === AI: Get victory narration (NO FALLBACK) ===
+      const victoryContext: VictoryContext = {
+        player: {
+          name: state.player.name,
+          class: state.player.class ?? undefined,
+          level: state.player.stats.level,
+        },
+        enemy: {
+          name: state.currentEnemy.name,
+          level: state.currentEnemy.level,
+          isBoss,
+        },
+        rewards: {
+          gold: goldGain,
+          experience: expGain,
+          lootName: loot?.name,
+          lootRarity: loot?.rarity,
+          materialCount: materialDrops.length,
+        },
+        leveledUp: updatedPlayer.stats.experience + expGain >= updatedPlayer.stats.experienceToLevel,
+      };
+
+      const victoryDecision = await decideVictory(victoryContext);
+
+      // Execute any narrative effects from victory AI
+      if (victoryDecision.effects.length > 0) {
+        executeEffects(state, victoryDecision.effects);
+      }
 
       updateRunStats({
         enemiesSlain: state.runStats.enemiesSlain + 1,
@@ -330,34 +420,13 @@ export function usePlayerAttack({
         "system",
       );
 
-      const victoryResponse = await generateNarrative<VictoryResponse>("victory", {
-        enemyName: state.currentEnemy.name,
-        expGain,
-        goldGain,
-        lootName: loot?.name,
-        lootRarity: loot?.rarity,
-        leveledUp: updatedPlayer.stats.experience + expGain >= updatedPlayer.stats.experienceToLevel,
-      });
-
-      if (victoryResponse) {
-        addLog(<span>{victoryResponse.deathNarration}</span>, "combat");
-        addLog(
-          <span>
-            {victoryResponse.spoilsNarration} <EntityText type="gold">+{goldGain}g</EntityText>{" "}
-            <EntityText type="heal">+{expGain}xp</EntityText>
-          </span>,
-          "loot",
-        );
-      } else {
-        addLog(
-          <span>
-            The <EntityText type="enemy">{state.currentEnemy.name}</EntityText> falls! You gain{" "}
-            <EntityText type="gold">{goldGain} gold</EntityText> and{" "}
-            <EntityText type="heal">{expGain} experience</EntityText>.
-          </span>,
-          "combat",
-        );
-      }
+      addLog(
+        <span>
+          {victoryDecision.narration} <EntityText type="gold">+{goldGain}g</EntityText>{" "}
+          <EntityText type="heal">+{expGain}xp</EntityText>
+        </span>,
+        "combat",
+      );
 
       if (loot) {
         addLog(
@@ -393,12 +462,7 @@ export function usePlayerAttack({
         );
       }
 
-      const isBoss =
-        state.currentEnemy.name.includes("Lord") ||
-        state.currentEnemy.name.includes("King") ||
-        state.currentEnemy.expReward > 100 ||
-        state.currentEnemy.maxHealth > 150;
-
+      // Boss special rewards
       if (isBoss) {
         getBossVictoryRewards(
           state.currentEnemy.name,
@@ -449,7 +513,7 @@ export function usePlayerAttack({
       dispatch({ type: "UPDATE_PLAYER", payload: updatedPlayer });
       dispatch({ type: "END_COMBAT" });
     } else {
-      // Enemy survives
+      // === ENEMY SURVIVES PATH ===
       const survivingHealth = Math.max(1, actualNewEnemyHealth);
       const tickedEnemy = tickEnemyAbilities({ ...state.currentEnemy, health: survivingHealth });
 
@@ -535,13 +599,11 @@ export function usePlayerAttack({
   }, [
     state,
     isProcessing,
-    calculateDamage,
     addLog,
     checkLevelUp,
     enemyAttack,
     updateRunStats,
     processCompanionTurns,
-    generateNarrative,
     dispatch,
     setIsProcessing,
   ]);
