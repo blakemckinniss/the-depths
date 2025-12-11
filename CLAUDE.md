@@ -91,12 +91,23 @@ The heart of the AI integration pattern:
 **Key exports:**
 ```typescript
 import {
+  // Resolution
   validateAndResolve,    // Resolve pieceIds[] → Effect[]
   calculateBudget,       // Floor-based power budget
   getPieceManifest,      // Generate AI prompt manifest
+
+  // Tier definitions
   POWER_MULTIPLIERS,     // light=0.6x, medium=1.0x, heavy=1.5x
-  BLESSING_TIERS,        // minor/standard/major → stat values
-  CURSE_TIERS,           // minor/standard/major → penalties
+  BLESSING_TIERS,        // minor/standard/major → stat bonuses
+  CURSE_TIERS,           // minor/standard/major → stat penalties
+  DISPOSITION_CHANGES,   // slight/moderate/significant → ±5/15/30
+  REWARD_TIERS,          // none/small/medium/large → value ranges
+
+  // Tier resolution
+  resolveRewardTier,     // (type, tier) → random value in range
+  getDispositionDelta,   // tier → number
+  getBlessingStats,      // tier → { attack, defense, duration }
+  getCurseStats,         // tier → { attack, defense, duration }
 } from "@/lib/lego";
 ```
 
@@ -112,20 +123,20 @@ import {
 
 Each decision module follows the LEGO pattern:
 
-| Module | Returns |
-|--------|---------|
-| `enemy-ai-decision.ts` | `pieceIds[]` + `powerLevel` |
-| `shrine-decision.ts` | `outcome` + `blessingTier`/`curseTier` |
-| `npc-decision.ts` | `dispositionChange` + `pieceIds[]` |
-| `trap-decision.ts` | `pieceIds[]` + `powerLevel` |
-| `room-decision.ts` | Room composition with pieces |
-| `loot-decision.ts` | Loot table selection |
-| `path-decision.ts` | Path generation choices |
-| `ability-decision.ts` | Ability piece selection |
-| `environmental-decision.ts` | Environmental effects |
-| `boss-decision.ts` | Boss encounter composition |
-| `companion-decision.ts` | Companion action selection |
-| `player-attack-decision.ts` | Player attack composition |
+| Module | Returns | Pattern |
+|--------|---------|---------|
+| `enemy-ai-decision.ts` | `pieceIds[]` + `powerLevel` | LEGO pieces |
+| `boss-decision.ts` | `pieceIds[]` + `powerLevel` + `goldTier` | LEGO pieces |
+| `shrine-decision.ts` | `blessingTier`/`curseTier` + `healTier`/`goldTier` | Tier selection |
+| `npc-decision.ts` | `dispositionChange` + `dispositionDirection` | Tier selection |
+| `room-decision.ts` | `goldTier`/`healTier`/`damageTier` + tiers | Tier selection |
+| `environmental-decision.ts` | `rewardTiers` object (gold/healing/damage/xp) | Tier selection |
+| `trap-decision.ts` | Narration only | Narrative |
+| `loot-decision.ts` | Item generation | Kernel logic |
+| `path-decision.ts` | Path choices | Narrative |
+| `ability-decision.ts` | Ability narration | Narrative |
+| `companion-decision.ts` | Action selection | Narrative |
+| `player-attack-decision.ts` | Attack narration | Narrative |
 
 ### Core Data
 
@@ -210,11 +221,18 @@ use-vault.tsx            # Persistent storage
 ## Key Types
 
 ```typescript
-// LEGO Decision Types
+// LEGO Decision Types (AI outputs tiers, kernel resolves to values)
 LegoTurnDecision     // { pieceIds[], powerLevel, narration }
-ShrineTurnDecision   // { outcome, blessingTier?, curseTier?, narration }
-NPCTurnDecision      // { dispositionChange, pieceIds?, narration }
-Effect               // { type, target, value, ... }
+ShrineTurnDecision   // { outcome, blessingTier?, curseTier?, healTier?, goldTier? }
+NPCTurnDecision      // { dispositionChange?, dispositionDirection?, narration }
+Effect               // { effectType, target, amount, ... }
+
+// Tier Types (AI selects these, never raw numbers)
+PowerLevel           // "light" | "medium" | "heavy"
+BlessingTier         // "minor" | "standard" | "major"
+CurseTier            // "minor" | "standard" | "major"
+DispositionChange    // "slight" | "moderate" | "significant"
+RewardTier           // "none" | "small" | "medium" | "large"
 
 // Game Types
 GameState            // Root state object
@@ -285,6 +303,29 @@ ClassSelect → DungeonSelect → PathSelect → [Room Loop]
 
 ## Key Patterns
 
+### Dual Architecture
+
+The game uses two parallel paths for state changes:
+
+| Path | Used For | Flow |
+|------|----------|------|
+| **LEGO/Executor** | Combat effects (damage, heal, status) | AI → pieceIds[] → atoms → `executeEffects()` |
+| **Reducer** | Game flow (phases, encounters) | Hooks → `dispatch()` → `game-reducer.ts` |
+
+**LEGO Path:** AI decisions that affect combat stats flow through the effect executor.
+```typescript
+const effects = validateAndResolve(decision.pieceIds, budget)
+const result = executeEffects(state, effects)
+```
+
+**Reducer Path:** Game flow changes use React dispatch directly.
+```typescript
+dispatch({ type: "SET_PHASE", payload: "combat" })
+dispatch({ type: "START_COMBAT", payload: enemy })
+```
+
+The 65+ effect types in `effect-types.ts` serve both paths—not all go through the executor.
+
 ### NO FALLBACKS Philosophy
 
 If AI fails (invalid pieces, budget exceeded, schema validation), the game fails visibly:
@@ -313,13 +354,60 @@ AI selects intensity, kernel applies multipliers:
 
 ### Tier Systems
 
-AI selects tier, kernel looks up values:
+AI selects tier, kernel looks up values. **AI never outputs raw numbers.**
 
-| Blessing Tier | Attack | Defense | Duration |
-|---------------|--------|---------|----------|
+**Blessing Tiers** (shrine blessings):
+| Tier | Attack | Defense | Duration |
+|------|--------|---------|----------|
 | minor | +2 | +1 | 3 turns |
 | standard | +4 | +3 | 5 turns |
 | major | +7 | +5 | 8 turns |
+
+**Curse Tiers** (shrine curses):
+| Tier | Attack | Defense | Duration |
+|------|--------|---------|----------|
+| minor | -2 | -1 | 3 turns |
+| standard | -4 | -3 | 5 turns |
+| major | -7 | -5 | 8 turns |
+
+**Disposition Tiers** (NPC interactions):
+| Tier | Value |
+|------|-------|
+| slight | ±5 |
+| moderate | ±15 |
+| significant | ±30 |
+
+**Reward Tiers** (gold, healing, damage, experience):
+| Tier | Gold | Healing | Damage | Experience |
+|------|------|---------|--------|------------|
+| none | 0 | 0 | 0 | 0 |
+| small | 5-15 | 5-15 | 3-8 | 5-15 |
+| medium | 20-50 | 20-40 | 10-20 | 20-40 |
+| large | 75-150 | 50-80 | 25-40 | 50-100 |
+
+---
+
+## Testing
+
+```bash
+npm test              # Run all tests
+npm test -- --watch   # Watch mode
+```
+
+**Test coverage:**
+| Area | File | Tests |
+|------|------|-------|
+| LEGO tier resolution | `registry.test.ts` | 14 |
+| Effect executor | `effect-executor.test.ts` | 25 |
+| Combat system | `combat-system.test.ts` | 45 |
+| Game reducer | `game-reducer.test.ts` | 68 |
+| Entity system | `entity-system.test.ts` | 49 |
+
+**Critical paths tested:**
+- `resolveRewardTier()` - tier → value ranges
+- `getBlessingStats()` / `getCurseStats()` - tier → stat bonuses
+- `getDispositionDelta()` - tier → disposition value
+- `executeEffects()` - effect validation and application
 
 ---
 
