@@ -202,9 +202,17 @@ function validateEffect(state: GameState, effect: Effect): ValidationResult {
       return { valid: true, reason: "" }
     }
 
-    default:
-      // Allow all other effects by default
+    // Explicitly handled types that don't need additional validation
+    case "narrative":
+    case "set_stance":
+    case "apply_status":
+    case "remove_status":
+    case "modify_experience":
       return { valid: true, reason: "" }
+
+    default:
+      // Unknown effect types are INVALID - fail visibly (NO FALLBACKS philosophy)
+      return { valid: false, reason: `Unknown effect type: ${effect.effectType}` }
   }
 }
 
