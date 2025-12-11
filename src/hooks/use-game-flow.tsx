@@ -1,14 +1,17 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, type ReactNode } from "react";
 import type { GameState, PlayerClass, PlayerRace } from "@/lib/core/game-types";
 import type { Dispatch } from "react";
 import type { GameAction } from "@/contexts/game-reducer";
-import type { GameLogger } from "@/lib/ai/game-log-system";
+import type { GameLogger, LogCategory } from "@/lib/ai/game-log-system";
 import { createInitialGameState } from "@/contexts/game-context";
 import { initializePlayerClass, CLASSES } from "@/lib/character/ability-system";
 import { initializePlayerRace, RACE_DEFINITIONS } from "@/lib/character/race-system";
-import { createInitialPlayer, createInitialRunStats } from "@/lib/core/game-data";
+import { createInitialPlayer, createInitialRunStats, generateDungeonSelection } from "@/lib/core/game-data";
+import { EntityText } from "@/components/narrative/entity-text";
+
+type AddLogFn = (message: ReactNode, category: LogCategory) => void;
 
 // ============================================================================
 // TYPES
@@ -18,6 +21,7 @@ interface UseGameFlowOptions {
   state: GameState;
   dispatch: Dispatch<GameAction>;
   logger: GameLogger;
+  addLog: AddLogFn;
   clearLogs: () => void;
 }
 
@@ -29,6 +33,7 @@ export function useGameFlow({
   state,
   dispatch,
   logger,
+  addLog,
   clearLogs,
 }: UseGameFlowOptions) {
   // Start a new game
@@ -48,11 +53,15 @@ export function useGameFlow({
       dispatch({ type: "UPDATE_PLAYER", payload: initializedPlayer });
       dispatch({ type: "SET_PHASE", payload: "class_select" });
 
-      logger.system(
-        `You are ${raceDef.name}. ${raceDef.lore}`,
+      addLog(
+        <span>
+          You are a <EntityText type="uncommon">{raceDef.name}</EntityText>.{" "}
+          {raceDef.description}
+        </span>,
+        "system",
       );
     },
-    [state.player, dispatch, logger],
+    [state.player, dispatch, addLog],
   );
 
   // Select a class and begin
@@ -64,14 +73,22 @@ export function useGameFlow({
       dispatch({ type: "UPDATE_PLAYER", payload: initializedPlayer });
       dispatch({ type: "SET_PHASE", payload: "tavern" });
 
-      logger.system(
-        `You have chosen the path of the ${classDef.name}. ${classDef.lore}`,
+      addLog(
+        <span>
+          You have chosen the path of the{" "}
+          <EntityText type="rare">{classDef.name}</EntityText>. {classDef.lore}
+        </span>,
+        "system",
       );
-      logger.system(
-        `Starting abilities: ${classDef.startingAbilities.map((id) => id.split("_")[1]).join(", ")}`,
+      addLog(
+        <span className="text-stone-400 text-sm italic">
+          Starting abilities:{" "}
+          {classDef.startingAbilities.map((id) => id.split("_")[1]).join(", ")}
+        </span>,
+        "system",
       );
     },
-    [state.player, dispatch, logger],
+    [state.player, dispatch, addLog],
   );
 
   // Return to title screen
@@ -141,6 +158,24 @@ export function useGameFlow({
     };
   }, [state.phase, state.inCombat, state.gameOver]);
 
+  // Enter dungeon selection phase
+  const enterDungeonSelect = useCallback(() => {
+    const dungeons = generateDungeonSelection();
+    dispatch({ type: "SET_PHASE", payload: "dungeon_select" });
+    dispatch({ type: "SET_GAME_STARTED", payload: true });
+    dispatch({ type: "SET_AVAILABLE_DUNGEONS", payload: dungeons });
+  }, [dispatch]);
+
+  // Return to tavern after death (without full restart)
+  const returnToTavern = useCallback(() => {
+    dispatch({ type: "SET_GAME_OVER", payload: false });
+    dispatch({ type: "SET_PHASE", payload: "tavern" });
+    addLog(
+      <span className="text-amber-400">You drag yourself back to the tavern...</span>,
+      "narrative",
+    );
+  }, [dispatch, addLog]);
+
   return {
     // Actions
     startNewGame,
@@ -149,6 +184,8 @@ export function useGameFlow({
     returnToTitle,
     restartGame,
     loadSavedGame,
+    enterDungeonSelect,
+    returnToTavern,
 
     // Queries
     isGameInProgress,

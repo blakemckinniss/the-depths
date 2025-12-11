@@ -68,32 +68,46 @@ export function useTavern({
     return Math.ceil(missingHealth * HEAL_COST_PER_HP);
   }, [state.player.stats.health, state.player.stats.maxHealth]);
 
-  // Restore health at tavern
-  const restoreHealth = useCallback(() => {
-    const cost = getHealingCost();
-    if (cost <= 0) return false;
-    if (state.player.stats.gold < cost) return false;
+  // Restore health at tavern (with amount override for Tavern component)
+  const restoreHealth = useCallback(
+    (cost?: number, amount?: number) => {
+      // If cost/amount provided (from Tavern component), use those
+      const actualCost = cost ?? getHealingCost();
+      const healAmount = amount ?? (state.player.stats.maxHealth - state.player.stats.health);
 
-    const healAmount = state.player.stats.maxHealth - state.player.stats.health;
+      if (actualCost <= 0) return false;
+      if (state.player.stats.gold < actualCost) return false;
 
-    dispatch({ type: "MODIFY_PLAYER_GOLD", payload: -cost });
-    dispatch({
-      type: "UPDATE_PLAYER_STATS",
-      payload: { health: state.player.stats.maxHealth },
-    });
+      dispatch({ type: "MODIFY_PLAYER_GOLD", payload: -actualCost });
+      const newHealth = Math.min(
+        state.player.stats.maxHealth,
+        state.player.stats.health + healAmount,
+      );
+      dispatch({
+        type: "UPDATE_PLAYER_STATS",
+        payload: { health: newHealth },
+      });
 
-    updateRunStats({ goldSpent: state.runStats.goldSpent + cost });
-    logger.heal(healAmount, "Tavern rest");
+      updateRunStats({ goldSpent: state.runStats.goldSpent + actualCost });
+      addLog(
+        <span>
+          Sister Meridia&apos;s healing light washes over you.{" "}
+          <EntityText type="heal">+{healAmount} HP</EntityText>
+        </span>,
+        "system",
+      );
 
-    return true;
-  }, [
-    state.player.stats,
-    state.runStats.goldSpent,
-    dispatch,
-    logger,
-    updateRunStats,
-    getHealingCost,
-  ]);
+      return true;
+    },
+    [
+      state.player.stats,
+      state.runStats.goldSpent,
+      dispatch,
+      addLog,
+      updateRunStats,
+      getHealingCost,
+    ],
+  );
 
   // Get key price
   const getKeyPrice = useCallback((rarity: KeyRarity) => {
@@ -108,7 +122,7 @@ export function useTavern({
     [state.player.stats.gold],
   );
 
-  // Buy a dungeon key
+  // Buy a dungeon key (with JSX logging)
   const buyKey = useCallback(
     (rarity: KeyRarity) => {
       const cost = KEY_PRICES[rarity];
@@ -120,7 +134,16 @@ export function useTavern({
       dispatch({ type: "ADD_KEY", payload: newKey });
       updateRunStats({ goldSpent: state.runStats.goldSpent + cost });
 
-      logger.system(`Purchased ${newKey.name} for ${cost} gold.`);
+      addLog(
+        <span>
+          You purchase a{" "}
+          <EntityText type={rarity === "rare" ? "rare" : "item"}>
+            {newKey.name}
+          </EntityText>{" "}
+          from Korvin.
+        </span>,
+        "system",
+      );
 
       return newKey;
     },
@@ -128,7 +151,7 @@ export function useTavern({
       state.player.stats.gold,
       state.runStats.goldSpent,
       dispatch,
-      logger,
+      addLog,
       updateRunStats,
     ],
   );

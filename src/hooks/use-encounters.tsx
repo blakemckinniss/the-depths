@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import type {
   GameState,
   NPC,
@@ -914,12 +914,48 @@ export function useEncounters({
     setActiveLootContainer(null);
   }, [addLog, setActiveLootContainer]);
 
+  // NPC dialogue options based on current NPC state
+  const npcOptions = useMemo(() => {
+    if (!state.activeNPC) return [];
+    const npc = state.activeNPC;
+    const options: Array<{
+      id: string;
+      text: string;
+      action: "talk" | "trade" | "help" | "attack" | "leave";
+      disabled?: boolean;
+      cost?: { gold?: number };
+    }> = [];
+
+    options.push({ id: "talk", text: "Talk", action: "talk" });
+
+    if (npc.role === "merchant" && npc.inventory?.length) {
+      const item = npc.inventory[0];
+      options.push({
+        id: "trade",
+        text: `Buy ${item.name}`,
+        action: "trade",
+        cost: { gold: item.value },
+        disabled: state.player.stats.gold < item.value,
+      });
+    }
+
+    if (npc.role === "trapped") {
+      options.push({ id: "help", text: "Free them", action: "help" });
+    }
+
+    options.push({ id: "attack", text: "Attack", action: "attack" });
+    options.push({ id: "leave", text: "Leave", action: "leave" });
+
+    return options;
+  }, [state.activeNPC, state.player.stats.gold]);
+
   return {
     // NPC
     startNPCInteraction,
     endNPCInteraction,
     tradeWithNPC,
     activeNPC: state.activeNPC,
+    npcOptions,
 
     // Shrine
     startShrineInteraction,

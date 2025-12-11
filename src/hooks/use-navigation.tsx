@@ -8,6 +8,8 @@ import type {
   DungeonKey,
   EnvironmentalHazard,
   Enemy,
+  ItemRarity,
+  Item,
 } from "@/lib/core/game-types";
 import type { Dispatch } from "react";
 import type { GameAction } from "@/contexts/game-reducer";
@@ -23,7 +25,9 @@ import {
   generateTrap,
   generateShrine,
   generateNPC,
+  createDungeonKey,
 } from "@/lib/core/game-data";
+import { generateFloorReward } from "@/lib/ai/ai-drops-system";
 import { generateEnemyAbility } from "@/lib/combat/combat-system";
 import {
   generateLootContainer,
@@ -46,6 +50,15 @@ import {
 
 type AddLogFn = (message: ReactNode, category: LogCategory) => void;
 
+// Response type for descend narrative
+interface DescendResponse {
+  roomDescription: string;
+  eventNarration?: string;
+}
+
+// Generic narrative generator function type (matches DungeonMasterContext)
+type GenerateNarrativeFn = <T>(type: string, context: { [key: string]: string | number | boolean | undefined | object }) => Promise<T | null>;
+
 interface UseNavigationOptions {
   state: GameState;
   dispatch: Dispatch<GameAction>;
@@ -56,6 +69,13 @@ interface UseNavigationOptions {
   clearLogs: () => void;
   setActiveLootContainer: (container: LootContainer | null) => void;
   setNpcDialogue: (dialogue: string) => void;
+  // Optional AI narrative generator for descendFloor
+  generateNarrative?: GenerateNarrativeFn;
+  // Optional run stats updater
+  updateRunStats?: (stats: Partial<GameState["runStats"]>) => void;
+  // Optional combat callbacks for exploreRoom
+  processTurnEffects?: () => boolean;
+  triggerDeath?: (cause: string, source: string) => void;
 }
 
 // ============================================================================
@@ -72,6 +92,10 @@ export function useNavigation({
   clearLogs,
   setActiveLootContainer,
   setNpcDialogue,
+  generateNarrative,
+  updateRunStats,
+  processTurnEffects,
+  triggerDeath,
 }: UseNavigationOptions) {
   // Generate path options for current location
   const generatePaths = useCallback(() => {
@@ -101,18 +125,208 @@ export function useNavigation({
     [dispatch],
   );
 
-  // Descend to next floor
-  const descendFloor = useCallback(() => {
+  // Descend to next floor (full implementation with dungeon completion)
+  const descendFloor = useCallback(async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+
+    const maxFloors = state.currentDungeon?.floors || 5;
     const newFloor = state.floor + 1;
-    dispatch({ type: "SET_FLOOR", payload: newFloor });
-    dispatch({ type: "SET_ROOM", payload: 0 });
-    dispatch({ type: "SET_HAZARD", payload: null });
-    dispatch({ type: "SET_PATH_OPTIONS", payload: null });
 
-    logger.floorDescended(newFloor);
+    if (newFloor > maxFloors) {
+      // Dungeon complete!
+      const dungeonRarity: ItemRarity = state.currentDungeon?.rarity || "common";
+      let rewardKey: DungeonKey | null = null;
 
+      const keyRoll = Math.random();
+      if (dungeonRarity === "legendary" || keyRoll < 0.3) {
+        const rarities: ItemRarity[] = ["common", "uncommon", "rare", "legendary"];
+        const dungeonIndex = rarities.indexOf(dungeonRarity);
+        const rewardIndex = Math.min(rarities.length - 1, dungeonIndex + (keyRoll < 0.1 ? 1 : 0));
+        rewardKey = createDungeonKey(rarities[rewardIndex]);
+      }
+
+      addLog(
+        <span>
+          <EntityText type="legendary">DUNGEON COMPLETE!</EntityText> You have conquered{" "}
+          <EntityText type="location">{state.currentDungeon?.name}</EntityText>!
+        </span>,
+        "system",
+      );
+
+      // Generate AI-themed dungeon completion loot
+      const floorRewards = await generateFloorReward(
+        state.currentDungeon?.name || "Unknown Dungeon",
+        state.currentDungeon?.theme || "ancient",
+        state.floor,
+        state.player.className || undefined,
+      );
+
+      if (floorRewards.length > 0) {
+        addLog(
+          <span>
+            Dungeon treasures:{" "}
+            {floorRewards.map((item: Item, i: number) => (
+              <span key={item.id}>
+                {i > 0 && ", "}
+                <EntityText type={item.rarity}>{item.name}</EntityText>
+              </span>
+            ))}
+          </span>,
+          "loot",
+        );
+      }
+
+      if (rewardKey) {
+        addLog(
+          <span>
+            Among the treasures, you find a{" "}
+            <EntityText
+              type={rewardKey.rarity === "legendary" ? "legendary" : rewardKey.rarity === "rare" ? "rare" : "item"}
+            >
+              {rewardKey.name}
+            </EntityText>!
+          </span>,
+          "loot",
+        );
+      }
+
+      const bonusGold = Math.floor(
+        50 * (1 + ["common", "uncommon", "rare", "legendary"].indexOf(dungeonRarity as string) * 0.5),
+      );
+      addLog(
+        <span>
+          Completion bonus: <EntityText type="gold">+{bonusGold} gold</EntityText>
+        </span>,
+        "loot",
+      );
+
+      if (updateRunStats) {
+        updateRunStats({
+          dungeonsCompleted: [...state.runStats.dungeonsCompleted, state.currentDungeon?.name || "Unknown"],
+          goldEarned: state.runStats.goldEarned + bonusGold,
+          floorsCleared: state.runStats.floorsCleared + state.currentRoom,
+          itemsFound: [...state.runStats.itemsFound, ...floorRewards],
+        });
+      }
+
+      setTimeout(() => {
+        dispatch({ type: "MODIFY_PLAYER_GOLD", payload: bonusGold });
+        if (rewardKey) {
+          dispatch({ type: "ADD_KEY", payload: rewardKey });
+        }
+        for (const item of floorRewards) {
+          dispatch({ type: "ADD_ITEM", payload: item });
+        }
+        dispatch({ type: "SET_PHASE", payload: "tavern" });
+        dispatch({ type: "CLEAR_DUNGEON" });
+        clearLogs();
+        addLog(
+          <span className="text-muted-foreground">
+            You return to the tavern, victorious. The fire crackles warmly as you enter...
+          </span>,
+          "system",
+        );
+      }, 2000);
+    } else {
+      // Descending to next floor
+      if (generateNarrative) {
+        const response = await generateNarrative<DescendResponse>("descend", {
+          newFloor,
+          roomsExplored: state.currentRoom,
+          playerLevel: state.player.stats.level,
+        });
+
+        if (response) {
+          addLog(<span>{response.roomDescription}</span>, "narrative");
+        } else {
+          addLog(
+            <span>
+              You descend to <EntityText type="location">Floor {newFloor}</EntityText>. The darkness grows deeper.
+            </span>,
+            "narrative",
+          );
+        }
+      } else {
+        addLog(
+          <span>
+            You descend to <EntityText type="location">Floor {newFloor}</EntityText>. The darkness grows deeper.
+          </span>,
+          "narrative",
+        );
+      }
+
+      if (updateRunStats) {
+        updateRunStats({
+          floorsCleared: state.runStats.floorsCleared + state.currentRoom,
+        });
+      }
+
+      dispatch({ type: "SET_FLOOR", payload: newFloor });
+      dispatch({ type: "SET_ROOM", payload: 0 });
+      dispatch({ type: "SET_HAZARD", payload: null });
+
+      logger.floorDescended(newFloor);
+    }
+
+    setIsProcessing(false);
     return newFloor;
-  }, [state.floor, dispatch, logger]);
+  }, [state, isProcessing, addLog, clearLogs, dispatch, logger, setIsProcessing, generateNarrative, updateRunStats]);
+
+  // Explore current room - process turn effects and generate new paths
+  const exploreRoom = useCallback(async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+
+    // Process turn effects (poison, etc.) - may cause death
+    if (processTurnEffects) {
+      const playerDied = processTurnEffects();
+      if (playerDied && triggerDeath) {
+        triggerDeath("Succumbed to effects", "Status effects");
+        addLog(
+          <span className="text-red-400">
+            The poison claims your life. Darkness takes you.
+          </span>,
+          "system",
+        );
+        setIsProcessing(false);
+        return;
+      }
+    }
+
+    const dungeonTheme = state.currentDungeon?.theme || "ancient dungeon";
+    const dungeonName = state.currentDungeon?.name || "the depths";
+
+    const paths = generatePathOptions(
+      state.floor,
+      state.currentRoom,
+      dungeonTheme,
+    );
+
+    // Generate room narrative if AI is available
+    if (generateNarrative) {
+      interface RoomResponse {
+        roomDescription: string;
+        eventNarration?: string;
+      }
+      const roomResponse = await generateNarrative<RoomResponse>("room", {
+        floor: state.floor,
+        roomNumber: state.currentRoom + 1,
+        playerHealth: state.player.stats.health,
+        playerMaxHealth: state.player.stats.maxHealth,
+        dungeonTheme,
+        dungeonName,
+        currentHazard: state.currentHazard?.name,
+      });
+
+      if (roomResponse) {
+        addLog(<span>{roomResponse.roomDescription}</span>, "narrative");
+      }
+    }
+
+    dispatch({ type: "SET_PATH_OPTIONS", payload: paths });
+    setIsProcessing(false);
+  }, [state, isProcessing, addLog, dispatch, setIsProcessing, generateNarrative, processTurnEffects, triggerDeath]);
 
   // Enter dungeon select phase
   const enterDungeonSelect = useCallback(() => {
@@ -139,22 +353,83 @@ export function useNavigation({
         dispatch({ type: "REMOVE_KEY", payload: keyToUse.id });
       }
 
+      // Set dungeon state
       dispatch({ type: "SET_DUNGEON", payload: dungeon });
       dispatch({ type: "SET_PHASE", payload: "dungeon" });
       dispatch({ type: "SET_ROOM", payload: 0 });
       dispatch({ type: "SET_HAZARD", payload: null });
 
-      logger.dungeonEntered(dungeon.name);
+      clearLogs(); // Clear logs for new dungeon
+
+      if (dungeon.isMystery) {
+        addLog(
+          <span>
+            <EntityText type="player">You</EntityText> use the{" "}
+            <EntityText
+              type={
+                keyToUse.rarity === "legendary"
+                  ? "legendary"
+                  : keyToUse.rarity === "rare"
+                    ? "rare"
+                    : "item"
+              }
+            >
+              {keyToUse.name}
+            </EntityText>{" "}
+            to unlock the <EntityText type="legendary">???</EntityText>{" "}
+            dungeon...
+          </span>,
+          "system",
+        );
+        addLog(
+          <span className="text-purple-400 italic">
+            The door swings open to reveal...{" "}
+            <EntityText type="location">{dungeon.name}</EntityText>!
+          </span>,
+          "narrative",
+        );
+      } else {
+        addLog(
+          <span>
+            <EntityText type="player">You</EntityText> use the{" "}
+            <EntityText
+              type={
+                keyToUse.rarity === "legendary"
+                  ? "legendary"
+                  : keyToUse.rarity === "rare"
+                    ? "rare"
+                    : "item"
+              }
+            >
+              {keyToUse.name}
+            </EntityText>{" "}
+            to enter <EntityText type="location">{dungeon.name}</EntityText>.
+          </span>,
+          "system",
+        );
+      }
 
       if (keyToUse.consumedOnUse) {
-        logger.system("The key crumbles to dust as the lock clicks open.");
+        addLog(
+          <span className="text-muted-foreground text-sm">
+            The key crumbles to dust as the lock clicks open.
+          </span>,
+          "system",
+        );
       }
+
+      addLog(
+        <span className="text-muted-foreground">
+          A {dungeon.theme}. {dungeon.floors} floors of peril await.
+        </span>,
+        "narrative",
+      );
 
       setIsProcessing(false);
 
       return dungeon;
     },
-    [dispatch, logger, setIsProcessing],
+    [dispatch, clearLogs, addLog, setIsProcessing],
   );
 
   // Complete current dungeon
@@ -691,6 +966,7 @@ export function useNavigation({
     clearPaths,
     moveToRoom,
     descendFloor,
+    exploreRoom,
     enterDungeonSelect,
     selectDungeon,
     completeDungeon,

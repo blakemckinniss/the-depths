@@ -35,6 +35,10 @@ interface VictoryResponse {
   deathNarration: string;
   spoilsNarration: string;
 }
+
+interface FleeResponse {
+  fleeNarration: string;
+}
 import type { Dispatch } from "react";
 import type { GameAction } from "@/contexts/game-reducer";
 import { calculateEffectiveStats } from "@/lib/entity/entity-system";
@@ -44,6 +48,7 @@ import {
   tickCooldowns,
   getClassAbilitiesForLevel,
   CLASSES,
+  autoLevelAbilitiesOnLevelUp,
 } from "@/lib/character/ability-system";
 import {
   calculateDamageWithType,
@@ -235,6 +240,9 @@ export function useCombat({
             logger.levelUp(newLevel, ability);
           }
         }
+
+        // Auto-level existing abilities based on player level (every 3 levels = +1 ability level)
+        player = autoLevelAbilitiesOnLevelUp(player);
       }
     }
 
@@ -1775,6 +1783,156 @@ export function useCombat({
     setIsProcessing,
   ]);
 
+  // Attempt to flee from combat
+  const attemptFlee = useCallback(async () => {
+    if (!state.currentEnemy || !state.inCombat || isProcessing) return;
+
+    if (state.currentHazard?.effects.fleeDisabled) {
+      addLog(
+        <span className="text-red-400">
+          The{" "}
+          <EntityText type="curse">{state.currentHazard.name}</EntityText>{" "}
+          prevents your escape!
+        </span>,
+        "system",
+      );
+      return;
+    }
+
+    setIsProcessing(true);
+
+    const fleeChance = 0.4 + state.player.stats.level * 0.05;
+    const success = Math.random() < fleeChance;
+
+    const fleeResponse = await generateNarrative<FleeResponse>(
+      success ? "flee_success" : "flee_fail",
+      {
+        enemyName: state.currentEnemy.name,
+        damage: success ? 0 : undefined,
+      },
+    );
+
+    if (success) {
+      if (fleeResponse) {
+        addLog(<span>{fleeResponse.fleeNarration}</span>, "combat");
+      } else {
+        addLog(
+          <span>
+            <EntityText type="player">You</EntityText> escape from the{" "}
+            <EntityText type="enemy">{state.currentEnemy.name}</EntityText>!
+          </span>,
+          "combat",
+        );
+      }
+      dispatch({ type: "END_COMBAT" });
+    } else {
+      const effectiveStats = calculateEffectiveStats(state.player);
+      const damage = calculateDamage(state.currentEnemy, {
+        defense: effectiveStats.defense,
+      });
+      const newHealth = state.player.stats.health - damage;
+
+      updateRunStats({ damageTaken: state.runStats.damageTaken + damage });
+
+      if (fleeResponse) {
+        addLog(
+          <span>
+            {fleeResponse.fleeNarration}{" "}
+            <EntityText type="damage">(-{damage})</EntityText>
+          </span>,
+          "combat",
+        );
+      } else {
+        addLog(
+          <span>
+            Failed to flee! The{" "}
+            <EntityText type="enemy">{state.currentEnemy.name}</EntityText>{" "}
+            strikes for <EntityText type="damage">{damage}</EntityText> damage.
+          </span>,
+          "combat",
+        );
+      }
+
+      if (newHealth <= 0) {
+        triggerDeath("Slain while fleeing", state.currentEnemy.name);
+        addLog(
+          <span className="text-red-400">
+            <EntityText type="player">You</EntityText> have fallen. The dungeon
+            claims another soul.
+          </span>,
+          "system",
+        );
+      } else {
+        dispatch({ type: "SET_PLAYER_HEALTH", payload: newHealth });
+        dispatch({ type: "INCREMENT_COMBAT_ROUND" });
+      }
+    }
+    setIsProcessing(false);
+  }, [
+    state,
+    isProcessing,
+    calculateDamage,
+    addLog,
+    updateRunStats,
+    triggerDeath,
+    dispatch,
+    generateNarrative,
+    setIsProcessing,
+  ]);
+
+  // Boss encounter action handler
+  const handleBossAction = useCallback(
+    async (action: "attack" | "defend" | "flee" | "parley") => {
+      if (isProcessing || !state.currentEnemy || state.currentEnemy.entityType !== "boss") return;
+
+      switch (action) {
+        case "attack":
+          // Use existing attack flow
+          await playerAttack();
+          break;
+        case "defend":
+          // Set defensive stance and skip attack
+          dispatch({ type: "SET_STANCE", payload: "defensive" });
+          logger.stanceChange("Defensive");
+          addLog(
+            <span className="text-blue-400">
+              You brace yourself for the boss&apos;s attack...
+            </span>,
+            "combat",
+          );
+          // Enemy still attacks
+          if (state.currentEnemy) {
+            await enemyAttack(state.currentEnemy, state.player);
+          }
+          break;
+        case "flee":
+          // Use existing flee logic
+          await attemptFlee();
+          break;
+        case "parley":
+          // Attempt to negotiate with the boss
+          const boss = state.currentEnemy as Boss;
+          if (boss.dialogue?.lowHealth && boss.health <= boss.maxHealth * 0.5) {
+            addLog(
+              <span className="text-amber-400 italic">
+                &quot;{boss.dialogue.lowHealth}&quot;
+              </span>,
+              "dialogue",
+            );
+          } else if (boss.dialogue?.intro) {
+            addLog(
+              <span className="text-amber-400 italic">
+                The {boss.name} considers your words...
+              </span>,
+              "dialogue",
+            );
+          }
+          break;
+      }
+    },
+    [isProcessing, state.currentEnemy, state.player, playerAttack, enemyAttack, attemptFlee, dispatch, logger, addLog],
+  );
+
   return {
     // Calculations
     calculateDamage,
@@ -1794,6 +1952,8 @@ export function useCombat({
     handleUseAbility,
     processCompanionTurns,
     playerAttack,
+    attemptFlee,
+    handleBossAction,
 
     // Constants
     STANCE_MODIFIERS,
