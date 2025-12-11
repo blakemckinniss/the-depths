@@ -30,17 +30,23 @@ export function createMockPlayerStats(overrides: Partial<PlayerStats> = {}): Pla
     defense: 5,
     level: 1,
     experience: 0,
-    experienceToNextLevel: 100,
+    experienceToLevel: 100,
+    gold: 0,
+    strength: 10,
+    intelligence: 10,
+    dexterity: 10,
     critChance: 0.05,
     critDamage: 1.5,
     dodgeChance: 0,
     luck: 0,
+    speed: 10,
     vampirism: 0,
     thorns: 0,
     blockChance: 0,
-    blockAmount: 0,
+    magicFind: 0,
+    expBonus: 0,
     healthRegen: 0,
-    manaRegen: 0,
+    resourceRegen: 0,
     ...overrides,
   };
 }
@@ -59,6 +65,9 @@ export function createMockEquipment(overrides: Partial<PlayerEquipment> = {}): P
     amulet: null,
     cloak: null,
     belt: null,
+    // Legacy aliases
+    weapon: null,
+    armor: null,
     ...overrides,
   };
 }
@@ -226,7 +235,7 @@ export function createMockArmor(
   return createMockItem({
     name: `${rarity.charAt(0).toUpperCase() + rarity.slice(1)} ${slot.charAt(0).toUpperCase() + slot.slice(1)} Armor`,
     category: "armor",
-    slot,
+    subtype: slot,
     rarity,
     stats: { defense: Math.floor(baseDefense[slot] * rarityMultipliers[rarity]) },
     value: Math.floor(30 * rarityMultipliers[rarity]),
@@ -302,14 +311,18 @@ export function createDefenseDebuff(penalty: number = 3, duration: number = 2): 
 export function createMockAbility(overrides: Partial<Ability> = {}): Ability {
   return {
     id: `ability-${Math.random().toString(36).slice(2, 9)}`,
+    entityType: "ability",
     name: "Test Strike",
     description: "A basic test ability",
+    category: "combat",
     cooldown: 2,
     currentCooldown: 0,
-    damage: 15,
+    baseDamage: 15,
     damageType: "physical",
-    resourceCost: { type: "energy", amount: 20 },
-    tags: ["physical"],
+    resourceCost: 20,
+    resourceType: "energy",
+    levelRequired: 1,
+    targetType: "enemy",
     ...overrides,
   } as Ability;
 }
@@ -318,10 +331,11 @@ export function createFireAbility(): Ability {
   return createMockAbility({
     name: "Fireball",
     description: "Launch a ball of fire",
-    damage: 20,
+    category: "magic",
+    baseDamage: 20,
     damageType: "fire",
-    tags: ["fire"],
-    resourceCost: { type: "mana", amount: 25 },
+    resourceCost: 25,
+    resourceType: "mana",
     cooldown: 3,
   });
 }
@@ -330,10 +344,11 @@ export function createIceAbility(): Ability {
   return createMockAbility({
     name: "Ice Shard",
     description: "Hurl a shard of ice",
-    damage: 15,
+    category: "magic",
+    baseDamage: 15,
     damageType: "ice",
-    tags: ["ice"],
-    resourceCost: { type: "mana", amount: 20 },
+    resourceCost: 20,
+    resourceType: "mana",
     cooldown: 2,
   });
 }
